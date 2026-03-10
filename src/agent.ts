@@ -20,14 +20,14 @@ export class PortalAgent {
 	private async selectModel(): Promise<vscode.LanguageModelChat | undefined> {
 		// Log all available models to help diagnose access issues
 		const all = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-		this.log(`[Agent] Available models: ${all.map((m) => `${m.name} (${m.id})`).join(', ') || 'none'}`);
+		this.log(`[Agent] Available models: ${all.map((m) => `${m.name} (id:${m.id} family:${m.family})`).join(', ') || 'none'}`);
 
-		// Preferred model families in order — avoid "Internal only" models
-		const preferred = ['gpt-4.1', 'gpt-4o', 'claude-3.5-sonnet', 'claude-sonnet-4'];
-		for (const family of preferred) {
-			const [model] = all.filter((m) => m.family === family);
+		// Try preferred models by ID first (most specific), then by family
+		const preferredIds = ['auto', 'claude-sonnet-4.6', 'gpt-4o', 'gpt-4.1'];
+		for (const id of preferredIds) {
+			const model = all.find((m) => m.id === id);
 			if (model) {
-				this.log(`[Agent] Selected: ${model.name} (family: ${family})`);
+				this.log(`[Agent] Selected: ${model.name} (id: ${id})`);
 				return model;
 			}
 		}
@@ -88,11 +88,12 @@ export class PortalAgent {
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') return;
 			const msg = error instanceof Error ? error.message : String(error);
-			// Extract any extra fields VS Code puts on the error (code, cause, etc.)
 			const extra = JSON.stringify(error, Object.getOwnPropertyNames(error));
 			this.log(`[Agent] Error: ${msg}`);
 			this.log(`[Agent] Error detail: ${extra.slice(0, 500)}`);
 			this.log(`[Agent] Tip: open Help > Toggle Developer Tools > Console in VS Code for full details`);
+			// Remove the failed user message so history stays clean for next attempt
+			this.messages.pop();
 			this.onEvent({ type: 'error', content: msg });
 		} finally {
 			this.abortController = null;
