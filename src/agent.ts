@@ -22,8 +22,8 @@ export class PortalAgent {
 		const all = await vscode.lm.selectChatModels({ vendor: 'copilot' });
 		this.log(`[Agent] Available models: ${all.map((m) => `${m.name} (id:${m.id} family:${m.family})`).join(', ') || 'none'}`);
 
-		// Try preferred models by ID first (most specific), then by family
-		const preferredIds = ['auto', 'claude-sonnet-4.6', 'gpt-4o', 'gpt-4.1'];
+		// Try preferred models by ID — skip 'auto' (reserved for Copilot Chat itself, returns 400 for 3rd-party extensions)
+		const preferredIds = ['claude-sonnet-4.6', 'gpt-4.1', 'gpt-4o', 'claude-haiku-4.5'];
 		for (const id of preferredIds) {
 			const model = all.find((m) => m.id === id);
 			if (model) {

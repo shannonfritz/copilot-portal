@@ -16,6 +16,8 @@ export class PortalServer {
 	private agent: PortalAgent;
 	private webuiPath: string;
 	private clientCounter = 0;
+	private logStream: fs.WriteStream | null = null;
+	private debugDir: string;
 
 	constructor(
 		private port: number,
@@ -24,6 +26,7 @@ export class PortalServer {
 	) {
 		this.token = crypto.randomBytes(16).toString('hex');
 		this.webuiPath = path.join(context.extensionPath, 'dist', 'webui');
+		this.debugDir = path.join(context.extensionPath, 'debug');
 		this.agent = new PortalAgent((event) => this.broadcast(event), outputChannel);
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
@@ -71,7 +74,29 @@ export class PortalServer {
 
 	private log(msg: string) {
 		const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-		this.outputChannel.appendLine(`[${ts}] ${msg}`);
+		const line = `[${ts}] ${msg}`;
+		this.outputChannel.appendLine(line);
+		this.logStream?.write(line + '\n');
+	}
+
+	private initDebugFiles() {
+		try {
+			if (!fs.existsSync(this.debugDir)) fs.mkdirSync(this.debugDir, { recursive: true });
+			// Rotate log: keep last session only
+			const logPath = path.join(this.debugDir, 'server.log');
+			this.logStream = fs.createWriteStream(logPath, { flags: 'w' });
+			// Write connection info so test scripts can pick it up without needing to copy/paste
+			const connPath = path.join(this.debugDir, 'connection.json');
+			const localIP = this.getLocalIP();
+			fs.writeFileSync(connPath, JSON.stringify({
+				url: `ws://${localIP}:${this.port}`,
+				token: this.token,
+				port: this.port,
+				startedAt: new Date().toISOString(),
+			}, null, 2));
+		} catch (e) {
+			this.outputChannel.appendLine(`[Debug] Could not init debug files: ${e}`);
+		}
 	}
 
 	private handleHttp(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -170,6 +195,7 @@ export class PortalServer {
 		return new Promise((resolve, reject) => {
 			this.httpServer.on('error', reject);
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
+				this.initDebugFiles(); // write connection.json + open server.log before first log line
 				this.log(`[Build] ${__BUILD_TIME__}`);
 				resolve();
 			});
@@ -181,7 +207,13 @@ export class PortalServer {
 			for (const client of this.clients) client.terminate();
 			this.clients.clear();
 			this.wss.close();
-			this.httpServer.close(() => resolve());
+			this.httpServer.close(() => {
+				this.logStream?.end();
+				this.logStream = null;
+				// Remove connection file so test scripts know the server is gone
+				try { fs.unlinkSync(path.join(this.debugDir, 'connection.json')); } catch {}
+				resolve();
+			});
 		});
 	}
 }
