@@ -28,22 +28,34 @@ export class PortalServer {
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
 		this.wss = new WebSocketServer({ noServer: true });
 
+		this.wss.on('error', (err) => this.log(`[WS Server Error] ${err.message}`));
+
 		this.httpServer.on('upgrade', (req, socket, head) => {
+			this.log(`[Upgrade] ${req.url}`);
 			const url = new URL(req.url ?? '/', `http://localhost`);
-			if (url.searchParams.get('token') !== this.token) {
+			const receivedToken = url.searchParams.get('token');
+			if (receivedToken !== this.token) {
+				this.log(`[Upgrade] Token mismatch — rejecting`);
+				socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
 				socket.destroy();
 				return;
 			}
 			this.wss.handleUpgrade(req, socket, head, (ws) => {
-				this.outputChannel.appendLine('[Server] Phone connected via WebSocket');
+				this.log('[WS] Phone connected');
 				this.clients.add(ws);
 				ws.on('message', (data) => this.handleMessage(data.toString()));
-				ws.on('close', () => {
+				ws.on('error', (err) => this.log(`[WS] Client error: ${err.message}`));
+				ws.on('close', (code, reason) => {
 					this.clients.delete(ws);
-					this.outputChannel.appendLine('[Server] Phone disconnected');
+					this.log(`[WS] Phone disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
 				});
 			});
 		});
+	}
+
+	private log(msg: string) {
+		const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		this.outputChannel.appendLine(`[${ts}] ${msg}`);
 	}
 
 	private handleHttp(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -96,14 +108,16 @@ export class PortalServer {
 		try {
 			const msg = JSON.parse(raw) as { type: string; content?: string };
 			if (msg.type === 'prompt' && msg.content) {
-				this.outputChannel.appendLine(`[Server] Prompt received: ${msg.content.slice(0, 80)}`);
+				this.log(`[Message] Prompt: ${msg.content.slice(0, 80)}`);
 				this.agent.sendPrompt(msg.content);
 			} else if (msg.type === 'stop') {
-				this.outputChannel.appendLine('[Server] Stop requested by phone');
+				this.log('[Message] Stop requested');
 				this.agent.stop();
+			} else {
+				this.log(`[Message] Unknown type: ${msg.type}`);
 			}
-		} catch {
-			this.outputChannel.appendLine('[Server] Received invalid message');
+		} catch (e) {
+			this.log(`[Message] Parse error: ${e}`);
 		}
 	}
 
