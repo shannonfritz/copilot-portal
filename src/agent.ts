@@ -82,7 +82,11 @@ export class PortalAgent {
 		} catch (error) {
 			if (error instanceof Error && error.name === 'AbortError') return;
 			const msg = error instanceof Error ? error.message : String(error);
+			// Extract any extra fields VS Code puts on the error (code, cause, etc.)
+			const extra = JSON.stringify(error, Object.getOwnPropertyNames(error));
 			this.log(`[Agent] Error: ${msg}`);
+			this.log(`[Agent] Error detail: ${extra.slice(0, 500)}`);
+			this.log(`[Agent] Tip: open Help > Toggle Developer Tools > Console in VS Code for full details`);
 			this.onEvent({ type: 'error', content: msg });
 		} finally {
 			this.abortController = null;

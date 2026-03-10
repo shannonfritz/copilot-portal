@@ -45,7 +45,11 @@ export class PortalServer {
 		this.wss.on('error', (err) => this.log(`[WS Server Error] ${err.message}`));
 
 		this.wss.on('connection', (ws, req) => {
-			this.log(`[WS] Phone connected from ${req.socket.remoteAddress}`);
+			const ip = req.socket.remoteAddress ?? 'unknown';
+			const ua = req.headers['user-agent'] ?? 'unknown';
+			this.log(`[WS] Client connected from ${ip}`);
+			this.log(`[WS] User-Agent: ${ua}`);
+			this.log(`[WS] Upgrade headers: ${JSON.stringify(req.headers['sec-websocket-extensions'] ?? 'none')}`);
 			this.clients.add(ws);
 
 			// Keep-alive ping every 30s to prevent iOS from dropping idle connections
@@ -58,7 +62,7 @@ export class PortalServer {
 			ws.on('close', (code, reason) => {
 				clearInterval(pingInterval);
 				this.clients.delete(ws);
-				this.log(`[WS] Phone disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
+				this.log(`[WS] Client disconnected from ${ip} (code: ${code}, reason: ${reason.toString() || 'none'})`);
 			});
 		});
 	}
