@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+webui/node_modules/
+webui/dist/
+*.log

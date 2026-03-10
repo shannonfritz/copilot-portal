@@ -1,0 +1,53 @@
+{
+	"name": "copilot-portal",
+	"displayName": "Copilot Portal",
+	"description": "Control GitHub Copilot Agent from your phone browser",
+	"version": "0.1.0",
+	"engines": { "vscode": "^1.95.0" },
+	"categories": ["Other"],
+	"activationEvents": ["onStartupFinished"],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"commands": [
+			{ "command": "copilot-portal.start", "title": "Copilot Portal: Start Server" },
+			{ "command": "copilot-portal.stop", "title": "Copilot Portal: Stop Server" },
+			{ "command": "copilot-portal.showQR", "title": "Copilot Portal: Show QR Code" }
+		],
+		"configuration": {
+			"title": "Copilot Portal",
+			"properties": {
+				"copilotPortal.port": {
+					"type": "number",
+					"default": 3847,
+					"description": "Port for the Copilot Portal server"
+				},
+				"copilotPortal.autoStart": {
+					"type": "boolean",
+					"default": false,
+					"description": "Automatically start the server when VS Code opens"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"build": "node esbuild.js --production && cd webui && npm run build",
+		"build:ext": "node esbuild.js",
+		"build:ui": "cd webui && npm run build",
+		"watch:ext": "node esbuild.js --watch",
+		"watch:ui": "cd webui && npm run dev",
+		"package": "npm run build && vsce package --no-dependencies"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@types/vscode": "^1.95.0",
+		"@types/ws": "^8.5.14",
+		"@types/qrcode": "^1.5.5",
+		"esbuild": "^0.25.0",
+		"typescript": "^5.0.0",
+		"@vscode/vsce": "^3.0.0"
+	},
+	"dependencies": {
+		"ws": "^8.18.0",
+		"qrcode": "^1.5.4"
+	}
+}
