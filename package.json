@@ -35,6 +35,7 @@
 		"build:ui": "cd webui && npm run build",
 		"watch:ext": "node esbuild.js --watch",
 		"watch:ui": "cd webui && npm run dev",
+		"deploy": "powershell -ExecutionPolicy Bypass -File tools/deploy.ps1",
 		"package": "npm run build && vsce package --no-dependencies"
 	},
 	"devDependencies": {
