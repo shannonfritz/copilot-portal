@@ -15,6 +15,7 @@ export class PortalServer {
 	private token: string;
 	private agent: PortalAgent;
 	private webuiPath: string;
+	private clientCounter = 0;
 
 	constructor(
 		private port: number,
@@ -29,6 +30,7 @@ export class PortalServer {
 
 		this.wss = new WebSocketServer({
 			server: this.httpServer,
+			perMessageDeflate: false, // Disable compression — fixes iOS Safari 1006/1001 drops
 			verifyClient: ({ req }, callback) => {
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const receivedToken = url.searchParams.get('token');
@@ -45,11 +47,11 @@ export class PortalServer {
 		this.wss.on('error', (err) => this.log(`[WS Server Error] ${err.message}`));
 
 		this.wss.on('connection', (ws, req) => {
+			const clientId = `C${++this.clientCounter}`;
 			const ip = req.socket.remoteAddress ?? 'unknown';
 			const ua = req.headers['user-agent'] ?? 'unknown';
-			this.log(`[WS] Client connected from ${ip}`);
-			this.log(`[WS] User-Agent: ${ua}`);
-			this.log(`[WS] Upgrade headers: ${JSON.stringify(req.headers['sec-websocket-extensions'] ?? 'none')}`);
+			this.log(`[${clientId}] Connected from ${ip}`);
+			this.log(`[${clientId}] User-Agent: ${ua}`);
 			this.clients.add(ws);
 
 			// Keep-alive ping every 30s to prevent iOS from dropping idle connections
@@ -57,12 +59,12 @@ export class PortalServer {
 				if (ws.readyState === WebSocket.OPEN) ws.ping();
 			}, 30_000);
 
-			ws.on('message', (data) => this.handleMessage(data.toString()));
-			ws.on('error', (err) => this.log(`[WS] Client error: ${err.message}`));
+			ws.on('message', (data) => this.handleMessage(data.toString(), clientId));
+			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
 				clearInterval(pingInterval);
 				this.clients.delete(ws);
-				this.log(`[WS] Client disconnected from ${ip} (code: ${code}, reason: ${reason.toString() || 'none'})`);
+				this.log(`[${clientId}] Disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
 			});
 		});
 	}
@@ -118,20 +120,20 @@ export class PortalServer {
 		});
 	}
 
-	private handleMessage(raw: string) {
+	private handleMessage(raw: string, clientId: string) {
 		try {
 			const msg = JSON.parse(raw) as { type: string; content?: string };
 			if (msg.type === 'prompt' && msg.content) {
-				this.log(`[Message] Prompt: ${msg.content.slice(0, 80)}`);
+				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
 				this.agent.sendPrompt(msg.content);
 			} else if (msg.type === 'stop') {
-				this.log('[Message] Stop requested');
+				this.log(`[${clientId}] Stop requested`);
 				this.agent.stop();
 			} else {
-				this.log(`[Message] Unknown type: ${msg.type}`);
+				this.log(`[${clientId}] Unknown message type: ${msg.type}`);
 			}
 		} catch (e) {
-			this.log(`[Message] Parse error: ${e}`);
+			this.log(`[${clientId}] Message parse error: ${e}`);
 		}
 	}
 
