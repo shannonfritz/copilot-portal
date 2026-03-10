@@ -10,6 +10,7 @@ export interface AgentEvent {
 
 export class PortalAgent {
 	private abortController: AbortController | null = null;
+	private cancelSource: vscode.CancellationTokenSource | null = null;
 	private messages: vscode.LanguageModelChatMessage[] = [];
 
 	constructor(
@@ -49,19 +50,19 @@ export class PortalAgent {
 	}
 
 	async sendPrompt(prompt: string) {
-		if (this.abortController) {
-			this.abortController.abort();
-		}
+		// Cancel any in-flight request
+		this.cancelSource?.cancel();
+		this.cancelSource?.dispose();
+		this.abortController?.abort();
+
+		this.cancelSource = new vscode.CancellationTokenSource();
 		this.abortController = new AbortController();
 		this.messages.push(vscode.LanguageModelChatMessage.User(prompt));
 
 		try {
 			const model = await this.selectModel();
 			if (!model) {
-				this.onEvent({
-					type: 'error',
-					content: 'No usable Copilot model found. Make sure GitHub Copilot is installed and authenticated in VS Code.',
-				});
+				this.onEvent({ type: 'error', content: 'No usable Copilot model found.' });
 				return;
 			}
 
@@ -70,7 +71,7 @@ export class PortalAgent {
 			const response = await model.sendRequest(
 				this.messages,
 				{ justification: 'Copilot Portal: remote mobile access to Copilot Agent' },
-				this.abortController.signal,
+				this.cancelSource.token,   // ← vscode.CancellationToken, not AbortSignal
 			);
 
 			let fullResponse = '';
@@ -85,21 +86,25 @@ export class PortalAgent {
 			this.log(`[Agent] Response complete (${fullResponse.length} chars)`);
 			this.onEvent({ type: 'idle' });
 		} catch (error) {
+			if (error instanceof vscode.CancellationError) return;
 			if (error instanceof Error && error.name === 'AbortError') return;
 			const msg = error instanceof Error ? error.message : String(error);
 			const extra = JSON.stringify(error, Object.getOwnPropertyNames(error));
 			this.log(`[Agent] Error: ${msg}`);
 			this.log(`[Agent] Error detail: ${extra.slice(0, 500)}`);
-			this.log(`[Agent] Tip: open Help > Toggle Developer Tools > Console in VS Code for full details`);
-			// Remove the failed user message so history stays clean for next attempt
 			this.messages.pop();
 			this.onEvent({ type: 'error', content: msg });
 		} finally {
+			this.cancelSource?.dispose();
+			this.cancelSource = null;
 			this.abortController = null;
 		}
 	}
 
 	stop() {
+		this.cancelSource?.cancel();
+		this.cancelSource?.dispose();
+		this.cancelSource = null;
 		this.abortController?.abort();
 		this.abortController = null;
 	}
