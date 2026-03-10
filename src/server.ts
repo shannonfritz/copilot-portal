@@ -27,7 +27,7 @@ export class PortalServer {
 		this.token = crypto.randomBytes(16).toString('hex');
 		this.webuiPath = path.join(context.extensionPath, 'dist', 'webui');
 		this.debugDir = path.join(context.extensionPath, 'debug');
-		this.agent = new PortalAgent((event) => this.broadcast(event), outputChannel);
+		this.agent = new PortalAgent((event) => this.broadcast(event), (msg) => this.log(msg));
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
 

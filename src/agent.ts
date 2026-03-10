@@ -14,7 +14,7 @@ export class PortalAgent {
 
 	constructor(
 		private onEvent: (event: AgentEvent) => void,
-		private outputChannel: vscode.OutputChannel,
+		private logFn: (msg: string) => void,
 	) {}
 
 	private async selectModel(): Promise<vscode.LanguageModelChat | undefined> {
@@ -45,8 +45,7 @@ export class PortalAgent {
 	}
 
 	private log(msg: string) {
-		const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-		this.outputChannel.appendLine(`[${ts}] ${msg}`);
+		this.logFn(msg);
 	}
 
 	async sendPrompt(prompt: string) {
