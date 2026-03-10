@@ -18,25 +18,27 @@ export class PortalAgent {
 	) {}
 
 	private async selectModel(): Promise<vscode.LanguageModelChat | undefined> {
+		// Log all available models to help diagnose access issues
+		const all = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+		this.log(`[Agent] Available models: ${all.map((m) => `${m.name} (${m.id})`).join(', ') || 'none'}`);
+
 		// Preferred model families in order — avoid "Internal only" models
 		const preferred = ['gpt-4.1', 'gpt-4o', 'claude-3.5-sonnet', 'claude-sonnet-4'];
 		for (const family of preferred) {
-			const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family });
+			const [model] = all.filter((m) => m.family === family);
 			if (model) {
-				this.log(`[Agent] Using model: ${model.name} (family: ${family})`);
+				this.log(`[Agent] Selected: ${model.name} (family: ${family})`);
 				return model;
 			}
 		}
 		// Fallback: any model that isn't marked internal
-		const all = await vscode.lm.selectChatModels({ vendor: 'copilot' });
 		const model = all.find((m) => !m.name.toLowerCase().includes('internal'));
 		if (model) {
-			this.log(`[Agent] Using fallback model: ${model.name}`);
+			this.log(`[Agent] Fallback model: ${model.name}`);
 			return model;
 		}
-		// Last resort: whatever is available
 		if (all[0]) {
-			this.log(`[Agent] Using last-resort model: ${all[0].name}`);
+			this.log(`[Agent] Last-resort model: ${all[0].name}`);
 			return all[0];
 		}
 		return undefined;
@@ -66,7 +68,11 @@ export class PortalAgent {
 
 			this.log(`[Agent] Using model: ${model.name}`);
 
-			const response = await model.sendRequest(this.messages, {}, this.abortController.signal);
+			const response = await model.sendRequest(
+				this.messages,
+				{ justification: 'Copilot Portal: remote mobile access to Copilot Agent' },
+				this.abortController.signal,
+			);
 
 			let fullResponse = '';
 			for await (const chunk of response.stream) {
