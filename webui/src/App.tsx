@@ -126,7 +126,8 @@ export default function App() {
 			setConnectionState('disconnected');
 			setIsStreaming(false);
 			setIsThinking(false);
-			reconnectTimer.current = setTimeout(() => connect(), 3000);
+			// Back off reconnect so we don't hammer the server
+			reconnectTimer.current = setTimeout(() => connect(), 5000);
 		};
 
 		ws.onerror = () => ws.close();

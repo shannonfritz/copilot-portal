@@ -26,29 +26,39 @@ export class PortalServer {
 		this.agent = new PortalAgent((event) => this.broadcast(event), outputChannel);
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
-		this.wss = new WebSocketServer({ noServer: true });
+
+		this.wss = new WebSocketServer({
+			server: this.httpServer,
+			verifyClient: ({ req }, callback) => {
+				const url = new URL(req.url ?? '/', 'http://localhost');
+				const receivedToken = url.searchParams.get('token');
+				if (receivedToken !== this.token) {
+					this.log(`[Upgrade] Token mismatch — rejecting`);
+					callback(false, 401, 'Unauthorized');
+				} else {
+					this.log(`[Upgrade] Token valid — accepting WebSocket`);
+					callback(true);
+				}
+			},
+		});
 
 		this.wss.on('error', (err) => this.log(`[WS Server Error] ${err.message}`));
 
-		this.httpServer.on('upgrade', (req, socket, head) => {
-			this.log(`[Upgrade] ${req.url}`);
-			const url = new URL(req.url ?? '/', `http://localhost`);
-			const receivedToken = url.searchParams.get('token');
-			if (receivedToken !== this.token) {
-				this.log(`[Upgrade] Token mismatch — rejecting`);
-				socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-				socket.destroy();
-				return;
-			}
-			this.wss.handleUpgrade(req, socket, head, (ws) => {
-				this.log('[WS] Phone connected');
-				this.clients.add(ws);
-				ws.on('message', (data) => this.handleMessage(data.toString()));
-				ws.on('error', (err) => this.log(`[WS] Client error: ${err.message}`));
-				ws.on('close', (code, reason) => {
-					this.clients.delete(ws);
-					this.log(`[WS] Phone disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
-				});
+		this.wss.on('connection', (ws, req) => {
+			this.log(`[WS] Phone connected from ${req.socket.remoteAddress}`);
+			this.clients.add(ws);
+
+			// Keep-alive ping every 30s to prevent iOS from dropping idle connections
+			const pingInterval = setInterval(() => {
+				if (ws.readyState === WebSocket.OPEN) ws.ping();
+			}, 30_000);
+
+			ws.on('message', (data) => this.handleMessage(data.toString()));
+			ws.on('error', (err) => this.log(`[WS] Client error: ${err.message}`));
+			ws.on('close', (code, reason) => {
+				clearInterval(pingInterval);
+				this.clients.delete(ws);
+				this.log(`[WS] Phone disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
 			});
 		});
 	}
