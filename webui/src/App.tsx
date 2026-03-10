@@ -188,7 +188,10 @@ export default function App() {
 					<svg className="size-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 						<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
 					</svg>
-					<span className="font-semibold">Copilot Portal</span>
+					<div>
+						<span className="font-semibold">Copilot Portal</span>
+						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>{__BUILD_TIME__}</div>
+					</div>
 				</div>
 				<div className="flex items-center gap-2">
 					{isStreaming && (

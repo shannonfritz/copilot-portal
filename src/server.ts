@@ -163,7 +163,10 @@ export class PortalServer {
 	start(): Promise<void> {
 		return new Promise((resolve, reject) => {
 			this.httpServer.on('error', reject);
-			this.httpServer.listen(this.port, '0.0.0.0', () => resolve());
+			this.httpServer.listen(this.port, '0.0.0.0', () => {
+				this.log(`[Build] ${__BUILD_TIME__}`);
+				resolve();
+			});
 		});
 	}
 
