@@ -17,6 +17,31 @@ export class PortalAgent {
 		private outputChannel: vscode.OutputChannel,
 	) {}
 
+	private async selectModel(): Promise<vscode.LanguageModelChat | undefined> {
+		// Preferred model families in order — avoid "Internal only" models
+		const preferred = ['gpt-4.1', 'gpt-4o', 'claude-3.5-sonnet', 'claude-sonnet-4'];
+		for (const family of preferred) {
+			const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family });
+			if (model) {
+				this.outputChannel.appendLine(`[Agent] Using model: ${model.name} (family: ${family})`);
+				return model;
+			}
+		}
+		// Fallback: any model that isn't marked internal
+		const all = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+		const model = all.find((m) => !m.name.toLowerCase().includes('internal'));
+		if (model) {
+			this.outputChannel.appendLine(`[Agent] Using fallback model: ${model.name}`);
+			return model;
+		}
+		// Last resort: whatever is available
+		if (all[0]) {
+			this.outputChannel.appendLine(`[Agent] Using last-resort model: ${all[0].name}`);
+			return all[0];
+		}
+		return undefined;
+	}
+
 	async sendPrompt(prompt: string) {
 		if (this.abortController) {
 			this.abortController.abort();
@@ -25,12 +50,11 @@ export class PortalAgent {
 		this.messages.push(vscode.LanguageModelChatMessage.User(prompt));
 
 		try {
-			const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-			const model = models[0];
+			const model = await this.selectModel();
 			if (!model) {
 				this.onEvent({
 					type: 'error',
-					content: 'No Copilot model available. Make sure GitHub Copilot is installed and authenticated in VS Code.',
+					content: 'No usable Copilot model found. Make sure GitHub Copilot is installed and authenticated in VS Code.',
 				});
 				return;
 			}
