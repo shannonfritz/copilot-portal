@@ -1,54 +1,33 @@
 {
 	"name": "copilot-portal",
-	"displayName": "Copilot Portal",
-	"description": "Control GitHub Copilot Agent from your phone browser",
-	"version": "0.1.0",
-	"engines": { "vscode": "^1.95.0" },
-	"categories": ["Other"],
-	"activationEvents": ["onStartupFinished"],
-	"main": "./dist/extension.js",
-	"contributes": {
-		"commands": [
-			{ "command": "copilot-portal.start", "title": "Copilot Portal: Start Server" },
-			{ "command": "copilot-portal.stop", "title": "Copilot Portal: Stop Server" },
-			{ "command": "copilot-portal.showQR", "title": "Copilot Portal: Show QR Code" }
-		],
-		"configuration": {
-			"title": "Copilot Portal",
-			"properties": {
-				"copilotPortal.port": {
-					"type": "number",
-					"default": 3847,
-					"description": "Port for the Copilot Portal server"
-				},
-				"copilotPortal.autoStart": {
-					"type": "boolean",
-					"default": false,
-					"description": "Automatically start the server when VS Code opens"
-				}
-			}
-		}
+	"description": "Mobile-friendly web portal for GitHub Copilot CLI — share a session across any device",
+	"version": "0.2.0",
+	"type": "module",
+	"engines": {
+		"node": ">=22.5.0"
 	},
+	"main": "./dist/server.js",
 	"scripts": {
-		"build": "node esbuild.js --production && cd webui && npm run build",
-		"build:ext": "node esbuild.js",
+		"build": "node esbuild.cjs --production && cd webui && npm run build",
+		"build:ext": "node esbuild.cjs",
 		"build:ui": "cd webui && npm run build",
-		"watch:ext": "node esbuild.js --watch",
+		"start": "node dist/server.js",
+		"dev": "node esbuild.cjs --watch",
 		"watch:ui": "cd webui && npm run dev",
-		"deploy": "powershell -ExecutionPolicy Bypass -File tools/deploy.ps1",
-		"package": "npm run build && vsce package --no-dependencies"
+		"test": "node tools/test-client.mjs",
+		"postinstall": "patch-package"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
-		"@types/vscode": "^1.95.0",
-		"@types/ws": "^8.5.14",
 		"@types/qrcode": "^1.5.5",
+		"@types/ws": "^8.5.14",
 		"esbuild": "^0.25.0",
-		"typescript": "^5.0.0",
-		"@vscode/vsce": "^3.0.0"
+		"patch-package": "^8.0.1",
+		"typescript": "^5.0.0"
 	},
 	"dependencies": {
-		"ws": "^8.18.0",
-		"qrcode": "^1.5.4"
+		"@github/copilot-sdk": "^0.1.32",
+		"qrcode": "^1.5.4",
+		"ws": "^8.18.0"
 	}
 }
