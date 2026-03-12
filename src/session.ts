@@ -8,8 +8,11 @@ import type {
 	UserInputRequest,
 	UserInputResponse,
 } from '@github/copilot-sdk';
+import { RulesStore } from './rules.js';
+import type { ApprovalRule } from './rules.js';
 
 export type { SessionMetadata };
+export type { ApprovalRule };
 
 export interface PortalInfo {
 	version: string;
@@ -18,11 +21,11 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'intent' | 'session_switched' | 'session_not_found' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed';
+	type: 'delta' | 'idle' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'intent' | 'session_switched' | 'session_not_found' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list';
 	content?: string;
 	role?: 'user' | 'assistant';
 	requestId?: string;
-	approval?: { requestId: string; action: string; summary: string; details: unknown };
+	approval?: { requestId: string; action: string; summary: string; details: unknown; alwaysPattern?: string };
 	inputRequest?: { requestId: string; question: string; choices?: string[]; allowFreeform?: boolean };
 	sessionId?: string;
 	context?: SessionContext | null;
@@ -30,12 +33,14 @@ export interface PortalEvent {
 	toolCallId?: string;
 	toolName?: string;
 	mcpServerName?: string;
+	rules?: ApprovalRule[];
 }
 
 type PendingApproval = {
 	resolve: (r: PermissionRequestResult) => void;
 	reject: (e: Error) => void;
 	event: PortalEvent;
+	req: PermissionRequest;
 };
 
 type PendingInput = {
@@ -60,6 +65,7 @@ export class SessionHandle {
 	private reconnectFn: ((id: string) => Promise<CopilotSession>) | null = null;
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
+	private rulesStore: RulesStore | null = null;
 
 	// Active turn state — replayed to newly joining clients
 	private isTurnActive = false;
@@ -71,12 +77,14 @@ export class SessionHandle {
 		log: (msg: string) => void,
 		reconnectFn?: (id: string) => Promise<CopilotSession>,
 		getModTimeFn?: () => Promise<Date | null>,
+		rulesStore?: RulesStore,
 	) {
 		this.sessionId = session.sessionId;
 		this.session = session;
 		this.log = log;
 		this.reconnectFn = reconnectFn ?? null;
 		this.getModTimeFn = getModTimeFn ?? null;
+		this.rulesStore = rulesStore ?? null;
 		this.attachListeners();
 	}
 
@@ -138,6 +146,8 @@ export class SessionHandle {
 
 	private async pollForChanges(): Promise<void> {
 		if (this.listeners.size === 0 || this.isTurnActive || this.isReconnecting) return;
+		// Never reconnect while approvals or inputs are pending — would orphan the promises
+		if (this.pendingApprovals.size > 0 || this.pendingInputs.size > 0) return;
 		void this.syncMessages();
 		if (!this.getModTimeFn) return;
 		try {
@@ -174,6 +184,7 @@ export class SessionHandle {
 	/** Called when session modifiedTime advances without a portal turn — CLI sent messages. */
 	private async reconnectFromCli(): Promise<void> {
 		if (this.isReconnecting || !this.reconnectFn || this.listeners.size === 0) return;
+		if (this.pendingApprovals.size > 0 || this.pendingInputs.size > 0) return;
 		this.isReconnecting = true;
 		this.log('[Sync] External change detected — refreshing connection for CLI messages...');
 		try {
@@ -188,6 +199,9 @@ export class SessionHandle {
 			const msgs = await this.session.getMessages();
 			this.log(`[Sync] Post-reconnect getMessages: ${msgs.length} (lastSyncedCount=${this.lastSyncedCount})`);
 			await this.syncMessages();
+			// Re-broadcast any pending approvals/inputs in case reconnect disrupted the UI state
+			for (const p of this.pendingApprovals.values()) this.broadcast(p.event);
+			for (const p of this.pendingInputs.values()) this.broadcast(p.event);
 			// Re-seed modTime AFTER reconnect since resumeSession() itself updates it
 			if (this.getModTimeFn) {
 				const t = await this.getModTimeFn().catch(() => null);
@@ -200,7 +214,10 @@ export class SessionHandle {
 		}
 	}
 
-		async send(prompt: string): Promise<void> {
+	async send(prompt: string): Promise<void> {
+		// Mark turn active immediately so pollForChanges() won't reconnect when
+		// user.message fires and changes modifiedTime.
+		this.isTurnActive = true;
 		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars)`);
 		await this.session.send({ prompt });
 	}
@@ -220,7 +237,11 @@ export class SessionHandle {
 	}
 
 	getPendingApprovalEvents(): PortalEvent[] {
-		return Array.from(this.pendingApprovals.values()).map(p => p.event);
+		// Only return the currently-active approval (the one being shown to clients).
+		// Others are queued and will be sent automatically after the current one resolves.
+		if (!this.activeApprovalId) return [];
+		const p = this.pendingApprovals.get(this.activeApprovalId);
+		return p ? [p.event] : [];
 	}
 
 	getPendingInputEvents(): PortalEvent[] {
@@ -228,6 +249,7 @@ export class SessionHandle {
 	}
 
 	denyAllPending(): void {
+		this.activeApprovalId = null;
 		for (const [id, p] of this.pendingApprovals) {
 			this.log(`[Session] Auto-denying approval ${id}`);
 			this.pendingApprovals.delete(id);
@@ -244,10 +266,11 @@ export class SessionHandle {
 		const p = this.pendingApprovals.get(requestId);
 		if (!p) return;
 		this.pendingApprovals.delete(requestId);
+		if (this.activeApprovalId === requestId) this.activeApprovalId = null;
 		p.resolve(approved ? { kind: 'approved' } : { kind: 'denied-interactively-by-user' });
 		this.log(`[Session] Approval ${approved ? 'granted' : 'denied'}: ${requestId}`);
-		// Tell all clients to dismiss this approval card
 		this.broadcast({ type: 'approval_resolved', requestId });
+		this.broadcastNextApproval();
 	}
 
 	resolveUserInput(requestId: string, answer: string, wasFreeform: boolean): void {
@@ -256,8 +279,18 @@ export class SessionHandle {
 		this.pendingInputs.delete(requestId);
 		p.resolve({ answer, wasFreeform });
 		this.log(`[Session] Input answered: "${answer.slice(0, 40)}"`);
-		// Tell all clients to dismiss this input card
 		this.broadcast({ type: 'approval_resolved', requestId });
+	}
+
+	private activeApprovalId: string | null = null;
+
+	private broadcastNextApproval(): void {
+		if (this.activeApprovalId) return;
+		for (const [id, p] of this.pendingApprovals) {
+			this.activeApprovalId = id;
+			this.broadcast(p.event);
+			break;
+		}
 	}
 
 	handlePermissionRequest(req: PermissionRequest): Promise<PermissionRequestResult> {
@@ -265,21 +298,66 @@ export class SessionHandle {
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
 		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; url?: string; toolName?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.url ?? r.toolName ?? r.kind;
+		const alwaysPattern = RulesStore.computePattern(req);
+
+		// Auto-approve if a matching rule exists
+		const matchingRule = this.rulesStore?.matchesRequest(this.sessionId, req) ?? null;
+		if (matchingRule) {
+			this.log(`[Session] Auto-approved by rule "${matchingRule.pattern}": ${requestId}`);
+			return Promise.resolve({ kind: 'approved' });
+		}
+
 		const event: PortalEvent = {
 			type: 'approval_request',
 			requestId,
-			approval: { requestId, action: r.kind, details: req, summary },
+			approval: { requestId, action: r.kind, details: req, summary, alwaysPattern },
 		};
-		this.broadcast(event);
 		return new Promise((resolve, reject) => {
-			this.pendingApprovals.set(requestId, { resolve, reject, event });
+			this.pendingApprovals.set(requestId, { resolve, reject, event, req });
 			setTimeout(() => {
 				if (this.pendingApprovals.has(requestId)) {
 					this.pendingApprovals.delete(requestId);
+					if (this.activeApprovalId === requestId) this.activeApprovalId = null;
 					resolve({ kind: 'denied-interactively-by-user', feedback: 'Timed out' });
+					this.broadcastNextApproval();
 				}
 			}, 5 * 60 * 1000);
+			// Queue: broadcast immediately only if no approval is currently being shown
+			this.broadcastNextApproval();
 		});
+	}
+
+	addRule(kind: string, pattern: string): void {
+		if (!this.rulesStore) return;
+		this.rulesStore.addRule(this.sessionId, kind, pattern);
+		this.broadcast({ type: 'rules_list', rules: this.rulesStore.getRules(this.sessionId) });
+		// Auto-resolve any queued approvals that now match the new rule
+		for (const [id, p] of this.pendingApprovals) {
+			if (this.rulesStore.matchesRequest(this.sessionId, p.req)) {
+				this.log(`[Session] Auto-approved queued approval by new rule "${pattern}": ${id}`);
+				this.pendingApprovals.delete(id);
+				if (this.activeApprovalId === id) this.activeApprovalId = null;
+				p.resolve({ kind: 'approved' });
+				this.broadcast({ type: 'approval_resolved', requestId: id });
+			}
+		}
+		this.broadcastNextApproval();
+	}
+
+	removeRule(ruleId: string): void {
+		if (!this.rulesStore) return;
+		this.rulesStore.removeRule(this.sessionId, ruleId);
+		this.broadcast({ type: 'rules_list', rules: this.rulesStore.getRules(this.sessionId) });
+	}
+
+	clearRules(): void {
+		if (!this.rulesStore) return;
+		this.rulesStore.clearRules(this.sessionId);
+		this.broadcast({ type: 'rules_list', rules: [] });
+	}
+
+	getRulesList(): ApprovalRule[] {
+		return this.rulesStore?.getRules(this.sessionId) ?? [];
 	}
 
 	handleUserInputRequest(req: UserInputRequest): Promise<UserInputResponse> {
@@ -359,6 +437,10 @@ export class SessionHandle {
 				if (toolsInFlight === 0) {
 					this.broadcast({ type: 'idle' });
 					void this.syncMessages();
+					// Re-seed modTime so the turn's messages don't trigger a spurious CLI reconnect
+					if (this.getModTimeFn) {
+						this.getModTimeFn().then(t => { if (t) this.lastKnownModTime = t; }).catch(() => {});
+					}
 				} else {
 					this.log(`[Event] session.idle suppressed (${toolsInFlight} tools in flight)`);
 				}
@@ -381,10 +463,12 @@ export class SessionPool {
 	private client: CopilotClient;
 	private pool = new Map<string, SessionHandle>();
 	private log: (msg: string) => void;
+	readonly rulesStore: RulesStore;
 
-	constructor(log: (msg: string) => void) {
+	constructor(log: (msg: string) => void, rulesStore: RulesStore) {
 		this.log = log;
 		this.client = new CopilotClient();
+		this.rulesStore = rulesStore;
 	}
 
 	async start(): Promise<void> {
@@ -444,6 +528,7 @@ export class SessionPool {
 				const meta = sessions.find(s => s.sessionId === sessionId);
 				return meta?.modifiedTime ? new Date(meta.modifiedTime) : null;
 			},
+			this.rulesStore,
 		);
 		this.pool.set(sessionId, handle);
 		return handle;
@@ -457,7 +542,7 @@ export class SessionPool {
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
-		handle = new SessionHandle(session, this.log);
+		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
 		this.pool.set(session.sessionId, handle);
 		this.log(`[Pool] Created: ${session.sessionId.slice(0, 8)}`);
 		return handle;

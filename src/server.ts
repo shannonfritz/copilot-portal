@@ -6,6 +6,7 @@ import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
+import { RulesStore } from './rules.js';
 import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +28,7 @@ export class PortalServer {
 		this.debugDir = path.join(__dirname, '..', 'debug');
 		this.dataDir = path.join(__dirname, '..', 'data');
 		this.token = this.loadOrCreateToken();
-		this.pool = new SessionPool((msg) => this.log(msg));
+		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir));
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
 
@@ -125,6 +126,8 @@ export class PortalServer {
 				for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
+				// Send current approval rules for this session
+				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
 			}).catch((e) => this.log(`[${clientId}] History error: ${e}`));
 
 			// Keep-alive ping every 30s
@@ -155,6 +158,9 @@ export class PortalServer {
 				approved?: boolean;
 				answer?: string;
 				wasFreeform?: boolean;
+				kind?: string;
+				pattern?: string;
+				ruleId?: string;
 			};
 			if (msg.type === 'prompt' && msg.content) {
 				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
@@ -170,6 +176,16 @@ export class PortalServer {
 				handle.setModel(msg.content).catch((e) => this.log(`[${clientId}] setModel error: ${e}`));
 			} else if (msg.type === 'approval_response' && msg.requestId != null) {
 				handle.resolveApproval(msg.requestId, msg.approved ?? false);
+			} else if (msg.type === 'approval_response_always' && msg.requestId != null && msg.kind && msg.pattern) {
+				handle.resolveApproval(msg.requestId, true);
+				handle.addRule(msg.kind, msg.pattern);
+				this.log(`[${clientId}] Rule added: ${msg.kind} "${msg.pattern}"`);
+			} else if (msg.type === 'rule_delete' && msg.ruleId) {
+				handle.removeRule(msg.ruleId);
+				this.log(`[${clientId}] Rule deleted: ${msg.ruleId}`);
+			} else if (msg.type === 'rules_clear') {
+				handle.clearRules();
+				this.log(`[${clientId}] Rules cleared`);
 			} else if (msg.type === 'input_response' && msg.requestId != null) {
 				handle.resolveUserInput(msg.requestId, msg.answer ?? '', msg.wasFreeform ?? true);
 			} else {

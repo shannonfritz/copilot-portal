@@ -48,6 +48,15 @@ interface ApprovalRequest {
 	action: string;
 	summary: string;
 	details: unknown;
+	alwaysPattern?: string;
+}
+
+interface ApprovalRule {
+	id: string;
+	sessionId: string;
+	kind: string;
+	pattern: string;
+	createdAt: number;
 }
 
 interface InputRequest {
@@ -282,6 +291,8 @@ export default function App() {
 	const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
 	const [freeformAnswer, setFreeformAnswer] = useState('');
+	const [rules, setRules] = useState<ApprovalRule[]>([]);
+	const [showRules, setShowRules] = useState(false);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
@@ -334,6 +345,9 @@ export default function App() {
 		setIsThinking(false);
 		setConnectionState('disconnected');
 		setShowPicker(true);
+		setPendingApproval(null);
+		setPendingInput(null);
+		setRules([]);
 		const params = new URLSearchParams(window.location.search);
 		params.delete('session');
 		window.history.replaceState(null, '', `?${params.toString()}`);
@@ -593,6 +607,8 @@ export default function App() {
 				} else if (event.type === 'input_request' && event.inputRequest) {
 					setFreeformAnswer('');
 					setPendingInput(event.inputRequest);
+				} else if (event.type === 'rules_list') {
+					setRules(event.rules ?? []);
 				}
 			} catch {}
 		};
@@ -753,6 +769,25 @@ export default function App() {
 		setPendingApproval(null);
 	}, [pendingApproval]);
 
+	const respondApprovalAlways = useCallback(() => {
+		if (!pendingApproval?.alwaysPattern) return;
+		wsRef.current?.send(JSON.stringify({
+			type: 'approval_response_always',
+			requestId: pendingApproval.requestId,
+			kind: pendingApproval.action,
+			pattern: pendingApproval.alwaysPattern,
+		}));
+		setPendingApproval(null);
+	}, [pendingApproval]);
+
+	const deleteRule = useCallback((ruleId: string) => {
+		wsRef.current?.send(JSON.stringify({ type: 'rule_delete', ruleId }));
+	}, []);
+
+	const clearAllRules = useCallback(() => {
+		wsRef.current?.send(JSON.stringify({ type: 'rules_clear' }));
+	}, []);
+
 	const respondInput = useCallback((answer: string, wasFreeform: boolean) => {
 		if (!pendingInput) return;
 		wsRef.current?.send(JSON.stringify({ type: 'input_response', requestId: pendingInput.requestId, answer, wasFreeform }));
@@ -825,6 +860,67 @@ export default function App() {
 						>
 							Done
 						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Rules Drawer */}
+			{showRules && (
+				<div
+					className="fixed inset-0 z-50 flex items-end justify-center p-4"
+					style={{ background: 'rgba(0,0,0,0.6)' }}
+					onClick={() => setShowRules(false)}
+				>
+					<div
+						className="w-full max-w-md rounded-2xl p-4"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="mb-3 flex items-center justify-between">
+							<h2 className="font-semibold">Always-Allow Rules</h2>
+							{rules.length > 0 && (
+								<button
+									className="rounded-lg px-3 py-1.5 text-xs font-medium"
+									style={{ background: 'var(--error)', color: 'white' }}
+									onClick={clearAllRules}
+									type="button"
+								>
+									Clear All
+								</button>
+							)}
+						</div>
+						{rules.length === 0 ? (
+							<p className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+								No rules yet. Use "Allow Always" on a permission request to add one.
+							</p>
+						) : (
+							<div style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto' }}>
+								{rules.map(rule => (
+									<div
+										key={rule.id}
+										className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2"
+										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+									>
+										<span className="rounded px-1.5 py-0.5 text-xs font-mono" style={{ background: 'rgba(220,220,170,0.15)', color: 'var(--tool-call)', border: '1px solid var(--tool-call)' }}>
+											{rule.kind}
+										</span>
+										<code className="min-w-0 flex-1 truncate text-xs font-mono" style={{ color: 'var(--text)' }}>
+											{rule.pattern}
+										</code>
+										<button
+											className="shrink-0 rounded p-1 opacity-60 hover:opacity-100"
+											onClick={() => deleteRule(rule.id)}
+											title="Remove rule"
+											type="button"
+										>
+											<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+												<path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+											</svg>
+										</button>
+									</div>
+								))}
+							</div>
+						)}
 					</div>
 				</div>
 			)}
@@ -977,6 +1073,15 @@ export default function App() {
 						title="Show QR code"
 					>
 						⬛
+					</button>
+					<button
+						className="rounded-lg px-2 py-1.5 text-sm"
+						style={{ background: rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: rules.length > 0 ? 'var(--primary)' : undefined }}
+						onClick={() => setShowRules(v => !v)}
+						type="button"
+						title={`Always-allow rules (${rules.length})`}
+					>
+						{rules.length > 0 ? `✓ ${rules.length}` : '✓'}
 					</button>
 					<div
 						className="size-2.5 rounded-full"
@@ -1158,9 +1263,21 @@ onClick={() => setShowPicker(true)}
 									<span>⚠️</span> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
 								<pre className="mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
-								<div className="flex gap-2">
-									<button className="flex-1 rounded-lg py-2 text-sm font-medium" style={{ background: 'var(--success)', color: 'white' }} onClick={() => respondApproval(true)} type="button">Allow</button>
-									<button className="flex-1 rounded-lg py-2 text-sm font-medium" style={{ background: 'var(--error)', color: 'white' }} onClick={() => respondApproval(false)} type="button">Deny</button>
+								<div className="flex flex-col gap-1.5">
+									<div className="flex gap-2">
+										<button className="flex-1 rounded-lg py-2 text-sm font-medium" style={{ background: 'var(--success)', color: 'white' }} onClick={() => respondApproval(true)} type="button">Allow</button>
+										<button className="flex-1 rounded-lg py-2 text-sm font-medium" style={{ background: 'var(--error)', color: 'white' }} onClick={() => respondApproval(false)} type="button">Deny</button>
+									</div>
+									{pendingApproval.alwaysPattern && (
+										<button
+											className="w-full rounded-lg py-1.5 text-xs font-medium"
+											style={{ background: 'rgba(220,200,100,0.15)', border: '1px solid var(--tool-call)', color: 'var(--tool-call)' }}
+											onClick={respondApprovalAlways}
+											type="button"
+										>
+											Allow Always: <code className="font-mono">{pendingApproval.alwaysPattern}</code>
+										</button>
+									)}
 								</div>
 							</div>
 						)}
