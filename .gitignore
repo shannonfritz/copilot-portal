@@ -5,3 +5,7 @@ dist/
 webui/node_modules/
 webui/dist/
 *.log
+
+# Runtime-generated data — session-specific, never commit
+data/
+debug/
