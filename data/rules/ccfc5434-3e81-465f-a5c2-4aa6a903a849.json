@@ -1,0 +1,16 @@
+[
+  {
+    "id": "3fef19db312d1579",
+    "sessionId": "ccfc5434-3e81-465f-a5c2-4aa6a903a849",
+    "kind": "shell",
+    "pattern": "tracert *",
+    "createdAt": 1773284237538
+  },
+  {
+    "id": "9efb73f032bb67a9",
+    "sessionId": "ccfc5434-3e81-465f-a5c2-4aa6a903a849",
+    "kind": "shell",
+    "pattern": "ping *",
+    "createdAt": 1773285100632
+  }
+]

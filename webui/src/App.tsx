@@ -16,6 +16,18 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 			<table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>{children}</table>
 		</div>
 	),
+	th: ({ children }) => (
+		<th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>{children}</th>
+	),
+	ol: ({ children }) => (
+		<ol style={{ listStyleType: 'decimal', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ol>
+	),
+	ul: ({ children }) => (
+		<ul style={{ listStyleType: 'disc', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ul>
+	),
+	li: ({ children }) => (
+		<li style={{ display: 'list-item', margin: '0.25em 0' }}>{children}</li>
+	),
 };
 
 const AssistantMarkdown = ({ content }: { content: string }) => (
@@ -875,7 +887,7 @@ export default function App() {
 			{/* QR Code Modal */}
 			{showQR && (
 				<div
-					className="fixed inset-0 z-50 flex items-end justify-center p-4"
+					className="fixed inset-0 z-50 flex items-start justify-center p-4"
 					style={{ background: 'rgba(0,0,0,0.6)' }}
 					onClick={() => setShowQR(false)}
 				>
@@ -891,14 +903,6 @@ export default function App() {
 						<p className="max-w-xs text-center text-xs" style={{ color: 'var(--text-muted)' }}>
 							Scan to open this session on your phone or tablet
 						</p>
-						<button
-							type="button"
-							className="rounded-lg px-4 py-2 text-sm font-medium"
-							style={{ background: 'var(--primary)', color: 'white' }}
-							onClick={() => setShowQR(false)}
-						>
-							Done
-						</button>
 					</div>
 				</div>
 			)}
@@ -906,7 +910,7 @@ export default function App() {
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
-					className="fixed inset-0 z-50 flex items-end justify-center p-4"
+					className="fixed inset-0 z-50 flex items-start justify-center p-4"
 					style={{ background: 'rgba(0,0,0,0.6)' }}
 					onClick={() => setShowRules(false)}
 				>
@@ -967,7 +971,7 @@ export default function App() {
 			{/* Session Picker Modal */}
 			{showPicker && (
 				<div
-					className="fixed inset-0 z-50 flex items-end justify-center p-4"
+					className="fixed inset-0 z-50 flex items-start justify-center p-4"
 					style={{ background: 'rgba(0,0,0,0.6)' }}
 					onClick={() => { if (!noSession) setShowPicker(false); }}
 				>
@@ -1079,9 +1083,7 @@ export default function App() {
 					</svg>
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
-						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-							{activeSessionId ? activeSessionId.slice(0, 8) + '…' : __BUILD_TIME__}
-						</div>
+						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>{__BUILD_TIME__}</div>
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
@@ -1094,6 +1096,11 @@ export default function App() {
 						>
 							Stop
 						</button>
+					)}
+					{activeSessionId && (
+						<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+							{activeSessionId.slice(0, 8)}
+						</span>
 					)}
 					<button
 						className="rounded-lg px-3 py-1.5 text-sm font-medium"
@@ -1219,22 +1226,23 @@ onClick={() => setShowPicker(true)}
 						}
 						if (tc.type === 'tool_output') return null;
 						const isComplete = tc.type === 'tool_complete';
+						const isFailed = isComplete && tc.content === 'failed';
 						const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
 						return (
 							<div
 								key={tc.id}
 								className="mb-2 rounded-lg border p-3 text-xs"
 								style={{
-									borderColor: isComplete ? 'var(--success)' : 'var(--tool-call)',
-									background: isComplete ? 'rgba(78,201,176,0.08)' : 'rgba(220,220,170,0.08)',
+									borderColor: isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)',
+									background: isFailed ? 'rgba(244,135,113,0.08)' : isComplete ? 'rgba(78,201,176,0.08)' : 'rgba(220,220,170,0.08)',
 								}}
 							>
 								<div
 									className="flex items-center gap-1.5 font-medium"
-									style={{ color: isComplete ? 'var(--success)' : 'var(--tool-call)' }}
+									style={{ color: isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)' }}
 								>
-									<span>{isComplete ? '✅' : '⚙️'}</span>
-									<span>{isComplete ? 'Done' : 'Running'}: {label}</span>
+									<span>{isFailed ? '✗' : isComplete ? '✅' : '⚙️'}</span>
+									<span>{isFailed ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
 								</div>
 							</div>
 						);

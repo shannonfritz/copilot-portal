@@ -176,6 +176,15 @@ export class SessionHandle {
 				if (content) this.broadcast({ type: 'sync', role, content });
 			}
 			this.lastSyncedCount = interesting.length;
+			// Signal thinking/idle to the UI based on what arrived
+			const lastNew = newMsgs[newMsgs.length - 1];
+			if (lastNew?.type === 'user.message') {
+				// User message arrived but no assistant yet — show thinking
+				this.broadcast({ type: 'thinking', content: '' });
+			} else if (lastNew?.type === 'assistant.message') {
+				// Assistant responded — clear thinking regardless of isTurnActive
+				this.broadcast({ type: 'idle' });
+			}
 		} catch (e) {
 			this.log(`[Sync] Error: ${e}`);
 		}
@@ -392,6 +401,17 @@ export class SessionHandle {
 				this.activeDeltaBuffer = '';
 				this.activeReasoningBuffer = '';
 				this.broadcast({ type: 'thinking', content: '' });
+			} else if (event.type === 'user.message') {
+				// CLI sent a message — mark turn active immediately so getActiveTurnEvents()
+				// returns a thinking state for any client that connects before assistant.turn_start
+				const content = (event.data as { content?: string })?.content ?? '';
+				if (content) {
+					this.isTurnActive = true;
+					this.activeDeltaBuffer = '';
+					this.activeReasoningBuffer = '';
+					this.broadcast({ type: 'sync', role: 'user', content });
+					this.broadcast({ type: 'thinking', content: '' });
+				}
 			} else if (event.type === 'assistant.intent') {
 				const intent = (event.data as { intent?: string }).intent ?? '';
 				if (intent) this.broadcast({ type: 'intent', content: intent });
@@ -452,7 +472,14 @@ export class SessionHandle {
 				this.log(`[Session] Error: ${msg}`);
 				this.broadcast({ type: 'error', content: msg });
 			} else if (event.type === 'permission.completed') {
+				const d = event.data as { toolCallId?: string };
 				this.log(`[Session] Permission completed: ${JSON.stringify(event.data).slice(0, 200)}`);
+				// CLI may have approved this directly — clear it so we don't block future reconnects
+				if (d.toolCallId && this.pendingApprovals.has(d.toolCallId)) {
+					this.pendingApprovals.delete(d.toolCallId);
+					this.broadcast({ type: 'approval_resolved', requestId: d.toolCallId });
+					void this.broadcastNextApproval();
+				}
 			}
 		});
 	}
