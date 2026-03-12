@@ -5,43 +5,41 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { SessionManager } from './session.js';
+import { SessionPool } from './session.js';
+import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export class PortalServer {
 	private httpServer: http.Server;
 	private wss: WebSocketServer;
-	private clients = new Set<WebSocket>();
 	private token: string;
-	private sessions: SessionManager;
+	private pool: SessionPool;
 	private webuiPath: string;
+	private debugDir: string;
+	private dataDir: string;
 	private clientCounter = 0;
 	private logStream: fs.WriteStream | null = null;
-	private debugDir: string;
+	private portalInfo: PortalInfo | null = null;
 
 	constructor(private port: number) {
-		this.token = crypto.randomBytes(16).toString('hex');
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
-		this.sessions = new SessionManager(
-			(event) => this.broadcast(event),
-			(msg) => this.log(msg),
-		);
+		this.dataDir = path.join(__dirname, '..', 'data');
+		this.token = this.loadOrCreateToken();
+		this.pool = new SessionPool((msg) => this.log(msg));
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
 
 		this.wss = new WebSocketServer({
 			server: this.httpServer,
-			perMessageDeflate: false, // fixes iOS Safari 1006/1001 drops
+			perMessageDeflate: false,
 			verifyClient: ({ req }, callback) => {
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const t = url.searchParams.get('token');
 				if (t !== this.token) {
-					this.log(`[Upgrade] Token mismatch — rejecting`);
 					callback(false, 401, 'Unauthorized');
 				} else {
-					this.log(`[Upgrade] Token valid — accepting WebSocket`);
 					callback(true);
 				}
 			},
@@ -49,18 +47,84 @@ export class PortalServer {
 
 		this.wss.on('error', (err) => this.log(`[WS Error] ${err.message}`));
 
-		this.wss.on('connection', (ws, req) => {
+		this.wss.on('connection', async (ws, req) => {
 			const clientId = `C${++this.clientCounter}`;
 			const ip = req.socket.remoteAddress ?? 'unknown';
-			this.log(`[${clientId}] Connected from ${ip}`);
-			this.clients.add(ws);
+			const url = new URL(req.url ?? '/', 'http://localhost');
+			let sessionId = url.searchParams.get('session') ?? null;
+			const isManagement = url.searchParams.get('management') === '1';
 
-			// Replay history to the new client
-			this.sessions.getHistory().then((events) => {
+			this.log(`[${clientId}] Connected from ${ip}, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
+
+			// Management connections: no session, just here to receive broadcasts
+			if (isManagement) {
+				const pingInterval = setInterval(() => {
+					if (ws.readyState === WebSocket.OPEN) ws.ping();
+				}, 30_000);
+				ws.on('close', () => clearInterval(pingInterval));
+				return;
+			}
+
+			// Resolve session — use requested ID, fall back to last session
+			try {
+				if (!sessionId) {
+					sessionId = await this.pool.getLastSessionId();
+				}
+				if (!sessionId) {
+					this.log(`[${clientId}] No session available, creating new`);
+					const handle = await this.pool.create();
+					sessionId = handle.sessionId;
+				}
+			} catch (e) {
+				this.log(`[${clientId}] Session resolve error: ${e}`);
+				ws.close(1011, 'Session error');
+				return;
+			}
+
+			// Connect to the session — evict first if no other clients are watching
+			// AND no turn is active, so we get a fresh snapshot with CLI messages.
+			// Never evict during an active turn — that would abort the response.
+			let handle;
+			try {
+				const existing = this.pool.getHandle(sessionId);
+				if (existing && existing.listenerCount === 0 && !existing.turnActive) {
+					await this.pool.evict(sessionId);
+				}
+				handle = await this.pool.connect(sessionId);
+			} catch (e) {
+				this.log(`[${clientId}] Connect error: ${e}`);
+				const msg = String(e);
+				const isNotFound = msg.includes('Session not found') || msg.includes('not found');
+				if (isNotFound && ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({ type: 'session_not_found', sessionId }));
+				}
+				ws.close(isNotFound ? 4404 : 1011, msg);
+				return;
+			}
+
+			// Per-client event listener — routes session events to this WS only
+			const listener = (event: PortalEvent) => {
+				if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
+			};
+			handle.addListener(listener);
+
+			// Notify client of confirmed session ID + session context (cwd, git info)
+			if (ws.readyState === WebSocket.OPEN) {
+				const sessions = await this.pool.listSessions().catch(() => []);
+				const meta = sessions.find(s => s.sessionId === sessionId);
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null }));
+			}
+
+			// Replay history + pending requests
+			handle.getHistory().then((events) => {
 				if (ws.readyState !== WebSocket.OPEN) return;
 				ws.send(JSON.stringify({ type: 'history_start' }));
 				for (const e of events) ws.send(JSON.stringify(e));
 				ws.send(JSON.stringify({ type: 'history_end' }));
+				// Catch up new client on any in-progress turn (thinking/streaming)
+				for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
+				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
+				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
 			}).catch((e) => this.log(`[${clientId}] History error: ${e}`));
 
 			// Keep-alive ping every 30s
@@ -68,14 +132,67 @@ export class PortalServer {
 				if (ws.readyState === WebSocket.OPEN) ws.ping();
 			}, 30_000);
 
-			ws.on('message', (data) => this.handleMessage(data.toString(), clientId));
+			ws.on('message', (data) => this.handleMessage(data.toString(), clientId, handle));
 			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
 				clearInterval(pingInterval);
-				this.clients.delete(ws);
-				this.log(`[${clientId}] Disconnected (code: ${code}, reason: ${reason.toString() || 'none'})`);
+				handle.removeListener(listener);
+				this.log(`[${clientId}] Disconnected (code: ${code})`);
 			});
 		});
+	}
+
+	private handleMessage(
+		raw: string,
+		clientId: string,
+		handle: Awaited<ReturnType<SessionPool['connect']>>,
+	) {
+		try {
+			const msg = JSON.parse(raw) as {
+				type: string;
+				content?: string;
+				requestId?: string;
+				approved?: boolean;
+				answer?: string;
+				wasFreeform?: boolean;
+			};
+			if (msg.type === 'prompt' && msg.content) {
+				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
+				handle.send(msg.content).catch((e) => {
+					if (handle.listenerCount > 0) {
+						// Use the private broadcast via the event
+					}
+					this.log(`[${clientId}] Send error: ${e}`);
+				});
+			} else if (msg.type === 'stop') {
+				handle.abort();
+			} else if (msg.type === 'set_model' && msg.content) {
+				handle.setModel(msg.content).catch((e) => this.log(`[${clientId}] setModel error: ${e}`));
+			} else if (msg.type === 'approval_response' && msg.requestId != null) {
+				handle.resolveApproval(msg.requestId, msg.approved ?? false);
+			} else if (msg.type === 'input_response' && msg.requestId != null) {
+				handle.resolveUserInput(msg.requestId, msg.answer ?? '', msg.wasFreeform ?? true);
+			} else {
+				this.log(`[${clientId}] Unknown message: ${msg.type}`);
+			}
+		} catch (e) {
+			this.log(`[${clientId}] Parse error: ${e}`);
+		}
+	}
+
+	private loadShields(): Record<string, boolean> {
+		try {
+			const f = path.join(this.dataDir, 'session-shields.json');
+			if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+		} catch {}
+		return {};
+	}
+
+	private saveShields(shields: Record<string, boolean>): void {
+		try {
+			fs.mkdirSync(this.dataDir, { recursive: true });
+			fs.writeFileSync(path.join(this.dataDir, 'session-shields.json'), JSON.stringify(shields, null, 2));
+		} catch {}
 	}
 
 	private log(msg: string) {
@@ -85,33 +202,69 @@ export class PortalServer {
 		this.logStream?.write(line + '\n');
 	}
 
-	private initDebugFiles() {
+	private loadOrCreateToken(): string {
+		const tokenFile = path.join(this.debugDir, 'token.txt');
 		try {
-			if (!fs.existsSync(this.debugDir)) fs.mkdirSync(this.debugDir, { recursive: true });
-			this.logStream = fs.createWriteStream(path.join(this.debugDir, 'server.log'), { flags: 'w' });
-			fs.writeFileSync(path.join(this.debugDir, 'connection.json'), JSON.stringify({
-				url: `ws://${this.getLocalIP()}:${this.port}`,
-				token: this.token,
-				port: this.port,
-				startedAt: new Date().toISOString(),
-			}, null, 2));
-		} catch (e) {
-			process.stderr.write(`[Debug] Could not init debug files: ${e}\n`);
-		}
+			if (fs.existsSync(tokenFile)) return fs.readFileSync(tokenFile, 'utf8').trim();
+		} catch {}
+		const token = crypto.randomBytes(16).toString('hex');
+		try {
+			fs.mkdirSync(this.debugDir, { recursive: true });
+			fs.writeFileSync(tokenFile, token);
+		} catch {}
+		return token;
 	}
 
 	private async handleHttp(req: http.IncomingMessage, res: http.ServerResponse) {
-		const url = new URL(req.url ?? '/', `http://localhost`);
+		const url = new URL(req.url ?? '/', 'http://localhost');
 		const method = req.method ?? 'GET';
 
-		// ── REST API ────────────────────────────────────────────────────────────
+		if (url.pathname === '/api/info' && method === 'GET') {
+			this.sendJson(res, 200, this.portalInfo ?? { version: 'unknown', login: 'unknown', models: [] });
+			return;
+		}
+
 		if (url.pathname === '/api/sessions' && method === 'GET') {
 			try {
-				const list = await this.sessions.listSessions();
-				this.sendJson(res, 200, list);
+				const shields = this.loadShields();
+				const sessions = await this.pool.listSessions();
+				this.sendJson(res, 200, sessions.map(s => ({ ...s, shielded: shields[s.sessionId] ?? false })));
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
+			return;
+		}
+
+		const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+		if (sessionMatch && method === 'DELETE') {
+			const sessionId = sessionMatch[1];
+			const shields = this.loadShields();
+			if (shields[sessionId]) {
+				this.sendJson(res, 403, { error: 'Session is shielded' });
+				return;
+			}
+			try {
+				await this.pool.deleteSession(sessionId);
+				this.broadcastAll({ type: 'session_deleted', sessionId });
+				this.sendJson(res, 200, { ok: true });
+				this.log(`[API] Deleted session: ${sessionId.slice(0, 8)}`);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		const shieldMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/shield$/);
+		if (shieldMatch && method === 'PATCH') {
+			const sessionId = shieldMatch[1];
+			const shields = this.loadShields();
+			shields[sessionId] = !shields[sessionId];
+			if (!shields[sessionId]) delete shields[sessionId];
+			this.saveShields(shields);
+			const shielded = shields[sessionId] ?? false;
+			this.broadcastAll({ type: 'session_shield_changed', sessionId, shielded });
+			this.sendJson(res, 200, { shielded });
+			this.log(`[API] Session ${sessionId.slice(0, 8)} ${shielded ? 'shielded' : 'unshielded'}`);
 			return;
 		}
 
@@ -120,10 +273,19 @@ export class PortalServer {
 			const { sessionId } = JSON.parse(body || '{}') as { sessionId?: string };
 			try {
 				if (sessionId) {
-					await this.sessions.resumeSession(sessionId);
+					// Pre-warm: connect to the session so it's ready when client navigates
+					await this.pool.connect(sessionId);
 					this.sendJson(res, 200, { sessionId });
 				} else {
-					const newId = await this.sessions.newSession();
+					const handle = await this.pool.create();
+					const newId = handle.sessionId;
+					// Broadcast so other clients' pickers update
+					const sessions = await this.pool.listSessions().catch(() => []);
+					const shields = this.loadShields();
+					const newSession = sessions.find(s => s.sessionId === newId);
+					if (newSession) {
+						this.broadcastAll({ type: 'session_created', session: { ...newSession, shielded: shields[newId] ?? false } });
+					}
 					this.sendJson(res, 201, { sessionId: newId });
 				}
 			} catch (e) {
@@ -132,11 +294,10 @@ export class PortalServer {
 			return;
 		}
 
-		// ── Static web UI ───────────────────────────────────────────────────────
 		if (url.pathname === '/' || url.pathname === '/index.html') {
 			const indexPath = path.join(this.webuiPath, 'index.html');
 			fs.readFile(indexPath, 'utf8', (err, html) => {
-				if (err) { res.writeHead(404); res.end('Web UI not built. Run npm run build:ui'); return; }
+				if (err) { res.writeHead(404); res.end('Web UI not built.'); return; }
 				const injected = html.replace(
 					'</head>',
 					`<script>window.__PORTAL_TOKEN__ = "${this.token}";</script></head>`,
@@ -157,35 +318,6 @@ export class PortalServer {
 			res.writeHead(200, { 'Content-Type': mime[path.extname(filePath)] ?? 'application/octet-stream' });
 			res.end(data);
 		});
-	}
-
-	private handleMessage(raw: string, clientId: string) {
-		try {
-			const msg = JSON.parse(raw) as { type: string; content?: string; requestId?: string; approved?: boolean };
-			if (msg.type === 'prompt' && msg.content) {
-				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
-				this.sessions.sendPrompt(msg.content).catch((e) => {
-					this.broadcast({ type: 'error', content: String(e) });
-				});
-			} else if (msg.type === 'stop') {
-				this.log(`[${clientId}] Stop requested`);
-				this.sessions.abort();
-			} else if (msg.type === 'approval_response' && msg.requestId != null) {
-				this.log(`[${clientId}] Approval ${msg.approved ? 'granted' : 'denied'}: ${msg.requestId}`);
-				this.sessions.resolveApproval(msg.requestId, msg.approved ?? false);
-			} else {
-				this.log(`[${clientId}] Unknown message: ${msg.type}`);
-			}
-		} catch (e) {
-			this.log(`[${clientId}] Parse error: ${e}`);
-		}
-	}
-
-	broadcast(event: object) {
-		const data = JSON.stringify(event);
-		for (const client of this.clients) {
-			if (client.readyState === WebSocket.OPEN) client.send(data);
-		}
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -217,7 +349,25 @@ export class PortalServer {
 	}
 
 	async start(): Promise<void> {
-		await this.sessions.start();
+		await this.pool.start();
+		// Cache portal info (version, user, models) once at startup
+		try {
+			const [status, auth, allModels] = await Promise.all([
+				this.pool.getStatus(),
+				this.pool.getAuthStatus(),
+				this.pool.listModels(),
+			]);
+			this.portalInfo = {
+				version: status.version,
+				login: auth.login ?? 'unknown',
+				models: allModels
+					.filter(m => !m.policy || m.policy.state === 'enabled')
+					.map(m => ({ id: m.id, name: m.name })),
+			};
+			this.log(`[Pool] Models available: ${this.portalInfo.models.length}`);
+		} catch (e) {
+			this.log(`[Pool] Could not fetch portal info: ${e}`);
+		}
 		return new Promise((resolve, reject) => {
 			this.httpServer.on('error', reject);
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
@@ -230,12 +380,31 @@ export class PortalServer {
 		});
 	}
 
+	private initDebugFiles() {
+		try {
+			if (!fs.existsSync(this.debugDir)) fs.mkdirSync(this.debugDir, { recursive: true });
+			this.logStream = fs.createWriteStream(path.join(this.debugDir, 'server.log'), { flags: 'w' });
+			fs.writeFileSync(path.join(this.debugDir, 'connection.json'), JSON.stringify({
+				url: `ws://${this.getLocalIP()}:${this.port}`,
+				token: this.token,
+				port: this.port,
+				startedAt: new Date().toISOString(),
+			}, null, 2));
+		} catch (e) {
+			process.stderr.write(`[Debug] Could not init debug files: ${e}\n`);
+		}
+	}
+
+	private broadcastAll(msg: object): void {
+		const data = JSON.stringify(msg);
+		for (const client of this.wss.clients) {
+			if (client.readyState === WebSocket.OPEN) client.send(data);
+		}
+	}
+
 	async stop(): Promise<void> {
-		await this.sessions.stop();
-		for (const client of this.clients) client.terminate();
-		this.clients.clear();
-		this.wss.close();
-		return new Promise((resolve) => {
+		await this.pool.stop();
+		this.wss.close();return new Promise((resolve) => {
 			this.httpServer.close(() => {
 				this.logStream?.end();
 				this.logStream = null;
@@ -244,4 +413,4 @@ export class PortalServer {
 			});
 		});
 	}
-}
+}

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
 	--bg: #1e1e1e;
@@ -11,6 +12,7 @@
 	--error: #f48771;
 	--success: #4ec9b0;
 	--tool-call: #dcdcaa;
+	--purple: #c586c0;
 }
 
 * {
@@ -36,4 +38,132 @@ body,
 @keyframes thinking {
 	0%, 100% { transform: translateY(0); opacity: 0.4; }
 	50% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ─── Prose / Markdown overrides ─────────────────────────────────────────── */
+
+.prose {
+	color: var(--text);
+	max-width: none;
+}
+
+/* Headings */
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+	color: #e8e8e8;
+	margin-top: 1em;
+	margin-bottom: 0.4em;
+	font-weight: 600;
+}
+
+/* Paragraphs */
+.prose p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+.prose > p:first-child { margin-top: 0; }
+.prose > p:last-child  { margin-bottom: 0; }
+
+/* Lists — explicit bullets/numbers */
+.prose ul {
+	list-style-type: disc;
+	padding-left: 1.5em;
+	margin: 0.5em 0;
+}
+.prose ol {
+	list-style-type: decimal;
+	padding-left: 1.5em;
+	margin: 0.5em 0;
+}
+.prose li {
+	margin: 0.25em 0;
+	color: var(--text);
+}
+.prose li::marker {
+	color: var(--text-muted);
+}
+.prose ul ul { list-style-type: circle; }
+.prose ul ul ul { list-style-type: square; }
+
+/* Inline code */
+.prose code:not(pre code) {
+	background: rgba(255,255,255,0.1);
+	color: #ce9178;
+	padding: 0.15em 0.4em;
+	border-radius: 3px;
+	font-size: 0.875em;
+	font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Code blocks */
+.prose pre {
+	overflow-x: auto;
+	background: #1a1a1a;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 0.75em 1em;
+	margin: 0.75em 0;
+}
+.prose pre code {
+	background: none;
+	color: #d4d4d4;
+	padding: 0;
+	font-size: 0.875em;
+	font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Blockquotes */
+.prose blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 1em;
+	color: var(--text-muted);
+	margin: 0.5em 0;
+	font-style: italic;
+}
+
+/* Links */
+.prose a {
+	color: #4fc3f7;
+	text-decoration: underline;
+}
+
+/* Horizontal rule */
+.prose hr {
+	border-color: var(--border);
+	margin: 1em 0;
+}
+
+/* Strong / em */
+.prose strong { color: #e8e8e8; font-weight: 600; }
+.prose em { color: #d4d4d4; }
+
+/* Code blocks inside assistant bubbles: scroll horizontally, don't overflow */
+.prose pre {
+	overflow-x: auto;
+}
+
+/* Visible scrollbar for code blocks on desktop */
+.code-scroll {
+	overflow-x: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255,255,255,0.25) transparent;
+}
+.code-scroll::-webkit-scrollbar {
+	height: 6px;
+}
+.code-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+.code-scroll::-webkit-scrollbar-thumb {
+	background: rgba(255,255,255,0.25);
+	border-radius: 3px;
+}
+
+/* Table cells */
+.prose table td, .prose table th {
+	border: 1px solid var(--border);
+	padding: 0.4em 0.75em;
+}
+.prose table th {
+	background: rgba(255,255,255,0.06);
+	font-weight: 600;
 }
