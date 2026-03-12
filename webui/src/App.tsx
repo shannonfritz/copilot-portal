@@ -116,10 +116,22 @@ function timeAgo(iso: string): string {
 function CopyButton({ text }: { text: string }) {
 	const [copied, setCopied] = useState(false);
 	const copy = () => {
-		navigator.clipboard.writeText(text).then(() => {
-			setCopied(true);
-			setTimeout(() => setCopied(false), 1500);
-		}).catch(() => {});
+		const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1500); };
+		if (navigator.clipboard) {
+			navigator.clipboard.writeText(text).then(done).catch(() => fallback());
+		} else {
+			fallback();
+		}
+		function fallback() {
+			const el = document.createElement('textarea');
+			el.value = text;
+			el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+			document.body.appendChild(el);
+			el.select();
+			document.execCommand('copy');
+			document.body.removeChild(el);
+			done();
+		}
 	};
 	return (
 		<button
