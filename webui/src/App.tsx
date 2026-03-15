@@ -6,8 +6,12 @@ import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
 
 // pre and table need React wrappers for the .code-scroll div — CSS alone can't inject a parent element.
-// All other prose styling (p, ul, ol, blockquote, headings, etc.) is handled by styles.css .prose rules.
+// p, th, and a need inline styles to unconditionally beat Tailwind Typography's generated rules.
+// Everything else (ul, ol, blockquote, headings, etc.) is handled by styles.css .prose rules.
 const mdComponents: ComponentProps<typeof Markdown>['components'] = {
+	p: ({ children }) => (
+		<p style={{ marginTop: '0.6em', marginBottom: '0.6em' }}>{children}</p>
+	),
 	pre: ({ children }) => (
 		<div className="code-scroll" style={{ margin: '0.5em 0' }}>
 			<pre style={{ margin: 0 }}>{children}</pre>
@@ -276,6 +280,14 @@ function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: stri
 
 function ToolEventBox({ tc }: { tc: ToolEvent }) {
 	const [expanded, setExpanded] = useState(false);
+	const [elapsed, setElapsed] = useState(0);
+
+	useEffect(() => {
+		if (tc.type !== 'tool_start') return;
+		setElapsed(Math.floor((Date.now() - tc.timestamp) / 1000));
+		const timer = setInterval(() => setElapsed(Math.floor((Date.now() - tc.timestamp) / 1000)), 1000);
+		return () => clearInterval(timer);
+	}, [tc.type, tc.timestamp]);
 	if (tc.type === 'tool_output') return null;
 	if (tc.type === 'intent') return (
 		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple, #c586c0)' }}>
@@ -298,6 +310,12 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 			>
 				<span>{isFailed ? '✗' : isComplete ? '✅' : '⚙️'}</span>
 				<span className="flex-1">{isFailed ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
+				{!isComplete && elapsed > 0 && <span style={{ fontSize: '10px', opacity: 0.5 }}>{elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`}</span>}
+				{!isComplete && <button type="button" title="Copy debug info" style={{ fontSize: '10px', opacity: 0.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'inherit' }} onClick={(e) => {
+					e.stopPropagation();
+					const info = [`tool: ${label}`, elapsed > 0 ? `elapsed: ${elapsed}s` : null, tc.displayLabel ? `label: ${tc.displayLabel}` : null, tc.content ? `args: ${tc.content}` : null].filter(Boolean).join('\n');
+					navigator.clipboard.writeText(info).catch(() => {});
+				}}>📋</button>}
 				{hasDetail && <span style={{ fontSize: '10px', opacity: 0.6 }}>{expanded ? '▾' : '▸'}</span>}
 			</div>
 			{expanded && hasDetail && (
@@ -876,6 +894,9 @@ export default function App() {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
 					// Tool done — model is processing the result; reset to generic thinking text
 					if (!isStoppingRef.current) setThinkingText('Thinking…');
+				} else if (event.type === 'tool_update') {
+					// Sub-agent name arrived — update the task tool's displayLabel
+					if (event.displayLabel) setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, displayLabel: event.displayLabel } : te));
 				} else if (event.type === 'tool_call') {
 					// tool_output (partial result streaming)
 					setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);

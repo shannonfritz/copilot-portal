@@ -21,7 +21,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'turn_stopping';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -39,6 +39,8 @@ export interface PortalEvent {
 	displayLabel?: string;
 	rules?: ApprovalRule[];
 	summary?: string;
+	shielded?: boolean;
+	session?: unknown;
 }
 
 type PendingApproval = {
@@ -73,7 +75,9 @@ export class SessionHandle {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private sessionGeneration = 0;
 	private isReconnecting = false;
-	private reconnectFn: ((id: string) => Promise<CopilotSession>) | null = null;
+	private reconnectFn: ((id: string, model?: string) => Promise<CopilotSession>) | null = null;
+	/** The model currently in use by the CLI session — passed to resumeSession on reconnect so portal sends use the same model. */
+	currentModel: string | null = null;
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
@@ -85,6 +89,12 @@ export class SessionHandle {
 	private activeReasoningBuffer = '';
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
 	private cliApprovalSummary: string | null = null; // set when CLI turn is waiting for tool approval
+	private turnProbeTimer: ReturnType<typeof setTimeout> | null = null;
+	private turnStartTime: number = 0; // ms timestamp when current turn started
+	// Proactive compaction: track estimated tokens since last compaction.
+	// When estimated total approaches the context limit, compact before the next portal send.
+	private tokensSinceCompaction = 0;
+	private static readonly COMPACT_TOKEN_THRESHOLD = 120_000; // ~80% of 150k context window
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
 
 	constructor(
@@ -101,6 +111,35 @@ export class SessionHandle {
 		this.getModTimeFn = getModTimeFn ?? null;
 		this.rulesStore = rulesStore ?? null;
 		this.attachListeners();
+		// Seed token estimate from history so proactive compaction works after a server restart
+		void this.seedTokenEstimate();
+	}
+
+	/** Read session history to estimate tokens since last compaction (for proactive compaction). */
+	private async seedTokenEstimate(): Promise<void> {
+		try {
+			const msgs = await this.session.getMessages();
+			// Find the last compaction event
+			let lastCompactionIdx = -1;
+			let baseTokens = 0;
+			for (let i = msgs.length - 1; i >= 0; i--) {
+				if (msgs[i].type === 'session.compaction_complete') {
+					lastCompactionIdx = i;
+					const d = msgs[i].data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number } };
+					baseTokens = d.postCompactionTokens ?? d.compactionTokensUsed?.output ?? 0;
+					break;
+				}
+			}
+			// Estimate tokens from assistant messages after the last compaction
+			const since = lastCompactionIdx >= 0 ? msgs.slice(lastCompactionIdx + 1) : msgs;
+			const estimatedNew = since
+				.filter((m) => m.type === 'assistant.message')
+				.reduce((sum, m) => sum + Math.ceil(((m.data as { content?: string })?.content?.length ?? 0) / 4), 0);
+			this.tokensSinceCompaction = baseTokens + estimatedNew;
+			this.log(`[Session] Token estimate seeded: ${this.tokensSinceCompaction} (base=${baseTokens}, +${estimatedNew} since last compaction)`);
+		} catch (e) {
+			this.log(`[Session] Could not seed token estimate: ${e}`);
+		}
 	}
 
 	addListener(fn: (e: PortalEvent) => void): void {
@@ -271,11 +310,23 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				this.sessionGeneration--; // undo gen bump
 				return;
 			}
+			// Capture the current model BEFORE disconnecting so the new session uses the same model.
+			// Without this, resumeSession() would use the CLI default model (not claude-sonnet-4.6),
+			// causing all portal sends to fail with 400 "model not supported" or "Bad Request".
+			const modelResult = await oldSession.rpc.model.getCurrent().catch(() => null);
+			if (modelResult?.modelId) {
+				this.currentModel = modelResult.modelId;
+				this.log(`[Sync] Captured model for reconnect: ${this.currentModel}`);
+			}
 			// Disconnect old IPC connection first — forces a fresh cursor on reconnect
 			await oldSession.disconnect().catch(() => {});
-			const newSession = await this.reconnectFn(this.sessionId);
+			const newSession = await this.reconnectFn(this.sessionId, this.currentModel ?? undefined);
 			if (this.sessionGeneration !== gen) return; // concurrent reconnect won the race
 			this.session = newSession;
+			// Clear stale reasoning/delta content from the previous connection to avoid
+			// replaying outdated thinking state to clients that connect after the reconnect.
+			this.activeDeltaBuffer = '';
+			this.activeReasoningBuffer = '';
 			this.attachListeners();
 			const msgs = await this.session.getMessages();
 			this.log(`[Sync] Post-reconnect getMessages: ${msgs.length} (lastSyncedCount=${this.lastSyncedCount})`);
@@ -303,10 +354,44 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.isTurnActive = true;
 		this.isPortalTurn = true;
 		this.activeUserMessage = prompt;
-		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars)`);
+		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars), ~${this.tokensSinceCompaction} tokens since last compaction`);
+
+		// Proactively compact if we're approaching the context limit
+		if (this.tokensSinceCompaction >= SessionHandle.COMPACT_TOKEN_THRESHOLD) {
+			this.log('[Session] Proactively compacting context before send...');
+			this.broadcast({ type: 'thinking', content: 'Compacting context…' });
+			try {
+				await this.session.rpc.compaction.compact();
+				this.log('[Session] Proactive compaction complete');
+				// tokensSinceCompaction will be reset by the session.compaction_complete event
+			} catch (e) {
+				this.log(`[Session] Proactive compaction failed: ${e} — proceeding anyway`);
+			}
+		}
+
 		try {
 			await this.session.send({ prompt });
 		} catch (e) {
+			const statusCode = (e as { statusCode?: number })?.statusCode;
+			// Retry once on transient errors (429 rate-limit, 5xx server errors, network glitches)
+			if (statusCode === 429 || (statusCode !== undefined && statusCode >= 500)) {
+				this.log(`[Session] ${statusCode} on send — retrying after 2s...`);
+				await new Promise(r => setTimeout(r, 2000));
+				try { await this.session.send({ prompt }); return; } catch {}
+			}
+			// Fallback: if the API rejects with 400 (context too large), compact and retry once
+			if (statusCode === 400) {
+				this.log('[Session] 400 on send — compacting context and retrying...');
+				this.broadcast({ type: 'thinking', content: 'Compacting context…' });
+				try {
+					await this.session.rpc.compaction.compact();
+					this.log('[Session] Fallback compaction complete, retrying send');
+					await this.session.send({ prompt });
+					return;
+				} catch (compactErr) {
+					this.log(`[Session] Fallback compaction or retry failed: ${compactErr}`);
+				}
+			}
 			this.isTurnActive = false;
 			throw e;
 		}
@@ -319,6 +404,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	async setModel(model: string): Promise<void> {
 		await this.session.setModel(model);
+		this.currentModel = model;
 		this.log(`[Session] Model changed to: ${model}`);
 		this.broadcast({ type: 'model_changed', model });
 	}
@@ -478,6 +564,39 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		});
 	}
 
+	private scheduleTurnProbe(gen: number, intervalMs = 45 * 1000): void {
+		if (this.turnProbeTimer) clearTimeout(this.turnProbeTimer);
+		this.turnProbeTimer = setTimeout(async () => {
+			this.turnProbeTimer = null;
+			if (!this.isTurnActive || this.sessionGeneration !== gen) return;
+			this.log('[Session] Probing turn status via getMessages()...');
+			try {
+				const msgs = await this.session.getMessages();
+				// Look for a session.idle event that occurred after our turn started
+				const turnStartIso = new Date(this.turnStartTime).toISOString();
+				const idleAfterStart = msgs.some(
+					(m) => m.type === 'session.idle' && m.timestamp > turnStartIso,
+				);
+				if (idleAfterStart) {
+					this.log('[Session] Probe found session.idle — turn completed, clearing stuck state');
+					this.isTurnActive = false;
+					this.activeDeltaBuffer = '';
+					this.activeReasoningBuffer = '';
+					this.broadcast({ type: 'idle' });
+				} else {
+					this.log('[Session] Probe: turn still in progress, rescheduling probe');
+					// Re-broadcast pending approvals/inputs in case the client missed the original event
+					for (const e of this.getPendingApprovalEvents()) this.broadcast(e);
+					for (const e of this.getPendingInputEvents()) this.broadcast(e);
+					this.scheduleTurnProbe(gen, intervalMs);
+				}
+			} catch (e) {
+				this.log(`[Session] Probe error: ${e} — rescheduling`);
+				this.scheduleTurnProbe(gen, intervalMs);
+			}
+		}, intervalMs);
+	}
+
 	private attachListeners(): void {
 		const gen = this.sessionGeneration;
 		let deltasSent = false;
@@ -487,8 +606,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log(`[Event] ${event.type}`);
 			if (event.type === 'assistant.turn_start') {
 				this.isTurnActive = true;
+				this.turnStartTime = Date.now();
 				this.activeDeltaBuffer = '';
 				this.activeReasoningBuffer = '';
+				// Start a probe timer: if session.idle never fires (CLI crash, dropped connection),
+				// periodically query getMessages() for a session.idle event newer than turn start.
+				// If found → we missed idle, clear state. If not found → still running, reschedule.
+				this.scheduleTurnProbe(gen);
 				this.broadcast({ type: 'thinking', content: '' });
 			} else if (event.type === 'user.message') {
 				// CLI sent a message — mark turn active immediately so getActiveTurnEvents()
@@ -524,6 +648,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			} else if (event.type === 'assistant.message') {
 				const content = (event.data as { content?: string }).content ?? '';
 				this.log(`[Session] Assistant message: ${content.slice(0, 200)}`);
+				// Accumulate estimated tokens (chars/4) for proactive compaction
+				this.tokensSinceCompaction += Math.ceil(content.length / 4);
 				if (!deltasSent && content) {
 					// No deltas were streamed — send the full content as a single delta first
 					this.broadcast({ type: 'delta', content });
@@ -544,11 +670,30 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				const d = event.data as { toolCallId?: string; success?: boolean };
 				this.log(`[Session] Tool complete (${toolsInFlight} remaining): ${d.toolCallId}`);
 				this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
+			} else if (event.type === 'subagent.started') {
+				const d = event.data as { toolCallId: string; agentDisplayName: string };
+				this.broadcast({ type: 'tool_update', toolCallId: d.toolCallId, displayLabel: d.agentDisplayName });
+			} else if (event.type === 'subagent.failed') {
+				const d = event.data as { toolCallId: string };
+				this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: 'failed' });
 			} else if (event.type === 'tool.execution_partial_result') {
 				const d = event.data as { toolCallId?: string; output?: string };
 				if (d.output) this.broadcast({ type: 'tool_call', toolCallId: d.toolCallId, content: d.output });
+			} else if (event.type === 'session.resume') {
+				this.log('[Session] session.resume — connection re-established');
+			} else if (event.type === 'session.error') {
+				const d = event.data as { statusCode?: number; message?: string };
+				this.log(`[Session] Error: ${d.message ?? JSON.stringify(d)}`);
+				this.isTurnActive = false;
+				this.isPortalTurn = false;
+				this.broadcast({ type: 'error', content: d.message ?? 'Unknown error' });
+			} else if (event.type === 'session.compaction_complete') {
+				const d = event.data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number } };
+				this.tokensSinceCompaction = d.postCompactionTokens ?? d.compactionTokensUsed?.output ?? 0;
+				this.log(`[Session] Compaction complete — token baseline: ${this.tokensSinceCompaction}`);
 			} else if (event.type === 'session.idle') {
 				this.isTurnActive = false;
+				if (this.turnProbeTimer) { clearTimeout(this.turnProbeTimer); this.turnProbeTimer = null; }
 				this.activeDeltaBuffer = '';
 				this.activeReasoningBuffer = '';
 				// Clear any lingering CLI approval banner
@@ -709,7 +854,8 @@ export class SessionPool {
 		handle = new SessionHandle(
 			session,
 			this.log,
-			(id) => this.client.resumeSession(id, {
+			(id, model) => this.client.resumeSession(id, {
+				model: model ?? handle.currentModel ?? undefined,
 				onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 				onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 			}),
@@ -729,6 +875,15 @@ export class SessionPool {
 			this.rulesStore,
 		);
 		this.pool.set(sessionId, handle);
+		// Seed the model so reconnects use the same model as the CLI.
+		// Without this, resumeSession() would default to the CLI's current default model
+		// (not necessarily what the session was configured with).
+		session.rpc.model.getCurrent().then(r => {
+			if (r.modelId) {
+				handle.currentModel = r.modelId;
+				this.log(`[Pool] Session ${sessionId.slice(0, 8)} model: ${r.modelId}`);
+			}
+		}).catch(() => {});
 		handle.titleChangedCallback = async () => {
 			try {
 				const sessions = await this.client.listSessions();
