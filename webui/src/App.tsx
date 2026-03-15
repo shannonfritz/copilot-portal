@@ -5,7 +5,8 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
 
-// Wraps pre in a scrollable div so long code lines don't overflow the bubble
+// pre and table need React wrappers for the .code-scroll div — CSS alone can't inject a parent element.
+// All other prose styling (p, ul, ol, blockquote, headings, etc.) is handled by styles.css .prose rules.
 const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 	pre: ({ children }) => (
 		<div className="code-scroll" style={{ margin: '0.5em 0' }}>
@@ -18,16 +19,7 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 		</div>
 	),
 	th: ({ children }) => (
-		<th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>{children}</th>
-	),
-	p: ({ children }) => (
-		<p style={{ margin: '0.6em 0' }}>{children}</p>
-	),
-	ol: ({ children }) => (
-		<ol style={{ listStyleType: 'decimal', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ol>
-	),
-	ul: ({ children }) => (
-		<ul style={{ listStyleType: 'disc', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ul>
+		<th style={{ textAlign: 'left', background: 'rgba(255,255,255,0.06)', fontWeight: 600 }}>{children}</th>
 	),
 	a: ({ href, children }) => (
 		<a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--accent)' }}>{children}</a>
@@ -834,11 +826,17 @@ export default function App() {
 						}
 						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						setCliApprovalInfo(null);
-						if (!isStoppingRef.current) setIsThinking(false);
+						if (!isStoppingRef.current) {
+							// Keep indicator visible — update text to show which tool is running
+							setIsThinking(true);
+							setThinkingText(`Running ${event.toolName ?? 'tool'}…`);
+						}
 						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, content: event.content, timestamp: Date.now() }]);
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
+					// Tool done — model is processing the result; reset to generic thinking text
+					if (!isStoppingRef.current) setThinkingText('Thinking…');
 				} else if (event.type === 'tool_call') {
 					// tool_output (partial result streaming)
 					setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);

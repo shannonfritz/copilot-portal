@@ -13,6 +13,7 @@
 	--success: #4ec9b0;
 	--tool-call: #dcdcaa;
 	--purple: #c586c0;
+	--accent: #4fc3f7;
 }
 
 * {
@@ -184,8 +185,4 @@ body,
 .prose table td, .prose table th {
 	border: 1px solid var(--border);
 	padding: 0.4em 0.75em;
-}
-.prose table th {
-	background: rgba(255,255,255,0.06);
-	font-weight: 600;
 }
