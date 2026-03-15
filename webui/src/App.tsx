@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
 
 // Wraps pre in a scrollable div so long code lines don't overflow the bubble
@@ -19,22 +20,37 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 	th: ({ children }) => (
 		<th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>{children}</th>
 	),
+	p: ({ children }) => (
+		<p style={{ margin: '0.6em 0' }}>{children}</p>
+	),
 	ol: ({ children }) => (
 		<ol style={{ listStyleType: 'decimal', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ol>
 	),
 	ul: ({ children }) => (
 		<ul style={{ listStyleType: 'disc', paddingLeft: '1.5em', margin: '0.5em 0' }}>{children}</ul>
 	),
-	li: ({ children }) => (
-		<li style={{ display: 'list-item', margin: '0.25em 0' }}>{children}</li>
+	a: ({ href, children }) => (
+		<a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--accent)' }}>{children}</a>
 	),
 };
+const apiFetch= (url: string, init?: RequestInit) => {
+	const t = getToken();
+	const headers = { ...(init?.headers ?? {}), ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+	return fetch(url, { ...init, headers });
+};
+
 
 const AssistantMarkdown = ({ content }: { content: string }) => (
-	<Markdown className="prose prose-sm max-w-none" remarkPlugins={[remarkGfm]} components={mdComponents}>
+	<Markdown className="prose prose-sm max-w-none" remarkPlugins={[remarkGfm, remarkBreaks]} components={mdComponents}>
 		{content}
 	</Markdown>
 );
+
+interface ToolSummaryItem {
+	toolName: string;
+	display: string;
+	completed: boolean;
+}
 
 interface Message {
 	id: string;
@@ -43,6 +59,25 @@ interface Message {
 	reasoning?: string;
 	timestamp: number;
 	fromHistory?: boolean;
+	intermediate?: boolean; // mid-turn "notes to self" — shown as thought bubble, not a chat message
+	toolSummary?: ToolSummaryItem[]; // tools that ran before this message
+}
+
+function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
+	// tool_start events get mutated to tool_complete when done — include both
+	const toolCalls = events.filter(te => te.type === 'tool_start' || te.type === 'tool_complete');
+	return toolCalls.map(te => {
+		let display = te.displayLabel ?? '';
+		if (!display) {
+			// fallback for older events without displayLabel
+			try {
+				const args = JSON.parse(te.content ?? '{}') as Record<string, unknown>;
+				const val = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
+				display = String(val).replace(/\s+/g, ' ').trim().slice(0, 200);
+			} catch { display = (te.content ?? '').slice(0, 100); }
+		}
+		return { toolName: te.toolName ?? 'tool', display, completed: te.type === 'tool_complete' };
+	});
 }
 
 interface ToolEvent {
@@ -51,6 +86,7 @@ interface ToolEvent {
 	toolName?: string;
 	toolCallId?: string;
 	mcpServerName?: string;
+	displayLabel?: string;
 	content?: string;
 	timestamp: number;
 }
@@ -102,11 +138,6 @@ interface SessionInfo {
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'no_token';
 
 function getToken(): string | null {
-	const injected = (window as unknown as Record<string, unknown>).__PORTAL_TOKEN__;
-	if (typeof injected === 'string') {
-		localStorage.setItem('portal_token', injected);
-		return injected;
-	}
 	const urlToken = new URLSearchParams(window.location.search).get('token');
 	if (urlToken) {
 		localStorage.setItem('portal_token', urlToken);
@@ -161,6 +192,65 @@ function CopyButton({ text }: { text: string }) {
 	);
 }
 
+function CopyRichButton({ htmlRef }: { htmlRef: React.RefObject<HTMLDivElement | null> }) {
+	const [copied, setCopied] = useState(false);
+	const copy = () => {
+		const html = htmlRef.current?.innerHTML;
+		if (!html) return;
+		const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1500); };
+		// Mirror what the browser does on manual select+copy: put rendered HTML into
+		// an offscreen contenteditable element, select it, then execCommand('copy').
+		const el = document.createElement('div');
+		el.contentEditable = 'true';
+		el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+		el.innerHTML = html;
+		document.body.appendChild(el);
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		const sel = window.getSelection();
+		sel?.removeAllRanges();
+		sel?.addRange(range);
+		document.execCommand('copy');
+		sel?.removeAllRanges();
+		document.body.removeChild(el);
+		done();
+	};
+	return (
+		<button
+			type="button"
+			onClick={copy}
+			className="shrink-0 rounded p-0.5 opacity-40 hover:opacity-80 transition-opacity"
+			title="Copy formatted (for Word, Teams, OneNote…)"
+			style={{ color: 'inherit' }}
+		>
+			{copied
+				? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+				: <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+					<rect x="9" y="9" width="13" height="13" rx="2" />
+					<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+					<path d="M12 13h5M12 16h3" strokeLinecap="round" />
+				  </svg>
+			}
+		</button>
+	);
+}
+
+function AssistantMessageBlock({ content, timestamp }: { content: string; timestamp: number }) {
+	const htmlRef = useRef<HTMLDivElement>(null);
+	return (
+		<>
+			<div ref={htmlRef}><AssistantMarkdown content={content} /></div>
+			<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
+				<span>{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+				<div className="flex items-center gap-1">
+					<CopyRichButton htmlRef={htmlRef} />
+					<CopyButton text={content} />
+				</div>
+			</div>
+		</>
+	);
+}
+
 function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: string; defaultExpanded?: boolean }) {
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	return (
@@ -199,6 +289,8 @@ function SessionDrawer({
 	context,
 	activeModel,
 	onChangeModel,
+	activeSessionId,
+	sessionSummary,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -206,48 +298,53 @@ function SessionDrawer({
 	context: SessionContext | null;
 	activeModel: string | null;
 	onChangeModel: (id: string) => void;
+	onFetchModels?: () => Promise<Array<{ id: string; name: string }>>;
+	activeSessionId?: string | null;
+	sessionSummary?: string | null;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
-	const currentModelId = activeModel ?? info?.models[0]?.id ?? null;
-	const currentModelName = info?.models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
+	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
+	const models = liveModels ?? info?.models ?? [];
+	const currentModelId = activeModel ?? models[0]?.id ?? null;
+	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
 	const cwd = context?.cwd ?? null;
 	const branch = context?.branch ?? null;
 	const shortCwd = cwd ? cwd.split(/[\\/]/).pop() || cwd : null;
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-			{/* Always-visible collapsed bar */}
-			<button
-				type="button"
-				className="flex w-full items-center gap-2 px-4 py-2 text-xs"
-				style={{ color: 'var(--text-muted)' }}
-				onClick={onToggle}
-			>
-				<svg className="size-3.5 shrink-0" fill="none" stroke="var(--primary)" strokeWidth="2" viewBox="0 0 24 24">
-					<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-				</svg>
-				{shortCwd && (
-					<>
-						<span className="font-mono truncate max-w-[120px]">{shortCwd}</span>
-						<span style={{ color: 'var(--border)' }}>·</span>
-					</>
-				)}
-				<span className="truncate">{currentModelName}</span>
-				<span className="ml-auto shrink-0">{open ? '▴' : '▾'}</span>
-			</button>
+			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
+			<div className="flex w-full items-center gap-2 px-4 py-2 text-xs" style={{ color: 'var(--text-muted)' }} onClick={onToggle}>
+				{/* Session summary — read-only */}
+				<span className="whitespace-nowrap shrink-0" style={{ color: sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
+					{sessionSummary || <em>untitled session</em>}
+				</span>
+				{/* Flex spacer — blank space clicks toggle the tray */}
+				<div className="flex-1" />
+				{/* Right side: session ID + chevron */}
+				<div className="flex items-center gap-1.5 shrink-0">
+					{activeSessionId && (
+						<span className="font-mono text-[10px] opacity-40" title={activeSessionId}>
+							{activeSessionId.slice(0, 8)}
+						</span>
+					)}
+					<span>{open ? '▴' : '▾'}</span>
+				</div>
+			</div>
 
 			{/* Expandable panel */}
 			{open && (
 				<div className="px-4 pb-4 pt-1">
 					{/* Version + user */}
 					<div className="mb-3 flex items-center gap-2.5">
-						<div className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(88,166,255,0.15)', border: '1px solid rgba(88,166,255,0.3)' }}>
-							<svg className="size-4" fill="none" stroke="var(--primary)" strokeWidth="1.5" viewBox="0 0 24 24">
-								<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+						<div className="shrink-0">
+							<svg className="size-8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<path d="M23.922 16.992c-.861 1.495-5.859 5.023-11.922 5.023-6.063 0-11.061-3.528-11.922-5.023A.641.641 0 0 1 0 16.736v-2.869a.841.841 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.195 10.195 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952 1.399-1.136 3.392-2.093 6.122-2.093 2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.832.832 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256ZM12.172 11h-.344a4.323 4.323 0 0 1-.355.508C10.703 12.455 9.555 13 7.965 13c-1.725 0-2.989-.359-3.782-1.259a2.005 2.005 0 0 1-.085-.104L4 11.741v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.323 4.323 0 0 1-.355-.508h-.016.016Zm.641-2.935c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z" />
+								<path d="M14.5 14.25a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1Zm-5 0a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1Z" />
 							</svg>
 						</div>
 						<div>
-							<div className="text-sm font-semibold">GitHub Copilot</div>
+							<div className="text-sm font-semibold">GitHub Copilot CLI</div>
 							<div className="text-xs" style={{ color: 'var(--text-muted)' }}>
 								{info ? `v${info.version} · ${info.login}` : 'Loading…'}
 							</div>
@@ -279,7 +376,11 @@ function SessionDrawer({
 							type="button"
 							className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
 							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-							onClick={() => setShowModelPicker(v => !v)}
+							onClick={() => {
+								const opening = !showModelPicker;
+								setShowModelPicker(opening);
+								if (opening && onFetchModels) onFetchModels().then(setLiveModels).catch(() => {});
+							}}
 						>
 							<div className="flex items-center gap-2">
 								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -287,14 +388,14 @@ function SessionDrawer({
 								</svg>
 								<span>{currentModelName}</span>
 							</div>
-							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '▴' : '▾'}</span>
+							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
 						</button>
-						{showModelPicker && info && (
+						{showModelPicker && (
 							<div
 								className="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
 								style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
 							>
-								{info.models.map(m => (
+								{models.map(m => (
 									<button
 										key={m.id}
 										type="button"
@@ -303,7 +404,7 @@ function SessionDrawer({
 										onClick={() => { onChangeModel(m.id); setShowModelPicker(false); }}
 									>
 										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>
-											{m.id === currentModelId ? '✓' : ''}
+											{m.id === currentModelId ? '\u2713' : ''}
 										</span>
 										<span>{m.name}</span>
 									</button>
@@ -315,13 +416,20 @@ function SessionDrawer({
 			)}
 		</div>
 	);
-}
+}
 
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
 	const [messages, setMessages] = useState<Message[]>([]);
-	const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
+	const [toolEvents, setToolEventsState] = useState<ToolEvent[]>([]);
+	const toolEventsRef = useRef<ToolEvent[]>([]);
+	const setToolEvents = useCallback((arg: ToolEvent[] | ((prev: ToolEvent[]) => ToolEvent[])) => {
+		// Update the ref synchronously so idle handler can read latest value before React flushes
+		const next = typeof arg === 'function' ? arg(toolEventsRef.current) : arg;
+		toolEventsRef.current = next;
+		setToolEventsState(next);
+	}, []);
 	const [streamingContent, setStreamingContent] = useState('');
 	const [isThinking, setIsThinking] = useState(false);
 	const [thinkingText, setThinkingText] = useState('');
@@ -329,6 +437,9 @@ export default function App() {
 	const [error, setError] = useState<string | null>(null);
 	const [input, setInput] = useState('');
 	const [isStreaming, setIsStreaming] = useState(false);
+	const [isStopping, setIsStopping] = useState(false);
+	// Agent is "active" whenever it's thinking, running tools, streaming, or waiting for stop to confirm
+	const isAgentActive = isStopping || isStreaming || isThinking || toolEvents.some(te => te.type === 'tool_start');
 	const [showPicker, setShowPicker] = useState(!hasSessionInUrl);
 	const [showQR, setShowQR] = useState(false);
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -336,12 +447,18 @@ export default function App() {
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(
 		new URLSearchParams(window.location.search).get('session')
 	);
+	const [activeSessionSummary, setActiveSessionSummary] = useState<string | null>(null);
+	const activeSessionIdRef = useRef<string | null>(new URLSearchParams(window.location.search).get('session'));
 	const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
 	const [freeformAnswer, setFreeformAnswer] = useState('');
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
 	const [showRules, setShowRules] = useState(false);
 	const [connectingSecs, setConnectingSecs] = useState(0);
+	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
+	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
+	const isCliTurnRef = useRef(false);
+	const cliHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
@@ -350,20 +467,26 @@ export default function App() {
 	const noSessionRef = useRef(!hasSessionInUrl);
 
 	const wsRef = useRef<WebSocket | null>(null);
+	const mgmtWsRef = useRef<WebSocket | null>(null);
 	const streamingRef = useRef('');
 	const reasoningRef = useRef('');
+	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
+	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
+	const isStoppingRef = useRef(false);
+	const stopClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const chatEndRef = useRef<HTMLDivElement>(null);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
 	const lastConnectTime = useRef(0);
+	const fastFailCount = useRef(0);
 
 	// Fetch portal info (version, user, models) once on mount
 	useEffect(() => {
-		fetch('/api/info').then(r => r.json()).then(setPortalInfo).catch(() => {});
+		apiFetch('/api/info').then(r => r.json()).then(setPortalInfo).catch(() => {});
 		// If starting with no session, pre-load the session list for the picker
 		if (!hasSessionInUrl) {
-			fetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
+			apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
 		}
 	}, []);
 
@@ -383,7 +506,10 @@ export default function App() {
 		if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.close(); }
 		wsRef.current = null;
 		if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 		noSessionRef.current = true;
+		isStoppingRef.current = false;
+		pendingMsgRef.current = null;
 		setNoSession(true);
 		setActiveSessionId(null);
 		setSessionContext(null);
@@ -391,18 +517,24 @@ export default function App() {
 		setStreamingContent('');
 		setIsStreaming(false);
 		setIsThinking(false);
+		setIsStopping(false);
 		setConnectionState('disconnected');
 		setShowPicker(true);
 		setPendingApproval(null);
+		setCliApprovalInfo(null);
+		setActiveSessionSummary(null);
 		setPendingInput(null);
 		setRules([]);
 		const params = new URLSearchParams(window.location.search);
 		params.delete('session');
+		params.delete('all');
 		window.history.replaceState(null, '', `?${params.toString()}`);
 
 		// Open a lightweight management WS to receive session broadcasts (delete/shield)
 		const token = getToken();
 		if (token) {
+			// Close any existing mgmt WS before opening a new one
+			if (mgmtWsRef.current) { mgmtWsRef.current.onerror = null; mgmtWsRef.current.close(); }
 			const mgmtWs = new WebSocket(`ws://${window.location.host}?token=${token}&management=1`);
 			mgmtWs.onmessage = (e) => {
 				try {
@@ -411,21 +543,32 @@ export default function App() {
 						setSessions(prev => prev.filter(s => s.sessionId !== event.sessionId));
 					} else if (event.type === 'session_shield_changed') {
 						setSessions(prev => prev.map(s => s.sessionId === event.sessionId ? { ...s, shielded: event.shielded ?? false } : s));
+					} else if (event.type === 'session_renamed') {
+						setSessions(prev => prev.map(s => s.sessionId === event.sessionId ? { ...s, summary: event.summary ?? s.summary } : s));
 					} else if (event.type === 'session_created' && event.session) {
 						setSessions(prev => prev.some(s => s.sessionId === event.session!.sessionId) ? prev : [event.session!, ...prev]);
 					}
 				} catch {}
 			};
 			mgmtWs.onerror = () => mgmtWs.close();
-			// Store so it can be cleaned up when a session is selected
-			wsRef.current = mgmtWs;
+			mgmtWsRef.current = mgmtWs;
 		}
+		// Always fetch the current session list so the picker has data even when called dynamically
+		apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
 	}, []);
 
 	const connect = useCallback(() => {
 		const token = getToken();
 		if (!token) { setConnectionState('no_token'); return; }
 		if (noSessionRef.current) return; // user must pick a session first
+
+		// Close management WS before opening a session WS (they're mutually exclusive).
+		if (mgmtWsRef.current) {
+			mgmtWsRef.current.onmessage = null;
+			mgmtWsRef.current.onerror = null;
+			mgmtWsRef.current.close();
+			mgmtWsRef.current = null;
+		}
 
 		// Kill any existing connection before creating a new one.
 		// Null out callbacks first so onclose doesn't schedule another reconnect.
@@ -442,13 +585,16 @@ export default function App() {
 
 		const sessionId = new URLSearchParams(window.location.search).get('session');
 		const sessionParam = sessionId ? `&session=${sessionId}` : '';
-		const wsUrl = `ws://${window.location.host}?token=${token}${sessionParam}`;
+		const wsUrl = `ws://${window.location.host}?token=${token}${sessionParam}${new URLSearchParams(window.location.search).get('all') === '1' ? '&all=1' : ''}`;
 		const ws = new WebSocket(wsUrl);
 		wsRef.current = ws;
+		let hadMsg = false;
 
-		ws.onopen = () => setConnectionState('connected');
+		ws.onopen = () => { fastFailCount.current = 0; setConnectionState('connected'); };
 
 		ws.onmessage = (e) => {
+			hadMsg = true;
+			fastFailCount.current = 0;
 			try {
 				const event = JSON.parse(e.data as string) as {
 					type: string;
@@ -465,17 +611,30 @@ export default function App() {
 					model?: string;
 					toolCallId?: string;
 					mcpServerName?: string;
+					displayLabel?: string;
 				};
 
-				if (event.type === 'history_start') {
+				if (event.type === 'history_meta') {
+								setHistoryTruncated({ total: event.total!, shown: event.shown! });
+								return;
+							}
+
+							if (event.type === 'history_start') {
+					if (event.sessionId && event.sessionId !== activeSessionIdRef.current) return;
 					inHistoryRef.current = true;
 					historyBufferRef.current = [];
+					setHistoryTruncated(null);
 					// Clear any in-progress streaming from a previous connection
 					streamingRef.current = '';
 					reasoningRef.current = '';
+					lastStreamedRef.current = '';
+					pendingMsgRef.current = null;
+					isStoppingRef.current = false;
+					if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 					setStreamingContent('');
 					setIsStreaming(false);
 					setIsThinking(false);
+					setIsStopping(false);
 					setThinkingText('');
 					setReasoningText('');
 					return;
@@ -483,6 +642,9 @@ export default function App() {
 
 				if (event.type === 'history_end') {
 					inHistoryRef.current = false;
+					if (event.sessionId && event.sessionId !== activeSessionIdRef.current) {
+						historyBufferRef.current = []; return;
+					}
 					// Flush any remaining assistant content
 					if (streamingRef.current) {
 						historyBufferRef.current.push({
@@ -495,6 +657,8 @@ export default function App() {
 						streamingRef.current = '';
 					}
 					setMessages(historyBufferRef.current);
+								// Prevent auto-collapse from firing when user manually opens drawer after history load
+								if (historyBufferRef.current.length > 0) drawerAutoCollapsedRef.current = true;
 					// Auto-open drawer when session is empty (new session)
 					if (historyBufferRef.current.length === 0) setDrawerOpen(true);
 					historyBufferRef.current = [];
@@ -503,12 +667,20 @@ export default function App() {
 
 				if (event.type === 'session_switched') {
 					const newId = event.sessionId ?? null;
+					activeSessionIdRef.current = newId;
 					setActiveSessionId(newId);
 					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
+					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
+					if (newId) {
+						const summary = (event as { summary?: string | null }).summary ?? undefined;
+						setSessions(prev => prev.some(s => s.sessionId === newId)
+							? prev.map(s => s.sessionId === newId ? { ...s, summary: summary ?? s.summary } : s)
+							: [{ sessionId: newId, summary }, ...prev]);					}
 					// Keep URL in sync — update ?session= without reloading
 					if (newId) {
 						const params = new URLSearchParams(window.location.search);
 						params.set('session', newId);
+						params.delete('all');
 						window.history.replaceState(null, '', `?${params.toString()}`);
 					}
 					return;
@@ -541,32 +713,8 @@ export default function App() {
 				}
 
 				if (inHistoryRef.current) {
-					// History replay: delta events carry __USER__ prefix for user turns
-					if (event.type === 'delta') {
-						const raw = event.content ?? '';
-						if (raw.startsWith('__USER__')) {
-							// Flush any pending assistant content first
-							if (streamingRef.current) {
-								historyBufferRef.current.push({
-									id: `hist-${Date.now()}-a`,
-									role: 'assistant',
-									content: streamingRef.current,
-									timestamp: Date.now(),
-									fromHistory: true,
-								});
-								streamingRef.current = '';
-							}
-							historyBufferRef.current.push({
-								id: `hist-${Date.now()}-u`,
-								role: 'user',
-								content: raw.slice('__USER__'.length),
-								timestamp: Date.now(),
-								fromHistory: true,
-							});
-						} else {
-							streamingRef.current += raw;
-						}
-					} else if (event.type === 'idle') {
+					if (event.type === 'history_user') {
+						// Flush any pending assistant content first
 						if (streamingRef.current) {
 							historyBufferRef.current.push({
 								id: `hist-${Date.now()}-a`,
@@ -577,20 +725,58 @@ export default function App() {
 							});
 							streamingRef.current = '';
 						}
+						historyBufferRef.current.push({
+							id: `hist-${Date.now()}-u`,
+							role: 'user',
+							content: event.content ?? '',
+							timestamp: Date.now(),
+							fromHistory: true,
+						});
+					} else if (event.type === 'delta') {
+						streamingRef.current += event.content ?? '';
+					} else if (event.type === 'idle') {
+						if (streamingRef.current) {
+							historyBufferRef.current.push({
+								id: `hist-${Date.now()}-a`,
+								role: 'assistant',
+								content: streamingRef.current,
+								timestamp: Date.now(),
+								fromHistory: true,
+								intermediate: event.intermediate || undefined,
+							});
+							streamingRef.current = '';
+						}
 					}
 					return;
 				}
 
 				// Live events
 				if (event.type === 'delta') {
-					setIsThinking(false);
-					setThinkingText('');
-					setIsStreaming(true);
 					streamingRef.current += event.content ?? '';
 					setStreamingContent(streamingRef.current);
+					if (isStoppingRef.current) {
+						// Debounce: reschedule the stop-clear, events are still arriving
+						if (stopClearTimerRef.current) clearTimeout(stopClearTimerRef.current);
+						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
+					} else {
+						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+						setCliApprovalInfo(null);
+						setIsThinking(false);
+						setThinkingText('');
+						setIsStreaming(true);
+					}
 				} else if (event.type === 'thinking') {
-					setIsThinking(true);
-					if (event.content) setThinkingText(event.content);
+					if (isStoppingRef.current) {
+						if (stopClearTimerRef.current) clearTimeout(stopClearTimerRef.current);
+						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
+					} else {
+						setIsThinking(true);
+						if (isCliTurnRef.current) {
+							if (cliHintTimerRef.current) clearTimeout(cliHintTimerRef.current);
+							cliHintTimerRef.current = setTimeout(() => setCliApprovalInfo('Tool approval needed — respond in your terminal'), 15000);
+						}
+						if (event.content) setThinkingText(event.content);
+					}
 				} else if (event.type === 'reasoning_delta') {
 					if (event.content) {
 						reasoningRef.current += event.content;
@@ -607,22 +793,67 @@ export default function App() {
 							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now() }];
 						});
 						// A new user message from CLI means a new turn is starting — clear tool events
-						if (role === 'user') setToolEvents([]);
+						if (role === 'user') { setToolEvents([]); lastStreamedRef.current = ''; }
+						if (role === 'user') isCliTurnRef.current = true;
 					}
+				} else if (event.type === 'message_end') {
+					// Buffer this message — we'll know if it's intermediate (more tools follow)
+					// or final (idle follows) at the next event
+					const content = streamingRef.current.trim();
+					if (content) {
+						lastStreamedRef.current = (lastStreamedRef.current ? lastStreamedRef.current + '\n' : '') + content;
+						pendingMsgRef.current = {
+							id: `msg-${Date.now()}`,
+							role: 'assistant',
+							content,
+							reasoning: reasoningRef.current || undefined,
+							timestamp: Date.now(),
+						};
+					}
+					streamingRef.current = '';
+					reasoningRef.current = '';
+					setStreamingContent('');
 				} else if (event.type === 'intent') {
 					setToolEvents((prev) => [...prev, { id: `intent-${Date.now()}`, type: 'intent', content: event.content, timestamp: Date.now() }]);
 				} else if (event.type === 'tool_start') {
-					setIsThinking(false);
-					setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, content: event.content, timestamp: Date.now() }]);
+					if (event.toolName === 'report_intent') {
+						// Use report_intent's argument as the live thinking indicator text
+						try {
+							const args = JSON.parse(event.content ?? '{}') as { intent?: string };
+							if (args.intent && !isStoppingRef.current) {
+								setIsThinking(true);
+								setThinkingText(args.intent);
+							}
+						} catch { /* ignore parse errors */ }
+					} else {
+						// A real tool is starting — any buffered message was an intermediate "notes to self"
+						if (pendingMsgRef.current) {
+							const msg = { ...pendingMsgRef.current, intermediate: true };
+							pendingMsgRef.current = null;
+							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+						}
+						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+						setCliApprovalInfo(null);
+						if (!isStoppingRef.current) setIsThinking(false);
+						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, content: event.content, timestamp: Date.now() }]);
+					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
 				} else if (event.type === 'tool_call') {
 					// tool_output (partial result streaming)
 					setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
 				} else if (event.type === 'idle') {
+					// Snapshot tool events to attach to the final message, then clear them
+					const summary = buildToolSummary(toolEventsRef.current);
+					// Commit any buffered message as the final reply
+					if (pendingMsgRef.current) {
+						const msg = { ...pendingMsgRef.current, toolSummary: summary.length ? summary : undefined };
+						pendingMsgRef.current = null;
+						setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+					}
 					const final = streamingRef.current;
 					if (final) {
-						// Dedup: sync poll may have already added this message if it arrived before idle
+						lastStreamedRef.current = final;
 						setMessages((prev) => {
 							if (prev.some(m => m.role === 'assistant' && m.content === final)) return prev;
 							return [
@@ -632,6 +863,7 @@ export default function App() {
 									role: 'assistant',
 									content: final,
 									reasoning: reasoningRef.current || undefined,
+									toolSummary: summary.length ? summary : undefined,
 									timestamp: Date.now(),
 								},
 							];
@@ -644,11 +876,45 @@ export default function App() {
 					setIsThinking(false);
 					setThinkingText('');
 					setReasoningText('');
+					setCliApprovalInfo(null);
+					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+					isCliTurnRef.current = false;
 					setToolEvents([]);
+					if (isStoppingRef.current) {
+						// Don't clear isStopping immediately — wait 800ms in case more events arrive.
+						// If they do, delta/thinking handlers will cancel this timer.
+						if (stopClearTimerRef.current) clearTimeout(stopClearTimerRef.current);
+						stopClearTimerRef.current = setTimeout(() => {
+							isStoppingRef.current = false;
+							setIsStopping(false);
+							stopClearTimerRef.current = null;
+						}, 800);
+					}
+				} else if (event.type === 'cli_approval_pending') {
+					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+					setCliApprovalInfo(event.content ?? 'Tool approval needed — respond in your terminal');
+				} else if (event.type === 'cli_approval_resolved') {
+					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+					setCliApprovalInfo(null);
+				} else if (event.type === 'turn_stopping') {
+					// Another client hit Stop — mirror their stopping state so our UI reflects it
+					if (!isStoppingRef.current) {
+						isStoppingRef.current = true;
+						setIsStopping(true);
+						if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
+					}
+				} else if (event.type === 'session_renamed') {
+					// Auto-title update — keep sessions list in sync even when picker is closed
+					setSessions(prev => prev.map(s => s.sessionId === event.sessionId ? { ...s, summary: event.summary ?? s.summary } : s));
+					if (event.sessionId === activeSessionIdRef.current) setActiveSessionSummary((event as { summary?: string }).summary ?? null);
+				} else if (event.type === 'session_context_updated') {
+					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
 				} else if (event.type === 'error') {
+
 					setError(event.content ?? 'Unknown error');
 					setIsStreaming(false);
 					setIsThinking(false);
+					setIsStopping(false);
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
@@ -671,6 +937,16 @@ export default function App() {
 			setIsStreaming(false);
 			setIsThinking(false);
 			if (e.code === 4404) return; // session not found — handled above, don't retry
+			// Detect auth failure: fast close with no messages received suggests a bad token.
+			if (!hadMsg && Date.now() - lastConnectTime.current < 5000) {
+				fastFailCount.current += 1;
+				if (fastFailCount.current >= 5) {
+					localStorage.removeItem('portal_token');
+					fastFailCount.current = 0;
+					setConnectionState('no_token');
+					return;
+				}
+			}
 			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
 			reconnectTimer.current = setTimeout(() => connect(), 2000);
 		};
@@ -697,7 +973,7 @@ export default function App() {
 					} catch {}
 				};
 				mgmtWs.onerror = () => mgmtWs.close();
-				wsRef.current = mgmtWs;
+				mgmtWsRef.current = mgmtWs;
 			}
 		} else {
 			connect();
@@ -705,6 +981,8 @@ export default function App() {
 		return () => {
 			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
 			wsRef.current?.close();
+			mgmtWsRef.current?.close();
+			mgmtWsRef.current = null;
 		};
 	}, [connect]);
 
@@ -732,9 +1010,11 @@ export default function App() {
 		document.addEventListener('visibilitychange', onVisibility);
 		window.addEventListener('focus', tryReconnect);
 		window.addEventListener('pageshow', tryReconnect);
-		// Retry every 2s if still not connected — iOS needs ~3 attempts before succeeding
+		// Retry every 2s if still not connected — iOS needs ~3 attempts before succeeding.
+		// Skip if already CONNECTING to avoid cycling through open/close/open rapidly.
 		const retryInterval = setInterval(() => {
-			if (wsRef.current?.readyState !== WebSocket.OPEN) connect();
+			const state = wsRef.current?.readyState;
+			if (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING) connect();
 		}, 2000);
 		return () => {
 			document.removeEventListener('visibilitychange', onVisibility);
@@ -750,9 +1030,12 @@ export default function App() {
 
 	const openPicker = useCallback(async () => {
 		try {
-			const res = await fetch('/api/sessions');
+			const res = await apiFetch('/api/sessions');
 			const data = await res.json() as SessionInfo[];
 			setSessions(data);
+			// Sync active session summary from fresh data
+			const active = data.find(s => s.sessionId === activeSessionIdRef.current);
+			if (active) setActiveSessionSummary(active.summary ?? null);
 			setShowPicker(true);
 		} catch {
 			setError('Could not load sessions');
@@ -771,7 +1054,7 @@ export default function App() {
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
 		try {
-			const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+			const res = await apiFetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
 			const { sessionId } = await res.json() as { sessionId: string };
 			noSessionRef.current = false;
 			setNoSession(false);
@@ -785,7 +1068,6 @@ export default function App() {
 
 	const changeModel = useCallback((modelId: string) => {
 		setActiveModel(modelId);
-		setShowModelPicker(false);
 		wsRef.current?.send(JSON.stringify({ type: 'set_model', content: modelId }));
 	}, []);
 
@@ -793,7 +1075,7 @@ export default function App() {
 		e.stopPropagation();
 		setSessions(prev => prev.map(s => s.sessionId === sessionId ? { ...s, shielded: !s.shielded } : s));
 		try {
-			await fetch(`/api/sessions/${sessionId}/shield`, { method: 'PATCH' });
+			await apiFetch(`/api/sessions/${sessionId}/shield`, { method: 'PATCH' });
 		} catch {
 			// revert on error
 			setSessions(prev => prev.map(s => s.sessionId === sessionId ? { ...s, shielded: !s.shielded } : s));
@@ -804,7 +1086,7 @@ export default function App() {
 		e.stopPropagation();
 		const wasActive = sessionId === activeSessionId;
 		try {
-			const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+			const res = await apiFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
 			if (!res.ok) { setError('Could not delete session'); return; }
 			setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
 			setConfirmDeleteId(null);
@@ -865,8 +1147,12 @@ export default function App() {
 
 	const stopAgent = () => {
 		wsRef.current?.send(JSON.stringify({ type: 'stop' }));
-		setIsStreaming(false);
-		setIsThinking(false);
+		// Set locally for instant feedback — server will also broadcast turn_stopping
+		// to sync other connected clients. The turn_stopping handler guards against
+		// the echo coming back.
+		isStoppingRef.current = true;
+		setIsStopping(true);
+		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 	};
 
 	if (connectionState === 'no_token') {
@@ -1015,7 +1301,7 @@ export default function App() {
 											</div>
 											<div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
 												{s.modifiedTime ? timeAgo(s.modifiedTime) : ''}
-												{' · '}{s.sessionId.slice(0, 8)}
+												{' · '}<button onClick={(e) => { e.stopPropagation(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline" type="button">{s.sessionId.slice(0, 8)}</button>
 											</div>
 										</button>
 
@@ -1078,70 +1364,125 @@ export default function App() {
 				style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
 			>
 				<div className="flex items-center gap-2.5">
-					<svg className="size-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-						<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-					</svg>
+					<svg className="size-8" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<defs>
+									<clipPath id="pcp"><ellipse cx="8" cy="12" rx="7" ry="9.5" transform="rotate(20, 8, 12)"/></clipPath>
+								</defs>
+								{/* Filled oval portal */}
+								<ellipse cx="8" cy="12" rx="7" ry="9.5" fill="currentColor" stroke="currentColor" strokeWidth="1.5" transform="rotate(20, 8, 12)"/>
+								{/* Dark halo — expanded rect clipped to oval, drawn before white window */}
+								<g clipPath="url(#pcp)">
+									<rect x="8" y="4" width="17" height="16" rx="2.5" fill="var(--bg)" stroke="none"/>
+								</g>
+								{/* White window on top — covers halo except around edges */}
+								<rect x="10" y="6" width="13" height="12" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5"/>
+								<line x1="10" y1="9.5" x2="23" y2="9.5" stroke="currentColor" strokeWidth="1.5"/>
+							</svg>
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
-						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>{__BUILD_TIME__}</div>
+						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · {__BUILD_TIME__}</div>
 					</div>
 				</div>
-				<div className="flex items-center gap-2">
-					{isStreaming && (
+				<div className="flex flex-col items-end gap-0.5">
+					<div className="flex items-center gap-1.5">
+						{isAgentActive && (
+							<button
+								className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+								style={{ background: 'var(--error)', color: 'white', opacity: isStopping ? 0.6 : 1, animation: isStopping ? 'blink 1s infinite' : 'none' }}
+								onClick={stopAgent}
+								disabled={isStopping}
+								type="button"
+								title={isStopping ? 'Stopping…' : 'Stop'}
+							>
+								<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<rect x="5" y="5" width="14" height="14" rx="2"/>
+								</svg>
+							</button>
+						)}
 						<button
-							className="rounded-lg px-3 py-1.5 text-sm font-medium"
-							style={{ background: 'var(--error)', color: 'white' }}
-							onClick={stopAgent}
+							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+							onClick={openPicker}
 							type="button"
+							title="Sessions"
 						>
-							Stop
+							{/* stacked windows = sessions */}
+							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<rect x="3" y="7" width="14" height="11" rx="2" />
+								<path d="M7 5h12a2 2 0 012 2v10" opacity="0.55" />
+							</svg>
 						</button>
-					)}
-					{activeSessionId && (
-						<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-							{activeSessionId.slice(0, 8)}
-						</span>
-					)}
-					<button
-						className="rounded-lg px-3 py-1.5 text-sm font-medium"
-						style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-						onClick={openPicker}
-						type="button"
-						title="Switch session"
-					>
-						Sessions
-					</button>
-					<button
-						className="rounded-lg px-2 py-1.5 text-sm"
-						style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-						onClick={() => setShowQR(v => !v)}
-						type="button"
-						title="Show QR code"
-					>
-						⬛
-					</button>
-					<button
-						className="rounded-lg px-2 py-1.5 text-sm"
-						style={{ background: rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: rules.length > 0 ? 'var(--primary)' : undefined }}
-						onClick={() => setShowRules(v => !v)}
-						type="button"
-						title={`Always-allow rules (${rules.length})`}
-					>
-						{rules.length > 0 ? `✓ ${rules.length}` : '✓'}
-					</button>
-					<div
-						className="size-2.5 rounded-full"
-						style={{
-							background:
-								connectionState === 'connected'
-									? 'var(--success)'
-									: connectionState === 'connecting'
-										? 'var(--tool-call)'
-										: 'var(--error)',
-						}}
-						title={connectionState}
-					/>
-				</div>
+						<button
+							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+							onClick={() => setShowQR(v => !v)}
+							type="button"
+							title="Show QR code"
+						>
+							<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								{/* Top-left finder */}
+								<path fillRule="evenodd" d="M2 2h8v8H2V2zm1.5 1.5v5h5v-5h-5z" />
+								<rect x="5" y="5" width="2" height="2" />
+								{/* Top-right finder */}
+								<path fillRule="evenodd" d="M14 2h8v8h-8V2zm1.5 1.5v5h5v-5h-5z" />
+								<rect x="17" y="5" width="2" height="2" />
+								{/* Bottom-left finder */}
+								<path fillRule="evenodd" d="M2 14h8v8H2v-8zm1.5 1.5v5h5v-5h-5z" />
+								<rect x="5" y="17" width="2" height="2" />
+								{/* Bottom-right data modules */}
+								<rect x="14" y="14" width="2" height="2" />
+								<rect x="18" y="14" width="2" height="2" />
+								<rect x="16" y="16" width="2" height="2" />
+								<rect x="14" y="18" width="2" height="2" />
+								<rect x="18" y="18" width="2" height="2" />
+								<rect x="20" y="16" width="2" height="2" />
+								<rect x="14" y="20" width="2" height="2" />
+							</svg>
+						</button>
+						<button
+							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+							style={{ background: rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: rules.length > 0 ? 'var(--primary)' : undefined }}
+							onClick={() => setShowRules(v => !v)}
+							type="button"
+							title={`Always-allow rules (${rules.length})`}
+						>
+							{rules.length > 0 ? (
+								<span className="flex items-center gap-1">
+									<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+										<circle cx="5" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+										<line x1="9" y1="7" x2="20" y2="7"/>
+										<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+										<line x1="9" y1="12" x2="20" y2="12"/>
+										<circle cx="5" cy="17" r="1.5" fill="currentColor" stroke="none"/>
+										<line x1="9" y1="17" x2="20" y2="17"/>
+									</svg>
+									<span className="text-xs font-medium leading-none">{rules.length}</span>
+								</span>
+							) : (
+								<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+									<circle cx="5" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+									<line x1="9" y1="7" x2="20" y2="7"/>
+									<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+									<line x1="9" y1="12" x2="20" y2="12"/>
+									<circle cx="5" cy="17" r="1.5" fill="currentColor" stroke="none"/>
+									<line x1="9" y1="17" x2="20" y2="17"/>
+								</svg>
+							)}
+						</button>
+						<div
+							className="size-2 rounded-full"
+							style={{
+								background:
+									connectionState === 'connected'
+										? 'var(--success)'
+										: connectionState === 'connecting'
+											? 'var(--tool-call)'
+											: 'var(--error)',
+							}}
+							title={connectionState}
+						/>
+					</div>
+					</div>
 			</header>
 
 			{/* Chat */}
@@ -1155,65 +1496,85 @@ export default function App() {
 						context={sessionContext}
 						activeModel={activeModel}
 						onChangeModel={changeModel}
+						onFetchModels={() => apiFetch('/api/models').then(r => r.json())}
+					activeSessionId={activeSessionId}
+					sessionSummary={activeSessionSummary}
 					/>
 				)}
-				{/* Landing state — no active session */}
-{noSession && !showPicker && (
-<div className="flex flex-1 flex-col items-center justify-center text-center gap-4 p-8">
-<span style={{ fontSize: '3rem' }}>🤖</span>
-<p className="text-lg font-medium">No active session</p>
-<p className="text-sm" style={{ color: 'var(--text-muted)' }}>Select an existing session or create a new one.</p>
-<button
-className="rounded-xl px-6 py-3 text-sm font-medium"
-style={{ background: 'var(--btn-bg)', color: 'var(--btn-text)' }}
-onClick={() => setShowPicker(true)}
->Browse Sessions</button>
-</div>
-)}
-
-<div className="flex-1 overflow-y-auto p-4 pb-2" style={{ display: noSession ? 'none' : undefined }}>
-					{messages.length === 0 && !isStreaming && !isThinking && connectionState !== 'connected' && (
-						<div className="flex h-full flex-col items-center justify-center text-center" style={{ color: 'var(--text-muted)' }}>
-							<p className="text-sm">{`Connecting… ${connectingSecs}s`}</p>
-						</div>
-					)}
-
-					{messages.map((msg) => (
-						<div
-							key={msg.id}
-							className="mb-3"
-							style={{
-								display: 'flex',
-								flexDirection: 'column',
-								alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-							}}
-						>
+				<div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
+					{historyTruncated && (() => {
+						const url = new URL(window.location.href);
+						url.searchParams.set('all', '1');
+						return (
+							<div style={{ textAlign: 'center', padding: '8px 12px', marginBottom: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+								Showing {historyTruncated.shown} of {historyTruncated.total} messages.{' '}
+								<a href={url.toString()} style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>Load full history</a>
+							</div>
+						);
+					})()}
+					{messages.map((msg) => {
+						if (msg.intermediate) {
+							return (
+								<details key={msg.id} className="mb-1" style={{ border: '1.5px dashed var(--border)', borderRadius: '8px', padding: '6px 10px', opacity: 0.75, background: 'var(--surface)' }}>
+									<summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none', fontStyle: 'italic' }}>
+										<span>💭</span>
+										<span>{msg.content.slice(0, 60)}{msg.content.length > 60 ? '…' : ''}</span>
+									</summary>
+									<pre style={{ marginTop: '4px', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-muted)' }}>{msg.content}</pre>
+								</details>
+							);
+						}
+						return (
+						<div key={msg.id} className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							{msg.reasoning && (
 								<ThoughtBubble reasoning={msg.reasoning} />
 							)}
 							<div
-								className={msg.role === 'user' ? 'max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'w-full rounded-xl px-4 py-3 text-sm'}
+								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
 								style={
 									msg.role === 'user'
 										? { background: 'var(--primary)', color: 'white', borderRadius: '18px 18px 4px 18px' }
 										: {
 												background: 'var(--surface)',
-												border: `1px solid var(--border)`,
+												border: '1px solid var(--border)',
 												borderRadius: '18px 18px 18px 4px',
 											}
 								}
 							>
+								{msg.role === 'assistant' && msg.toolSummary && msg.toolSummary.length > 0 && (
+									<details style={{ marginBottom: '8px' }}>
+										<summary style={{
+											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
+											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
+										}}>
+											<span>🔧</span>
+											<span>{msg.toolSummary.length} tool{msg.toolSummary.length > 1 ? 's' : ''} ran</span>
+										</summary>
+										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+											{msg.toolSummary.map((t, i) => (
+												<div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+													<span style={{ flexShrink: 0 }}>{t.completed ? '✓' : '·'}</span>
+													<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
+													{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
+												</div>
+											))}
+										</div>
+									</details>
+								)}
 								{msg.role === 'assistant'
-									? <AssistantMarkdown content={msg.content} />
-									: <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+									? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} />
+									: <>
+										<div className="whitespace-pre-wrap break-words">{msg.content}</div>
+										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
+											<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+											<CopyButton text={msg.content} />
+										</div>
+									</>
 								}
-								<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
-									<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-									<CopyButton text={msg.content} />
-								</div>
 							</div>
 						</div>
-					))}
+						);
+					})}
 
 					{toolEvents.map((tc) => {
 						if (tc.type === 'intent') {
@@ -1275,13 +1636,14 @@ onClick={() => setShowPicker(true)}
 
 					{isStreaming && streamingContent && (
 						<div
-							className="mb-3 w-full rounded-xl px-4 py-3 text-sm"
+							className="relative mb-3 w-full rounded-xl px-4 py-3 text-sm"
 							style={{
 								background: 'var(--surface)',
-								border: `1px solid var(--border)`,
+								border: '1px solid var(--border)',
 								borderRadius: '18px 18px 18px 4px',
 							}}
 						>
+							<span className="absolute right-2 top-1 font-mono opacity-30 select-none" style={{ fontSize: '8px' }}>live</span>
 							<AssistantMarkdown content={streamingContent} />
 							<span
 								className="ml-0.5 inline-block size-2 align-text-bottom"
@@ -1305,6 +1667,16 @@ onClick={() => setShowPicker(true)}
 				{/* Pinned interaction zone — approval & input cards sit above the input bar */}
 				{(pendingApproval || pendingInput) && (
 					<div className="border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+
+						{cliApprovalInfo && (
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'rgba(128,128,160,0.08)' }}>
+								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
+									<span>⏳</span> CLI waiting for approval
+								</div>
+								<div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{cliApprovalInfo}</div>
+								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Approve or deny in your terminal to continue.</div>
+							</div>
+						)}
 						{pendingApproval && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--tool-call)', background: 'rgba(220,220,170,0.08)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tool-call)' }}>
@@ -1372,8 +1744,8 @@ onClick={() => setShowPicker(true)}
 						sendPrompt();
 					}}
 				>
-					<div className="flex items-end gap-2">
-						<div className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+					<div className="flex items-center gap-2">
+						<div className="relative flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							<textarea
 								className="w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
 								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 120 }}
@@ -1393,6 +1765,20 @@ onClick={() => setShowPicker(true)}
 									}
 								}}
 							/>
+							{!input && messages.filter(m => m.role === 'user').length > 0 && (
+								<button
+									type="button"
+									title="Recall last message"
+									onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
+									className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
+									style={{ color: 'var(--text-muted)' }}
+								>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+										<polyline points="9 10 4 15 9 20"/>
+										<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
+									</svg>
+								</button>
+							)}
 						</div>
 						<button
 							className="flex size-11 shrink-0 items-center justify-center rounded-full border-none"
@@ -1415,4 +1801,4 @@ onClick={() => setShowPicker(true)}
 			</main>
 		</div>
 	);
-}
+}

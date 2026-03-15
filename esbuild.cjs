@@ -2,7 +2,7 @@ const esbuild = require('esbuild');
 
 const watch = process.argv.includes('--watch');
 const production = process.argv.includes('--production');
-const buildTime = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+const buildTime = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
 /** @type {import('esbuild').BuildOptions} */
 const options = {

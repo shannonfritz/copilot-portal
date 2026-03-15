@@ -22,13 +22,16 @@ export class PortalServer {
 	private clientCounter = 0;
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
-
-	constructor(private port: number) {
+	private shields: Record<string, boolean> = {};
+	constructor(private port: number, dataDir?: string) {
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
-		this.dataDir = path.join(__dirname, '..', 'data');
+		this.dataDir = dataDir ?? path.join(__dirname, '..', 'data');
 		this.token = this.loadOrCreateToken();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir));
+		this.pool.onTitleChanged = (sessionId, summary) => {
+			this.broadcastAll({ type: 'session_renamed', sessionId, summary });
+		};
 
 		this.httpServer = http.createServer((req, res) => this.handleHttp(req, res));
 
@@ -53,6 +56,7 @@ export class PortalServer {
 			const ip = req.socket.remoteAddress ?? 'unknown';
 			const url = new URL(req.url ?? '/', 'http://localhost');
 			let sessionId = url.searchParams.get('session') ?? null;
+				const loadAll = url.searchParams.get('all') === '1';
 			const isManagement = url.searchParams.get('management') === '1';
 
 			this.log(`[${clientId}] Connected from ${ip}, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
@@ -85,10 +89,13 @@ export class PortalServer {
 			// Connect to the session — evict first if no other clients are watching
 			// AND no turn is active, so we get a fresh snapshot with CLI messages.
 			// Never evict during an active turn — that would abort the response.
+			// Never evict a brand-new session (isNew=true) — it was just created by this
+			// portal client and has no CLI history to sync; evicting it would disconnect
+			// the session before it's ever been saved, causing a session_not_found error.
 			let handle;
 			try {
 				const existing = this.pool.getHandle(sessionId);
-				if (existing && existing.listenerCount === 0 && !existing.turnActive) {
+				if (existing && existing.listenerCount === 0 && !existing.turnActive && !existing.isNew) {
 					await this.pool.evict(sessionId);
 				}
 				handle = await this.pool.connect(sessionId);
@@ -103,25 +110,47 @@ export class PortalServer {
 				return;
 			}
 
-			// Per-client event listener — routes session events to this WS only
+			// Per-client event listener — routes session events to this WS only.
+			// cancelled is set synchronously when the WS closes so any in-flight
+			// async work (e.g. getHistory) never sends data to a closed/stale connection.
+			let cancelled = false;
 			const listener = (event: PortalEvent) => {
-				if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
+				if (!cancelled && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
 			};
 			handle.addListener(listener);
 
 			// Notify client of confirmed session ID + session context (cwd, git info)
-			if (ws.readyState === WebSocket.OPEN) {
+			if (!cancelled && ws.readyState === WebSocket.OPEN) {
 				const sessions = await this.pool.listSessions().catch(() => []);
 				const meta = sessions.find(s => s.sessionId === sessionId);
-				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null }));
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null }));
+
+				// For brand-new sessions the CLI subprocess may not have written cwd yet —
+				// retry once after a short delay and push an update if context arrives.
+				if (!meta?.context) {
+					setTimeout(async () => {
+						if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+						const sessions2 = await this.pool.listSessions().catch(() => []);
+						const meta2 = sessions2.find(s => s.sessionId === sessionId);
+						if (meta2?.context) {
+							ws.send(JSON.stringify({ type: 'session_context_updated', sessionId, context: meta2.context }));
+						}
+					}, 1500);
+				}
 			}
 
-			// Replay history + pending requests
-			handle.getHistory().then((events) => {
-				if (ws.readyState !== WebSocket.OPEN) return;
-				ws.send(JSON.stringify({ type: 'history_start' }));
-				for (const e of events) ws.send(JSON.stringify(e));
-				ws.send(JSON.stringify({ type: 'history_end' }));
+			// Replay history + pending requests.
+			// We capture sessionId at this point — it never changes for this connection.
+			const historySessionId = sessionId;
+			handle.getHistory(loadAll ? undefined : 100).then((events) => {
+				if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+				ws.send(JSON.stringify({ type: 'history_start', sessionId: historySessionId }));
+				for (const e of events) {
+					if (cancelled) return; // stop mid-send if connection drops
+					ws.send(JSON.stringify(e));
+				}
+				if (cancelled) return;
+				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
 				for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
@@ -132,12 +161,13 @@ export class PortalServer {
 
 			// Keep-alive ping every 30s
 			const pingInterval = setInterval(() => {
-				if (ws.readyState === WebSocket.OPEN) ws.ping();
+				if (!cancelled && ws.readyState === WebSocket.OPEN) ws.ping();
 			}, 30_000);
 
 			ws.on('message', (data) => this.handleMessage(data.toString(), clientId, handle));
 			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
+				cancelled = true; // prevent any pending async sends for this connection
 				clearInterval(pingInterval);
 				handle.removeListener(listener);
 				this.log(`[${clientId}] Disconnected (code: ${code})`);
@@ -196,20 +226,20 @@ export class PortalServer {
 		}
 	}
 
-	private loadShields(): Record<string, boolean> {
+	private loadShields(): void {
 		try {
 			const f = path.join(this.dataDir, 'session-shields.json');
-			if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+			if (fs.existsSync(f)) this.shields = JSON.parse(fs.readFileSync(f, 'utf8'));
 		} catch {}
-		return {};
 	}
 
-	private saveShields(shields: Record<string, boolean>): void {
+	private saveShields(): void {
 		try {
 			fs.mkdirSync(this.dataDir, { recursive: true });
-			fs.writeFileSync(path.join(this.dataDir, 'session-shields.json'), JSON.stringify(shields, null, 2));
+			fs.writeFileSync(path.join(this.dataDir, 'session-shields.json'), JSON.stringify(this.shields, null, 2));
 		} catch {}
 	}
+
 
 	private log(msg: string) {
 		const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -219,32 +249,56 @@ export class PortalServer {
 	}
 
 	private loadOrCreateToken(): string {
-		const tokenFile = path.join(this.debugDir, 'token.txt');
+		const tokenFile = path.join(this.dataDir, 'token.txt');
 		try {
 			if (fs.existsSync(tokenFile)) return fs.readFileSync(tokenFile, 'utf8').trim();
 		} catch {}
 		const token = crypto.randomBytes(16).toString('hex');
 		try {
-			fs.mkdirSync(this.debugDir, { recursive: true });
+			fs.mkdirSync(this.dataDir, { recursive: true });
 			fs.writeFileSync(tokenFile, token);
 		} catch {}
 		return token;
+	}
+
+	private checkToken(url: URL, req?: http.IncomingMessage): boolean {
+		if (url.searchParams.get('token') === this.token) return true;
+		const auth = req?.headers['authorization'] ?? '';
+		return auth === `Bearer ${this.token}`;
 	}
 
 	private async handleHttp(req: http.IncomingMessage, res: http.ServerResponse) {
 		const url = new URL(req.url ?? '/', 'http://localhost');
 		const method = req.method ?? 'GET';
 
+		// API routes — require token
+		if (url.pathname.startsWith('/api/')) {
+			if (!this.checkToken(url, req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+		}
+
 		if (url.pathname === '/api/info' && method === 'GET') {
 			this.sendJson(res, 200, this.portalInfo ?? { version: 'unknown', login: 'unknown', models: [] });
 			return;
 		}
 
+		if (url.pathname === '/api/models' && method === 'GET') {
+			try {
+				const allModels = await this.pool.listModels();
+				const models = allModels
+					.filter(m => !m.policy || m.policy.state === 'enabled')
+					.map(m => ({ id: m.id, name: m.name }));
+				if (this.portalInfo) this.portalInfo = { ...this.portalInfo, models };
+				this.sendJson(res, 200, models);
+			} catch {
+				this.sendJson(res, 200, this.portalInfo?.models ?? []);
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/sessions' && method === 'GET') {
 			try {
-				const shields = this.loadShields();
 				const sessions = await this.pool.listSessions();
-				this.sendJson(res, 200, sessions.map(s => ({ ...s, shielded: shields[s.sessionId] ?? false })));
+				this.sendJson(res, 200, sessions.map(s => ({ ...s, shielded: this.shields[s.sessionId] ?? false })));
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
@@ -254,8 +308,7 @@ export class PortalServer {
 		const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
 		if (sessionMatch && method === 'DELETE') {
 			const sessionId = sessionMatch[1];
-			const shields = this.loadShields();
-			if (shields[sessionId]) {
+			if (this.shields[sessionId]) {
 				this.sendJson(res, 403, { error: 'Session is shielded' });
 				return;
 			}
@@ -273,16 +326,16 @@ export class PortalServer {
 		const shieldMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/shield$/);
 		if (shieldMatch && method === 'PATCH') {
 			const sessionId = shieldMatch[1];
-			const shields = this.loadShields();
-			shields[sessionId] = !shields[sessionId];
-			if (!shields[sessionId]) delete shields[sessionId];
-			this.saveShields(shields);
-			const shielded = shields[sessionId] ?? false;
+			this.shields[sessionId] = !this.shields[sessionId];
+			if (!this.shields[sessionId]) delete this.shields[sessionId];
+			this.saveShields();
+			const shielded = this.shields[sessionId] ?? false;
 			this.broadcastAll({ type: 'session_shield_changed', sessionId, shielded });
 			this.sendJson(res, 200, { shielded });
 			this.log(`[API] Session ${sessionId.slice(0, 8)} ${shielded ? 'shielded' : 'unshielded'}`);
 			return;
 		}
+
 
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
@@ -300,7 +353,7 @@ export class PortalServer {
 					const shields = this.loadShields();
 					const newSession = sessions.find(s => s.sessionId === newId);
 					if (newSession) {
-						this.broadcastAll({ type: 'session_created', session: { ...newSession, shielded: shields[newId] ?? false } });
+						this.broadcastAll({ type: 'session_created', session: { ...newSession, shielded: this.shields[newId] ?? false } });
 					}
 					this.sendJson(res, 201, { sessionId: newId });
 				}
@@ -311,20 +364,24 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/' || url.pathname === '/index.html') {
+			if (!this.checkToken(url, req)) {
+				res.writeHead(401, { 'Content-Type': 'text/html' });
+				res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:4em"><h2>Access Denied</h2><p>A valid <code>?token=</code> is required. Check the server console for the URL.</p></body></html>');
+				return;
+			}
 			const indexPath = path.join(this.webuiPath, 'index.html');
 			fs.readFile(indexPath, 'utf8', (err, html) => {
 				if (err) { res.writeHead(404); res.end('Web UI not built.'); return; }
-				const injected = html.replace(
-					'</head>',
-					`<script>window.__PORTAL_TOKEN__ = "${this.token}";</script></head>`,
-				);
 				res.writeHead(200, { 'Content-Type': 'text/html' });
-				res.end(injected);
+				res.end(html);
 			});
 			return;
 		}
 
-		const filePath = path.join(this.webuiPath, url.pathname);
+		const filePath = path.normalize(path.join(this.webuiPath, url.pathname));
+		if (!filePath.startsWith(this.webuiPath)) {
+			res.writeHead(403); res.end('Forbidden'); return;
+		}
 		fs.readFile(filePath, (err, data) => {
 			if (err) { res.writeHead(404); res.end('Not found'); return; }
 			const mime: Record<string, string> = {
@@ -343,9 +400,14 @@ export class PortalServer {
 	}
 
 	private readBody(req: http.IncomingMessage): Promise<string> {
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
 			const chunks: Buffer[] = [];
-			req.on('data', (c) => chunks.push(c));
+			let size = 0;
+			req.on('data', (c: Buffer) => {
+				size += c.length;
+				if (size > 1024 * 1024) { req.destroy(); reject(new Error('Request body too large')); return; }
+				chunks.push(c);
+			});
 			req.on('end', () => resolve(Buffer.concat(chunks).toString()));
 		});
 	}
@@ -365,6 +427,7 @@ export class PortalServer {
 	}
 
 	async start(): Promise<void> {
+		this.loadShields();
 		await this.pool.start();
 		// Cache portal info (version, user, models) once at startup
 		try {
@@ -400,12 +463,6 @@ export class PortalServer {
 		try {
 			if (!fs.existsSync(this.debugDir)) fs.mkdirSync(this.debugDir, { recursive: true });
 			this.logStream = fs.createWriteStream(path.join(this.debugDir, 'server.log'), { flags: 'w' });
-			fs.writeFileSync(path.join(this.debugDir, 'connection.json'), JSON.stringify({
-				url: `ws://${this.getLocalIP()}:${this.port}`,
-				token: this.token,
-				port: this.port,
-				startedAt: new Date().toISOString(),
-			}, null, 2));
 		} catch (e) {
 			process.stderr.write(`[Debug] Could not init debug files: ${e}\n`);
 		}
@@ -420,11 +477,17 @@ export class PortalServer {
 
 	async stop(): Promise<void> {
 		await this.pool.stop();
-		this.wss.close();return new Promise((resolve) => {
+		// Forcefully close all open WebSocket connections so httpServer.close() doesn't hang
+		for (const client of this.wss.clients) client.terminate();
+		this.wss.close();
+		// Close any lingering HTTP keep-alive connections (Node 18.2+)
+		if (typeof (this.httpServer as NodeJS.EventEmitter & { closeAllConnections?: () => void }).closeAllConnections === 'function') {
+			(this.httpServer as NodeJS.EventEmitter & { closeAllConnections: () => void }).closeAllConnections();
+		}
+		return new Promise((resolve) => {
 			this.httpServer.close(() => {
 				this.logStream?.end();
 				this.logStream = null;
-				try { fs.unlinkSync(path.join(this.debugDir, 'connection.json')); } catch {}
 				resolve();
 			});
 		});

@@ -1,0 +1,15 @@
+{
+  "name": "copilot-portal",
+  "version": "0.2.0",
+  "description": "Mobile-friendly web portal for GitHub Copilot CLI",
+  "type": "module",
+  "main": "./dist/server.js",
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "@github/copilot": "^1.0.2",
+    "@github/copilot-sdk": "^0.1.32",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  }
+}

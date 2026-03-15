@@ -27,6 +27,7 @@ export class RulesStore {
 			url?: string;
 			toolName?: string;
 			serverName?: string;
+			subject?: string;
 		};
 		switch (req.kind) {
 			case 'shell': {
@@ -45,6 +46,8 @@ export class RulesStore {
 			case 'url': {
 				try { return new URL(r.url ?? '').hostname; } catch { return r.url ?? req.kind; }
 			}
+			case 'memory' as string:
+				return r.subject ?? 'memory';
 			default:
 				return r.toolName ?? req.kind;
 		}
@@ -86,6 +89,7 @@ export class RulesStore {
 			url?: string;
 			toolName?: string;
 			serverName?: string;
+			subject?: string;
 		};
 		for (const rule of this.getRules(sessionId)) {
 			if (rule.kind !== req.kind) continue;
@@ -93,7 +97,8 @@ export class RulesStore {
 				case 'shell': {
 					const base = rule.pattern.replace(/\s+\*$/, '');
 					const cmd = r.fullCommandText?.trim() ?? '';
-					if (cmd === base || cmd.startsWith(base + ' ')) return rule;
+					// bare '*' pattern means allow any shell command
+					if (base === '*' || cmd === base || cmd.startsWith(base + ' ')) return rule;
 					break;
 				}
 				case 'read':
@@ -112,11 +117,18 @@ export class RulesStore {
 					} catch {}
 					break;
 				}
+				case 'memory' as string:
+					if (rule.pattern === (r.subject ?? 'memory')) return rule;
+					break;
 				default:
 					if (rule.pattern === (r.toolName ?? req.kind)) return rule;
 			}
 		}
 		return null;
+	}
+
+	removeSession(sessionId: string): void {
+		this.cache.delete(sessionId);
 	}
 
 	private load(sessionId: string): ApprovalRule[] {

@@ -1,0 +1,66 @@
+# Copilot Portal
+
+A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server on your desktop, then open the URL on any device on your local network.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) v18 or later
+- GitHub Copilot access, authenticated via the [`gh` CLI](https://cli.github.com/):
+  ```
+  gh auth login
+  gh extension install github/gh-copilot
+  ```
+
+## Setup
+
+1. Unzip this package to a folder of your choice.
+2. Open a terminal in that folder.
+3. Start the server:
+
+   **Windows:**
+   ```
+   start.cmd
+   ```
+   To also open the portal automatically in your browser:
+   ```
+   start-and-launch.cmd
+   ```
+
+   **Mac / Linux:**
+   ```
+   sh start.sh
+   ```
+   To also open the portal automatically in your browser:
+   ```
+   sh start-and-launch.sh
+   ```
+
+   Or directly:
+   ```
+   node dist/server.js
+   node dist/server.js --launch
+   ```
+
+4. The console will print a URL and QR code, e.g.:
+   ```
+   Open: http://192.168.1.42:3847?token=abc123...
+   ```
+   Open that URL in any browser on your local network.
+
+## Port
+
+The default port is `3847`. To use a different port, pass `--port`:
+
+```
+node dist/server.js --port 8080
+```
+
+## Security
+
+The URL includes a random access token generated on first run and saved to `data/token.txt`. Anyone with the URL can access your Copilot sessions, so keep it on a trusted local network.
+
+To rotate the token (invalidate existing URLs), delete `data/token.txt` and restart the server — a new token will be generated automatically.
+
+## Stopping the server
+
+Press `Ctrl+C` in the terminal.
