@@ -36,8 +36,11 @@ export class RulesStore {
 				return baseCmd ? `${baseCmd} *` : cmd;
 			}
 			case 'read':
-			case 'write':
-				return r.path ?? req.kind;
+			case 'write': {
+				const filePath = r.path ?? req.kind;
+				const dir = path.dirname(filePath);
+				return dir && dir !== '.' ? path.join(dir, '*') : filePath;
+			}
 			case 'mcp': {
 				const server = r.serverName ?? '*';
 				const tool = r.toolName ?? '*';
@@ -102,9 +105,16 @@ export class RulesStore {
 					break;
 				}
 				case 'read':
-				case 'write':
+				case 'write': {
 					if (rule.pattern === r.path) return rule;
+					// dir\* pattern — match any file directly in that directory
+					const dirWildcard = path.sep + '*';
+					if (rule.pattern.endsWith(dirWildcard)) {
+						const dir = rule.pattern.slice(0, -dirWildcard.length);
+						if (r.path && path.dirname(r.path) === dir) return rule;
+					}
 					break;
+				}
 				case 'mcp': {
 					const [ruleServer, ruleTool] = rule.pattern.split('/');
 					if ((ruleServer === '*' || ruleServer === r.serverName) &&

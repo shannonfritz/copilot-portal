@@ -274,6 +274,45 @@ function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: stri
 	);
 }
 
+function ToolEventBox({ tc }: { tc: ToolEvent }) {
+	const [expanded, setExpanded] = useState(false);
+	if (tc.type === 'tool_output') return null;
+	if (tc.type === 'intent') return (
+		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple, #c586c0)' }}>
+			<span>●</span><span>{tc.content}</span>
+		</div>
+	);
+	const isComplete = tc.type === 'tool_complete';
+	const isFailed = isComplete && tc.content === 'failed';
+	const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
+	const borderColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
+	const bgColor = isFailed ? 'rgba(244,135,113,0.08)' : isComplete ? 'rgba(78,201,176,0.08)' : 'rgba(220,220,170,0.08)';
+	const textColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
+	const hasDetail = !!(tc.displayLabel || tc.content);
+	return (
+		<div className="mb-2 rounded-lg border text-xs" style={{ borderColor, background: bgColor }}>
+			<div
+				className="flex items-center gap-1.5 p-3 font-medium"
+				style={{ color: textColor, cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
+				onClick={() => hasDetail && setExpanded(e => !e)}
+			>
+				<span>{isFailed ? '✗' : isComplete ? '✅' : '⚙️'}</span>
+				<span className="flex-1">{isFailed ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
+				{hasDetail && <span style={{ fontSize: '10px', opacity: 0.6 }}>{expanded ? '▾' : '▸'}</span>}
+			</div>
+			{expanded && hasDetail && (
+				<div className="border-t px-3 pb-3 pt-2" style={{ borderColor, color: 'var(--text-muted)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '11px' }}>
+					{tc.displayLabel && <div className="mb-1 font-medium" style={{ color: textColor }}>{tc.displayLabel}</div>}
+					{tc.content && (() => {
+						try { return JSON.stringify(JSON.parse(tc.content), null, 2); }
+						catch { return tc.content; }
+					})()}
+				</div>
+			)}
+		</div>
+	);
+}
+
 function SessionDrawer({
 	open,
 	onToggle,
@@ -1574,38 +1613,9 @@ export default function App() {
 						);
 					})}
 
-					{toolEvents.map((tc) => {
-						if (tc.type === 'intent') {
-							return (
-								<div key={tc.id} className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple, #c586c0)' }}>
-									<span>●</span>
-									<span>{tc.content}</span>
-								</div>
-							);
-						}
-						if (tc.type === 'tool_output') return null;
-						const isComplete = tc.type === 'tool_complete';
-						const isFailed = isComplete && tc.content === 'failed';
-						const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
-						return (
-							<div
-								key={tc.id}
-								className="mb-2 rounded-lg border p-3 text-xs"
-								style={{
-									borderColor: isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)',
-									background: isFailed ? 'rgba(244,135,113,0.08)' : isComplete ? 'rgba(78,201,176,0.08)' : 'rgba(220,220,170,0.08)',
-								}}
-							>
-								<div
-									className="flex items-center gap-1.5 font-medium"
-									style={{ color: isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)' }}
-								>
-									<span>{isFailed ? '✗' : isComplete ? '✅' : '⚙️'}</span>
-									<span>{isFailed ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
-								</div>
-							</div>
-						);
-					})}
+					{toolEvents.map((tc) => (
+						<ToolEventBox key={tc.id} tc={tc} />
+					))}
 
 					{reasoningText && isThinking && (
 						<ThoughtBubble reasoning={reasoningText} defaultExpanded />
