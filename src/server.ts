@@ -372,7 +372,7 @@ export class PortalServer {
 			const indexPath = path.join(this.webuiPath, 'index.html');
 			fs.readFile(indexPath, 'utf8', (err, html) => {
 				if (err) { res.writeHead(404); res.end('Web UI not built.'); return; }
-				res.writeHead(200, { 'Content-Type': 'text/html' });
+				res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
 				res.end(html);
 			});
 			return;

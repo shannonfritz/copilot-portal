@@ -231,13 +231,18 @@ function CopyRichButton({ htmlRef }: { htmlRef: React.RefObject<HTMLDivElement |
 	);
 }
 
-function AssistantMessageBlock({ content, timestamp }: { content: string; timestamp: number }) {
+function AssistantMessageBlock({ content, timestamp, bytes }: { content: string; timestamp: number; bytes?: number }) {
 	const htmlRef = useRef<HTMLDivElement>(null);
 	return (
 		<>
 			<div ref={htmlRef}><AssistantMarkdown content={content} /></div>
 			<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 				<span>{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+				{bytes != null && bytes > 0 && (
+					<span className="font-mono tabular-nums">
+						{bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KiB`}
+					</span>
+				)}
 				<div className="flex items-center gap-1">
 					<CopyRichButton htmlRef={htmlRef} />
 					<CopyButton text={content} />
@@ -905,12 +910,14 @@ export default function App() {
 					const summary = buildToolSummary(toolEventsRef.current);
 					// Commit any buffered message as the final reply
 					if (pendingMsgRef.current) {
-						const msg = { ...pendingMsgRef.current, toolSummary: summary.length ? summary : undefined };
+						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
+						const msg = { ...pendingMsgRef.current, toolSummary: summary.length ? summary : undefined, bytes: pendingBytes };
 						pendingMsgRef.current = null;
 						setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
 					}
 					const final = streamingRef.current;
 					if (final) {
+						const finalBytes = new TextEncoder().encode(final).length;
 						lastStreamedRef.current = final;
 						setMessages((prev) => {
 							if (prev.some(m => m.role === 'assistant' && m.content === final)) return prev;
@@ -922,6 +929,7 @@ export default function App() {
 									content: final,
 									reasoning: reasoningRef.current || undefined,
 									toolSummary: summary.length ? summary : undefined,
+									bytes: finalBytes,
 									timestamp: Date.now(),
 								},
 							];
@@ -1620,7 +1628,7 @@ export default function App() {
 									</details>
 								)}
 								{msg.role === 'assistant'
-									? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} />
+									? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} bytes={msg.bytes} />
 									: <>
 										<div className="whitespace-pre-wrap break-words">{msg.content}</div>
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
