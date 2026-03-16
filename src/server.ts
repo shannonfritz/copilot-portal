@@ -1,4 +1,4 @@
-import * as http from 'node:http';
+﻿import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -152,11 +152,14 @@ export class PortalServer {
 				if (cancelled) return;
 				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
-				for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
+				const activeTurnEvents = handle.getActiveTurnEvents();
+				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (isTurnActive=' + handle.turnActive + ')');
+				for (const e of activeTurnEvents) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
-				// Send current approval rules for this session
+				// Send current approval rules and approveAll state for this session
 				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
+				ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: handle.getApproveAll() }));
 			}).catch((e) => this.log(`[${clientId}] History error: ${e}`));
 
 			// Keep-alive ping every 30s
@@ -216,6 +219,9 @@ export class PortalServer {
 			} else if (msg.type === 'rules_clear') {
 				handle.clearRules();
 				this.log(`[${clientId}] Rules cleared`);
+			} else if (msg.type === 'set_approve_all' && msg.approveAll != null) {
+				handle.setApproveAll(!!msg.approveAll);
+				this.log(`[${clientId}] approveAll: ${msg.approveAll}`);
 			} else if (msg.type === 'input_response' && msg.requestId != null) {
 				handle.resolveUserInput(msg.requestId, msg.answer ?? '', msg.wasFreeform ?? true);
 			} else {

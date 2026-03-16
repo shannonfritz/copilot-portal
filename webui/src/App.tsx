@@ -293,7 +293,11 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		const timer = setInterval(() => setElapsed(Math.floor((Date.now() - tc.timestamp) / 1000)), 1000);
 		return () => clearInterval(timer);
 	}, [tc.type, tc.timestamp]);
-	if (tc.type === 'tool_output') return null;
+	if (tc.type === 'tool_output') return (
+		<div className="mb-1 rounded-lg border px-3 py-2 text-xs font-mono" style={{ borderColor: 'var(--border)', background: 'rgba(128,128,160,0.06)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', overflowY: 'auto' }}>
+			{tc.content}
+		</div>
+	);
 	if (tc.type === 'intent') return (
 		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple, #c586c0)' }}>
 			<span>●</span><span>{tc.content}</span>
@@ -490,6 +494,7 @@ export default function App() {
 	const [thinkingText, setThinkingText] = useState('');
 	const [reasoningText, setReasoningText] = useState('');
 	const [error, setError] = useState<string | null>(null);
+	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string } | null>(null);
 	const [input, setInput] = useState('');
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
@@ -508,6 +513,7 @@ export default function App() {
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
 	const [freeformAnswer, setFreeformAnswer] = useState('');
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
+	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
@@ -581,6 +587,7 @@ export default function App() {
 		setActiveSessionSummary(null);
 		setPendingInput(null);
 		setRules([]);
+		setApproveAll(false);
 		const params = new URLSearchParams(window.location.search);
 		params.delete('session');
 		params.delete('all');
@@ -848,15 +855,24 @@ export default function App() {
 					// Message synced from CLI activity — dedup against locally-added messages
 					const role = event.role === 'user' ? 'user' : 'assistant';
 					const content = event.content ?? '';
-					const intermediate = event.intermediate || undefined;
 					if (content) {
 						setMessages((prev) => {
 							if (prev.some(m => m.role === role && m.content === content)) return prev;
-							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now(), intermediate }];
+							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now() }];
 						});
-						// A new user message from CLI means a new turn is starting — clear tool events
-						if (role === 'user') { setToolEvents([]); lastStreamedRef.current = ''; }
-						if (role === 'user') isCliTurnRef.current = true;
+						if (role === 'user') {
+							// CLI turn starting — show thinking indicator
+							setToolEvents([]); lastStreamedRef.current = '';
+							isCliTurnRef.current = true;
+							setIsThinking(true);
+						} else if (role === 'assistant') {
+							// CLI turn produced a reply — clear thinking
+							setIsThinking(false);
+							setThinkingText('');
+							isCliTurnRef.current = false;
+							setCliApprovalInfo(null);
+							if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
+						}
 					}
 				} else if (event.type === 'message_end') {
 					// Buffer this message — we'll know if it's intermediate (more tools follow)
@@ -989,6 +1005,9 @@ export default function App() {
 					setIsStreaming(false);
 					setIsThinking(false);
 					setIsStopping(false);
+				} else if (event.type === 'warning' || event.type === 'info') {
+					setNotification({ type: event.type, message: event.content ?? '' });
+					setTimeout(() => setNotification(null), 8000);
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
@@ -1000,6 +1019,8 @@ export default function App() {
 					setPendingInput(event.inputRequest);
 				} else if (event.type === 'rules_list') {
 					setRules(event.rules ?? []);
+				} else if (event.type === 'approve_all_changed') {
+					setApproveAll(event.approveAll ?? false);
 				}
 			} catch {}
 		};
@@ -1195,6 +1216,12 @@ export default function App() {
 		wsRef.current?.send(JSON.stringify({ type: 'rules_clear' }));
 	}, []);
 
+	const toggleApproveAll = useCallback(() => {
+		const next = !approveAll;
+		setApproveAll(next);
+		wsRef.current?.send(JSON.stringify({ type: 'set_approve_all', approveAll: next }));
+	}, [approveAll]);
+
 	const respondInput = useCallback((answer: string, wasFreeform: boolean) => {
 		if (!pendingInput) return;
 		wsRef.current?.send(JSON.stringify({ type: 'input_response', requestId: pendingInput.requestId, answer, wasFreeform }));
@@ -1291,6 +1318,28 @@ export default function App() {
 									Clear All
 								</button>
 							)}
+						</div>
+
+						{/* Approve All toggle */}
+						<div
+							className="mb-3 flex items-center justify-between rounded-xl px-3 py-2.5"
+							style={{ background: approveAll ? 'rgba(78,201,176,0.12)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : 'var(--border)'}` }}
+						>
+							<div>
+								<div className="text-sm font-medium">Auto-approve all (yolo)</div>
+								<div className="text-xs" style={{ color: 'var(--text-muted)' }}>Skip all permission prompts</div>
+							</div>
+							<button
+								type="button"
+								onClick={toggleApproveAll}
+								className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
+								style={{ background: approveAll ? 'var(--success)' : 'var(--text-muted)' }}
+							>
+								<span
+									className="pointer-events-none inline-block size-5 rounded-full bg-white shadow transition-transform"
+									style={{ transform: approveAll ? 'translateX(1.25rem)' : 'translateX(0)' }}
+								/>
+							</button>
 						</div>
 						{rules.length === 0 ? (
 							<p className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -1520,10 +1569,10 @@ export default function App() {
 						</button>
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: rules.length > 0 ? 'var(--primary)' : undefined }}
+							style={{ background: approveAll ? 'rgba(78,201,176,0.15)' : rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined }}
 							onClick={() => setShowRules(v => !v)}
 							type="button"
-							title={`Always-allow rules (${rules.length})`}
+							title={approveAll ? 'Auto-approve all (yolo) enabled' : `Always-allow rules (${rules.length})`}
 						>
 							{rules.length > 0 ? (
 								<span className="flex items-center gap-1">
@@ -1702,6 +1751,19 @@ export default function App() {
 						</div>
 					)}
 
+					{notification && (
+						<div
+							className="mb-2 rounded-xl px-4 py-3 text-sm"
+							style={{
+								background: notification.type === 'warning' ? 'rgba(230,180,60,0.12)' : 'rgba(100,160,255,0.12)',
+								border: `1px solid ${notification.type === 'warning' ? 'var(--warning, #e6b43c)' : 'var(--accent)'}`,
+								color: notification.type === 'warning' ? 'var(--warning, #e6b43c)' : 'var(--accent)',
+							}}
+						>
+							<strong>{notification.type === 'warning' ? '⚠ Warning:' : 'ℹ Info:'}</strong> {notification.message}
+						</div>
+					)}
+
 					{error && (
 						<div
 							className="mb-2 rounded-xl px-4 py-3 text-sm"
@@ -1715,7 +1777,7 @@ export default function App() {
 				</div>
 
 				{/* Pinned interaction zone — approval & input cards sit above the input bar */}
-				{(pendingApproval || pendingInput) && (
+				{(pendingApproval || pendingInput || cliApprovalInfo) && (
 					<div className="border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
 
 						{cliApprovalInfo && (

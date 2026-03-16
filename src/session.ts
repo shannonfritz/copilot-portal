@@ -21,7 +21,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -39,6 +39,7 @@ export interface PortalEvent {
 	mcpServerName?: string;
 	displayLabel?: string;
 	rules?: ApprovalRule[];
+	approveAll?: boolean;
 	summary?: string;
 	shielded?: boolean;
 	session?: unknown;
@@ -82,6 +83,7 @@ export class SessionHandle {
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
+	private approveAll = false;
 
 	// Active turn state — replayed to newly joining clients
 	private isTurnActive = false;
@@ -97,6 +99,10 @@ export class SessionHandle {
 	private tokensSinceCompaction = 0;
 	private static readonly COMPACT_TOKEN_THRESHOLD = 120_000; // ~80% of 150k context window
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
+
+	// Per-connection tool tracking — reset on each attachListeners() call
+	private deltasSent = false;
+	private toolsInFlight = 0;
 
 	constructor(
 		session: CopilotSession,
@@ -143,6 +149,16 @@ export class SessionHandle {
 		}
 	}
 
+	/** Called once on fresh pool connect — checks for pending CLI approvals. */
+	async checkInitialState(): Promise<void> {
+		try {
+			const msgs = await this.session.getMessages();
+			this.detectPendingCliApproval(msgs);
+		} catch (e) {
+			this.log('[Session] checkInitialState error: ' + e);
+		}
+	}
+
 	addListener(fn: (e: PortalEvent) => void): void {
 		this.isNew = false; // once a client connects, no longer considered brand-new
 		this.listeners.add(fn);
@@ -162,9 +178,9 @@ export class SessionHandle {
 	get listenerCount(): number { return this.listeners.size; }
 	get turnActive(): boolean { return this.isTurnActive; }
 
-	/** Events to send to a newly joining client to catch up on an in-progress turn. */
+	/** Events to send to a newly joining client to catch up on an in-progress PORTAL turn. */
 	getActiveTurnEvents(): PortalEvent[] {
-		if (!this.isTurnActive) return [];
+		if (!this.isTurnActive || !this.isPortalTurn) return [];
 		const events: PortalEvent[] = [];
 		if (this.activeUserMessage) events.push({ type: 'sync', role: 'user', content: this.activeUserMessage });
 		events.push({ type: 'thinking', content: '' });
@@ -247,7 +263,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private async pollForChanges(): Promise<void> {
-		if (this.listeners.size === 0 || this.isTurnActive || this.isReconnecting) return;
+		if (this.listeners.size === 0 || (this.isTurnActive && this.isPortalTurn) || this.isReconnecting) return;
 		// Never reconnect while approvals or inputs are pending — would orphan the promises
 		if (this.pendingApprovals.size > 0 || this.pendingInputs.size > 0) return;
 		void this.syncMessages();
@@ -281,39 +297,21 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			}
 			const newMsgs = interesting.slice(this.lastSyncedCount);
 			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${interesting.length})`);
-			// Broadcast assistant messages with intermediate flag where appropriate:
-			// all-but-last assistant.message in a round (between user messages) are
-			// intermediate "notes to self" — show as dashed thought boxes on the client.
-			const roundMsgs: string[] = [];
-			const flushRound = (allIntermediate = false) => {
-				for (let i = 0; i < roundMsgs.length; i++) {
-					const content = roundMsgs[i];
-					if (!content) continue;
-					const intermediate = allIntermediate || i < roundMsgs.length - 1;
-					this.broadcast({ type: 'sync', role: 'assistant', content, intermediate: intermediate || undefined });
-				}
-				roundMsgs.length = 0;
-			};
 			for (const msg of newMsgs) {
 				if (msg.type === 'user.message') {
-					flushRound();
 					const content = (msg.data as { content?: string })?.content ?? '';
-					if (content) this.broadcast({ type: 'sync', role: 'user', content });
+					if (content) {
+						this.broadcast({ type: 'sync', role: 'user', content });
+					}
 				} else if (msg.type === 'assistant.message') {
-					roundMsgs.push((msg.data as { content?: string })?.content ?? '');
+					const content = (msg.data as { content?: string })?.content ?? '';
+					// Skip empty assistant messages — SDK noise that causes false idle
+					if (content) {
+						this.broadcast({ type: 'sync', role: 'assistant', content });
+					}
 				}
 			}
-			flushRound(this.isTurnActive); // if turn still active, all are intermediate
 			this.lastSyncedCount = interesting.length;
-			// Signal thinking/idle to the UI based on what arrived
-			const lastNew = newMsgs[newMsgs.length - 1];
-			if (lastNew?.type === 'user.message') {
-				// User message arrived but no assistant yet — show thinking
-				this.broadcast({ type: 'thinking', content: '' });
-			} else if (lastNew?.type === 'assistant.message') {
-				// Assistant responded — clear thinking regardless of isTurnActive
-				this.broadcast({ type: 'idle' });
-			}
 		} catch (e) {
 			this.log(`[Sync] Error: ${e}`);
 		}
@@ -340,10 +338,10 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		try {
 			const gen = ++this.sessionGeneration;
 			const oldSession = this.session;
-			// One final check: if a turn became active in the brief window before we got here,
-			// the user.message live event already handled it — no need to reconnect.
-			if (this.isTurnActive) {
-				this.log('[Sync] Turn became active, skipping CLI reconnect');
+			// One final check: if a PORTAL turn became active in the brief window before we
+			// got here, the live event already handled it — no need to reconnect.
+			if (this.isTurnActive && this.isPortalTurn) {
+				this.log('[Sync] Portal turn active, skipping CLI reconnect');
 				this.sessionGeneration--; // undo gen bump
 				return;
 			}
@@ -368,6 +366,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const msgs = await this.session.getMessages();
 			this.log(`[Sync] Post-reconnect getMessages: ${msgs.length} (lastSyncedCount=${this.lastSyncedCount})`);
 			await this.syncMessages();
+			// Check for pending CLI approvals missed during reconnect
+			this.detectPendingCliApproval(msgs);
 			// Check if title changed (e.g. /rename from CLI — doesn't fire session.title_changed)
 			void this.titleChangedCallback?.();
 			// Re-broadcast any pending approvals/inputs in case reconnect disrupted the UI state
@@ -515,6 +515,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	handlePermissionRequest(req: PermissionRequest): Promise<PermissionRequestResult> {
 		const requestId = `approval-${++this.counter}`;
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
+
+		// approveAll mode — instant approval, no UI
+		if (this.approveAll) {
+			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
+			return Promise.resolve({ kind: 'approved' });
+		}
 		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
 		const alwaysPattern = RulesStore.computePattern(req);
@@ -581,6 +587,27 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		return this.rulesStore?.getRules(this.sessionId) ?? [];
 	}
 
+	getApproveAll(): boolean {
+		return this.approveAll;
+	}
+
+	setApproveAll(enabled: boolean): void {
+		this.approveAll = enabled;
+		this.log(`[Session] approveAll ${enabled ? 'enabled' : 'disabled'}`);
+		this.broadcast({ type: 'approve_all_changed', approveAll: enabled });
+		if (enabled) {
+			// Auto-resolve any queued approvals
+			for (const [id, p] of this.pendingApprovals) {
+				clearTimeout(p.timeout);
+				this.pendingApprovals.delete(id);
+				if (this.activeApprovalId === id) this.activeApprovalId = null;
+				p.resolve({ kind: 'approved' });
+				this.broadcast({ type: 'approval_resolved', requestId: id });
+			}
+			this.broadcastNextApproval();
+		}
+	}
+
 	handleUserInputRequest(req: UserInputRequest): Promise<UserInputResponse> {
 		const requestId = `input-${++this.counter}`;
 		this.log(`[Session] Input request: "${req.question.slice(0, 80)}"`);
@@ -609,22 +636,32 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log('[Session] Probing turn status via getMessages()...');
 			try {
 				const msgs = await this.session.getMessages();
-				// Look for a session.idle event that occurred after our turn started
+				// Look for a turn-ending event after our turn started
 				const turnStartIso = new Date(this.turnStartTime).toISOString();
-				const idleAfterStart = msgs.some(
-					(m) => m.type === 'session.idle' && m.timestamp > turnStartIso,
+				const turnEndedAfterStart = msgs.some(
+					(m) => (m.type === 'session.idle' || m.type === 'assistant.turn_end') && m.timestamp > turnStartIso,
 				);
-				if (idleAfterStart) {
-					this.log('[Session] Probe found session.idle — turn completed, clearing stuck state');
+				if (turnEndedAfterStart) {
+					this.log('[Session] Probe found turn completion — clearing stuck state');
 					this.isTurnActive = false;
+					this.isPortalTurn = false;
 					this.activeDeltaBuffer = '';
 					this.activeReasoningBuffer = '';
+					this.activeUserMessage = '';
 					this.broadcast({ type: 'idle' });
+					// Sync any messages the live listener missed (CLI turn responses)
+					await this.syncMessages();
 				} else {
 					this.log('[Session] Probe: turn still in progress, rescheduling probe');
 					// Re-broadcast pending approvals/inputs in case the client missed the original event
 					for (const e of this.getPendingApprovalEvents()) this.broadcast(e);
 					for (const e of this.getPendingInputEvents()) this.broadcast(e);
+					// Re-broadcast CLI approval banner or detect one from history
+					if (this.cliApprovalSummary) {
+						this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+					} else {
+						this.detectPendingCliApproval(msgs);
+					}
 					this.scheduleTurnProbe(gen, intervalMs);
 				}
 			} catch (e) {
@@ -634,182 +671,293 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}, intervalMs);
 	}
 
+	// --- Event handlers: one method per SDK event type ---
+
+	private onAssistantTurnStart(data: unknown, gen: number): void {
+		this.isTurnActive = true;
+		this.turnStartTime = Date.now();
+		this.activeDeltaBuffer = '';
+		this.activeReasoningBuffer = '';
+		// Start a probe timer: if session.idle never fires (CLI crash, dropped connection),
+		// periodically query getMessages() for a session.idle event newer than turn start.
+		// If found → we missed idle, clear state. If not found → still running, reschedule.
+		this.scheduleTurnProbe(gen);
+		this.broadcast({ type: 'thinking', content: '' });
+	}
+
+	private onUserMessage(data: unknown): void {
+		const content = (data as { content?: string })?.content ?? '';
+		if (content) {
+			this.activeUserMessage = content;
+			this.activeDeltaBuffer = '';
+			this.activeReasoningBuffer = '';
+			this.broadcast({ type: 'sync', role: 'user', content });
+		}
+	}
+
+	private onAssistantIntent(data: unknown): void {
+		const intent = (data as { intent?: string }).intent ?? '';
+		if (intent) this.broadcast({ type: 'intent', content: intent });
+	}
+
+	private onSessionTitleChanged(): void {
+		void this.syncMessages();
+		void this.titleChangedCallback?.();
+	}
+
+	private onAssistantReasoningDelta(data: unknown): void {
+		const delta = (data as { deltaContent?: string }).deltaContent ?? '';
+		if (delta) {
+			this.activeReasoningBuffer += delta;
+			this.broadcast({ type: 'reasoning_delta', content: delta });
+		}
+	}
+
+	private onAssistantMessageDelta(data: unknown): void {
+		const delta = (data as { deltaContent?: string }).deltaContent ?? '';
+		if (delta) {
+			this.deltasSent = true;
+			this.activeDeltaBuffer += delta;
+			this.broadcast({ type: 'delta', content: delta });
+		}
+	}
+
+	private onAssistantMessage(data: unknown): void {
+		const content = (data as { content?: string }).content ?? '';
+		this.log(`[Session] Assistant message: ${content.slice(0, 200)}`);
+		// Accumulate estimated tokens (chars/4) for proactive compaction
+		this.tokensSinceCompaction += Math.ceil(content.length / 4);
+		if (!this.deltasSent && content) {
+			// No deltas were streamed — send the full content as a single delta first
+			this.broadcast({ type: 'delta', content });
+		}
+		// Always commit this message on the client, whether it arrived via deltas or as a blob
+		this.broadcast({ type: 'message_end' });
+		this.deltasSent = false;
+	}
+
+	private onToolExecutionStart(data: unknown): void {
+		this.toolsInFlight++;
+		const d = data as { toolCallId?: string; toolName?: string; mcpServerName?: string; arguments?: unknown };
+		this.log(`[Session] Tool start (${this.toolsInFlight} in flight): ${d.toolName}`);
+		const args = (d.arguments ?? {}) as Record<string, unknown>;
+		const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
+		const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
+		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args) });
+	}
+
+	private onToolExecutionComplete(data: unknown): void {
+		this.toolsInFlight = Math.max(0, this.toolsInFlight - 1);
+		const d = data as { toolCallId?: string; success?: boolean };
+		this.log(`[Session] Tool complete (${this.toolsInFlight} remaining): ${d.toolCallId}`);
+		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
+	}
+
+	private onSubagentStarted(data: unknown): void {
+		const d = data as { toolCallId: string; agentDisplayName: string };
+		this.broadcast({ type: 'tool_update', toolCallId: d.toolCallId, displayLabel: d.agentDisplayName });
+	}
+
+	private onSubagentFailed(data: unknown): void {
+		const d = data as { toolCallId: string };
+		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: 'failed' });
+	}
+
+	private onToolExecutionPartialResult(data: unknown): void {
+		const d = data as { toolCallId?: string; output?: string };
+		if (d.output) this.broadcast({ type: 'tool_call', toolCallId: d.toolCallId, content: d.output });
+	}
+
+	private onSessionResume(): void {
+		this.log('[Session] session.resume — connection re-established');
+	}
+
+	private onSessionError(data: unknown): void {
+		const d = data as { statusCode?: number; message?: string };
+		this.log(`[Session] Error: ${d.message ?? JSON.stringify(d)}`);
+		this.isTurnActive = false;
+		this.isPortalTurn = false;
+		this.activeUserMessage = '';
+		this.activeDeltaBuffer = '';
+		this.activeReasoningBuffer = '';
+		this.broadcast({ type: 'error', content: d.message ?? 'Unknown error' });
+	}
+
+	private onSessionCompactionComplete(data: unknown): void {
+		const d = data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number } };
+		this.tokensSinceCompaction = d.postCompactionTokens ?? d.compactionTokensUsed?.output ?? 0;
+		this.log(`[Session] Compaction complete — token baseline: ${this.tokensSinceCompaction}`);
+	}
+
+	private onSessionIdle(): void {
+		this.isTurnActive = false;
+		if (this.turnProbeTimer) { clearTimeout(this.turnProbeTimer); this.turnProbeTimer = null; }
+		this.activeDeltaBuffer = '';
+		this.activeReasoningBuffer = '';
+		// Clear any lingering CLI approval banner
+		if (this.cliApprovalSummary) {
+			this.cliApprovalSummary = null;
+			this.broadcast({ type: 'cli_approval_resolved' });
+		}
+		if (this.toolsInFlight > 0) {
+			this.log(`[Event] session.idle with ${this.toolsInFlight} tools still in flight — resetting counter`);
+			this.toolsInFlight = 0;
+		}
+		this.activeUserMessage = '';
+		this.broadcast({ type: 'idle' });
+		if (this.isPortalTurn) {
+			// Portal turn: client already has all content from the delta stream.
+			// Just advance the sync cursor so polls don't re-broadcast these messages.
+			this.isPortalTurn = false;
+			void this.advanceSyncCount();
+		} else {
+			void this.syncMessages();
+		}
+		// Re-seed modTime so the turn's messages don't trigger a spurious CLI reconnect
+		if (this.getModTimeFn) {
+			this.getModTimeFn().then(t => { if (t) this.lastKnownModTime = t; }).catch(() => {});
+		}
+	}
+
+	/** Extract a CLI approval description from permission event data. */
+	private static describePermission(data: unknown): string {
+		const d = data as {
+			kind?: string; fullCommandText?: string; intention?: string;
+			path?: string; url?: string; toolName?: string; subject?: string;
+		};
+		const desc = d.fullCommandText ?? d.path ?? d.url ?? d.intention ?? d.subject ?? d.toolName ?? d.kind ?? 'tool';
+		const kind = d.kind ?? 'tool';
+		return `${kind}: ${desc}`;
+	}
+
+	private onPermissionRequested(data: unknown): void {
+		// CLI turn waiting for tool approval — portal can't approve, but inform the user
+		if (!this.isPortalTurn) {
+			this.cliApprovalSummary = SessionHandle.describePermission(data);
+			this.log(`[Session] CLI waiting for approval: ${this.cliApprovalSummary}`);
+			this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+		}
+	}
+
+	/** Scan message history for an unresolved permission.requested event.
+	 *  Called after reconnect / initial connect to catch approvals the live listener missed. */
+	private detectPendingCliApproval(msgs: Array<{type: string; data?: unknown}>): void {
+		if (this.isPortalTurn || this.cliApprovalSummary) return;
+		for (let i = msgs.length - 1; i >= 0; i--) {
+			const m = msgs[i];
+			if (m.type === 'permission.completed' || m.type === 'session.idle') break;
+			if (m.type === 'permission.requested') {
+				this.cliApprovalSummary = SessionHandle.describePermission(m.data);
+				this.log(`[Sync] Detected pending CLI approval from history: ${this.cliApprovalSummary}`);
+				this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+				break;
+			}
+		}
+	}
+
+	private onPermissionCompleted(data: unknown): void {
+		this.log(`[Session] Permission completed: ${JSON.stringify(data).slice(0, 200)}`);
+		// Clear CLI approval banner (set by permission.requested, or used as a dismissal signal)
+		if (this.cliApprovalSummary) {
+			this.cliApprovalSummary = null;
+			this.broadcast({ type: 'cli_approval_resolved' });
+		} else if (!this.isPortalTurn && this.pendingCompletionCount === 0) {
+			// CLI turn: tool was just approved at the terminal — dismiss any hint the client is showing
+			this.broadcast({ type: 'cli_approval_resolved' });
+		}
+		if (this.pendingCompletionCount > 0) {
+			// This completion is for an approval already resolved by the portal (or timed out).
+			// activeApprovalId has already advanced to the next queued approval — don't touch it.
+			this.pendingCompletionCount--;
+			this.log(`[Session] permission.completed for portal-resolved approval (${this.pendingCompletionCount} remaining)`);
+		} else {
+			// External resolution (e.g. CLI client) — clear the active approval now.
+			if (this.activeApprovalId && this.pendingApprovals.has(this.activeApprovalId)) {
+				const p = this.pendingApprovals.get(this.activeApprovalId)!;
+				clearTimeout(p.timeout);
+				this.pendingApprovals.delete(this.activeApprovalId);
+				this.broadcast({ type: 'approval_resolved', requestId: this.activeApprovalId });
+				this.log(`[Session] Cleared portal approval ${this.activeApprovalId} (resolved externally)`);
+			}
+			this.activeApprovalId = null;
+			this.broadcastNextApproval();
+		}
+	}
+
+	private onSessionWarning(data: unknown): void {
+		const d = data as { message?: string };
+		const msg = d.message ?? JSON.stringify(d);
+		this.log(`[Session] Warning: ${msg}`);
+		this.broadcast({ type: 'warning', content: msg });
+	}
+
+	private onSessionInfo(data: unknown): void {
+		const d = data as { message?: string };
+		const msg = d.message ?? JSON.stringify(d);
+		this.log(`[Session] Info: ${msg}`);
+		this.broadcast({ type: 'info', content: msg });
+	}
+
+	private onModelChange(data: unknown): void {
+		const d = data as { modelId?: string };
+		if (d.modelId) {
+			this.currentModel = d.modelId;
+			this.log(`[Session] Model changed: ${d.modelId}`);
+			this.broadcast({ type: 'model_changed', content: d.modelId });
+		}
+	}
+
+	private onSubagentCompleted(data: unknown): void {
+		const d = data as { name?: string; toolCallId?: string };
+		this.log(`[Session] Subagent completed: ${d.name ?? 'unknown'}`);
+		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId ?? '', content: `Subagent ${d.name ?? 'task'} completed` });
+	}
+
+	private onAssistantTurnEnd(): void {
+		// assistant.turn_end fires between tool rounds — NOT a definitive session end.
+		// Only session.idle signals the entire conversation turn is done.
+		// Log it for observability but do NOT clear turn state.
+		this.log('[Session] assistant.turn_end (informational — waiting for session.idle)');
+	}
+
+	// --- Event dispatch ---
+
+	/** Maps SDK event types to handler methods. */
+	private readonly eventHandlers: Record<string, (data: unknown, gen: number) => void> = {
+		'assistant.turn_start':             (d, gen) => this.onAssistantTurnStart(d, gen),
+		'user.message':                     (d) => this.onUserMessage(d),
+		'assistant.intent':                 (d) => this.onAssistantIntent(d),
+		'session.title_changed':            () => this.onSessionTitleChanged(),
+		'assistant.reasoning_delta':        (d) => this.onAssistantReasoningDelta(d),
+		'assistant.message_delta':          (d) => this.onAssistantMessageDelta(d),
+		'assistant.message':                (d) => this.onAssistantMessage(d),
+		'tool.execution_start':             (d) => this.onToolExecutionStart(d),
+		'tool.execution_complete':          (d) => this.onToolExecutionComplete(d),
+		'subagent.started':                 (d) => this.onSubagentStarted(d),
+		'subagent.failed':                  (d) => this.onSubagentFailed(d),
+		'tool.execution_partial_result':    (d) => this.onToolExecutionPartialResult(d),
+		'session.resume':                   () => this.onSessionResume(),
+		'session.error':                    (d) => this.onSessionError(d),
+		'session.compaction_complete':      (d) => this.onSessionCompactionComplete(d),
+		'session.idle':                     () => this.onSessionIdle(),
+		'permission.requested':             (d) => this.onPermissionRequested(d),
+		'permission.completed':             (d) => this.onPermissionCompleted(d),
+		'session.warning':                  (d) => this.onSessionWarning(d),
+		'session.info':                     (d) => this.onSessionInfo(d),
+		'session.model_change':             (d) => this.onModelChange(d),
+		'subagent.completed':               (d) => this.onSubagentCompleted(d),
+		'assistant.turn_end':               () => this.onAssistantTurnEnd(),
+	};
+
 	private attachListeners(): void {
 		const gen = this.sessionGeneration;
-		let deltasSent = false;
-		let toolsInFlight = 0;
+		this.deltasSent = false;
+		this.toolsInFlight = 0;
 		this.session.on((event) => {
 			if (this.sessionGeneration !== gen) return; // stale listener from old connection
 			this.log(`[Event] ${event.type}`);
-			if (event.type === 'assistant.turn_start') {
-				this.isTurnActive = true;
-				this.turnStartTime = Date.now();
-				this.activeDeltaBuffer = '';
-				this.activeReasoningBuffer = '';
-				// Start a probe timer: if session.idle never fires (CLI crash, dropped connection),
-				// periodically query getMessages() for a session.idle event newer than turn start.
-				// If found → we missed idle, clear state. If not found → still running, reschedule.
-				this.scheduleTurnProbe(gen);
-				this.broadcast({ type: 'thinking', content: '' });
-			} else if (event.type === 'user.message') {
-				// CLI sent a message — mark turn active immediately so getActiveTurnEvents()
-				// returns a thinking state for any client that connects before assistant.turn_start
-				const content = (event.data as { content?: string })?.content ?? '';
-				if (content) {
-					this.isTurnActive = true;
-					this.activeUserMessage = content;
-					this.activeDeltaBuffer = '';
-					this.activeReasoningBuffer = '';
-					this.broadcast({ type: 'sync', role: 'user', content });
-					this.broadcast({ type: 'thinking', content: '' });
-				}
-			} else if (event.type === 'assistant.intent') {
-				const intent = (event.data as { intent?: string }).intent ?? '';
-				if (intent) this.broadcast({ type: 'intent', content: intent });
-			} else if (event.type === 'session.title_changed') {
-				void this.syncMessages();
-				void this.titleChangedCallback?.();
-			} else if (event.type === 'assistant.reasoning_delta') {
-				const delta = (event.data as { deltaContent?: string }).deltaContent ?? '';
-				if (delta) {
-					this.activeReasoningBuffer += delta;
-					this.broadcast({ type: 'reasoning_delta', content: delta });
-				}
-			} else if (event.type === 'assistant.message_delta') {
-				const delta = (event.data as { deltaContent?: string }).deltaContent ?? '';
-				if (delta) {
-					deltasSent = true;
-					this.activeDeltaBuffer += delta;
-					this.broadcast({ type: 'delta', content: delta });
-				}
-			} else if (event.type === 'assistant.message') {
-				const content = (event.data as { content?: string }).content ?? '';
-				this.log(`[Session] Assistant message: ${content.slice(0, 200)}`);
-				// Accumulate estimated tokens (chars/4) for proactive compaction
-				this.tokensSinceCompaction += Math.ceil(content.length / 4);
-				if (!deltasSent && content) {
-					// No deltas were streamed — send the full content as a single delta first
-					this.broadcast({ type: 'delta', content });
-				}
-				// Always commit this message on the client, whether it arrived via deltas or as a blob
-				this.broadcast({ type: 'message_end' });
-				deltasSent = false;
-			} else if (event.type === 'tool.execution_start') {
-				toolsInFlight++;
-				const d = event.data as { toolCallId?: string; toolName?: string; mcpServerName?: string; arguments?: unknown };
-				this.log(`[Session] Tool start (${toolsInFlight} in flight): ${d.toolName}`);
-				const args = (d.arguments ?? {}) as Record<string, unknown>;
-				const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
-				const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
-				this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args) });
-			} else if (event.type === 'tool.execution_complete') {
-				toolsInFlight = Math.max(0, toolsInFlight - 1);
-				const d = event.data as { toolCallId?: string; success?: boolean };
-				this.log(`[Session] Tool complete (${toolsInFlight} remaining): ${d.toolCallId}`);
-				this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
-			} else if (event.type === 'subagent.started') {
-				const d = event.data as { toolCallId: string; agentDisplayName: string };
-				this.broadcast({ type: 'tool_update', toolCallId: d.toolCallId, displayLabel: d.agentDisplayName });
-			} else if (event.type === 'subagent.failed') {
-				const d = event.data as { toolCallId: string };
-				this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: 'failed' });
-			} else if (event.type === 'tool.execution_partial_result') {
-				const d = event.data as { toolCallId?: string; output?: string };
-				if (d.output) this.broadcast({ type: 'tool_call', toolCallId: d.toolCallId, content: d.output });
-			} else if (event.type === 'session.resume') {
-				this.log('[Session] session.resume — connection re-established');
-			} else if (event.type === 'session.error') {
-				const d = event.data as { statusCode?: number; message?: string };
-				this.log(`[Session] Error: ${d.message ?? JSON.stringify(d)}`);
-				this.isTurnActive = false;
-				this.isPortalTurn = false;
-				this.broadcast({ type: 'error', content: d.message ?? 'Unknown error' });
-			} else if (event.type === 'session.compaction_complete') {
-				const d = event.data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number } };
-				this.tokensSinceCompaction = d.postCompactionTokens ?? d.compactionTokensUsed?.output ?? 0;
-				this.log(`[Session] Compaction complete — token baseline: ${this.tokensSinceCompaction}`);
-			} else if (event.type === 'session.idle') {
-				this.isTurnActive = false;
-				if (this.turnProbeTimer) { clearTimeout(this.turnProbeTimer); this.turnProbeTimer = null; }
-				this.activeDeltaBuffer = '';
-				this.activeReasoningBuffer = '';
-				// Clear any lingering CLI approval banner
-				if (this.cliApprovalSummary) {
-					this.cliApprovalSummary = null;
-					this.broadcast({ type: 'cli_approval_resolved' });
-				}
-				if (toolsInFlight > 0) {
-					this.log(`[Event] session.idle with ${toolsInFlight} tools still in flight — resetting counter`);
-					toolsInFlight = 0;
-				}
-				// For CLI turns, guarantee the user message reaches all clients before idle —
-				// the live user.message broadcast can be lost if reconnectFromCli ran and discarded it.
-				if (!this.isPortalTurn && this.activeUserMessage) {
-					this.broadcast({ type: 'sync', role: 'user', content: this.activeUserMessage });
-				}
-				this.activeUserMessage = '';
-				this.broadcast({ type: 'idle' });
-				if (this.isPortalTurn) {
-					// Portal turn: client already has all content from the delta stream.
-					// Just advance the sync cursor so polls don't re-broadcast these messages.
-					this.isPortalTurn = false;
-					void this.advanceSyncCount();
-				} else {
-					void this.syncMessages();
-				}
-				// Re-seed modTime so the turn's messages don't trigger a spurious CLI reconnect
-				if (this.getModTimeFn) {
-					this.getModTimeFn().then(t => { if (t) this.lastKnownModTime = t; }).catch(() => {});
-				}
-			} else if (event.type === 'session.error') {
-				this.isTurnActive = false;
-				this.activeUserMessage = '';
-				this.activeDeltaBuffer = '';
-				this.activeReasoningBuffer = '';
-				const msg = (event.data as { message?: string })?.message ?? 'Unknown error';
-				this.log(`[Session] Error: ${msg}`);
-				this.broadcast({ type: 'error', content: msg });
-			} else if (event.type === 'permission.requested') {
-				// CLI turn waiting for tool approval — portal can't approve, but inform the user
-				if (!this.isPortalTurn) {
-					const d = event.data as {
-						kind?: string; fullCommandText?: string; intention?: string;
-						path?: string; url?: string; toolName?: string; subject?: string;
-					};
-					const desc = d.fullCommandText ?? d.path ?? d.url ?? d.intention ?? d.subject ?? d.toolName ?? d.kind ?? 'tool';
-					const kind = d.kind ?? 'tool';
-					this.cliApprovalSummary = `${kind}: ${desc}`;
-					this.log(`[Session] CLI waiting for approval: ${this.cliApprovalSummary}`);
-					this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
-				}
-			} else if (event.type === 'permission.completed') {
-				this.log(`[Session] Permission completed: ${JSON.stringify(event.data).slice(0, 200)}`);
-				// Clear CLI approval banner (set by permission.requested, or used as a dismissal signal)
-				if (this.cliApprovalSummary) {
-					this.cliApprovalSummary = null;
-					this.broadcast({ type: 'cli_approval_resolved' });
-				} else if (!this.isPortalTurn && this.pendingCompletionCount === 0) {
-					// CLI turn: tool was just approved at the terminal — dismiss any hint the client is showing
-					this.broadcast({ type: 'cli_approval_resolved' });
-				}
-				if (this.pendingCompletionCount > 0) {
-					// This completion is for an approval already resolved by the portal (or timed out).
-					// activeApprovalId has already advanced to the next queued approval — don't touch it.
-					this.pendingCompletionCount--;
-					this.log(`[Session] permission.completed for portal-resolved approval (${this.pendingCompletionCount} remaining)`);
-				} else {
-					// External resolution (e.g. CLI client) — clear the active approval now.
-					if (this.activeApprovalId && this.pendingApprovals.has(this.activeApprovalId)) {
-						const p = this.pendingApprovals.get(this.activeApprovalId)!;
-						clearTimeout(p.timeout);
-						this.pendingApprovals.delete(this.activeApprovalId);
-						this.broadcast({ type: 'approval_resolved', requestId: this.activeApprovalId });
-						this.log(`[Session] Cleared portal approval ${this.activeApprovalId} (resolved externally)`);
-					}
-					this.activeApprovalId = null;
-					this.broadcastNextApproval();
-				}
-			}
+			const handler = this.eventHandlers[event.type];
+			if (handler) handler(event.data, gen);
 		});
 	}
 }
@@ -933,6 +1081,8 @@ export class SessionPool {
 				}
 			} catch {}
 		};
+		// Check for pending CLI approvals before the first client receives getActiveTurnEvents()
+		await handle.checkInitialState();
 		return handle;
 	}
 
