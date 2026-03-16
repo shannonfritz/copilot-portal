@@ -708,6 +708,7 @@ export default function App() {
 							role: 'assistant',
 							content: streamingRef.current,
 							timestamp: historyTimestampRef.current ?? Date.now(),
+							bytes: new TextEncoder().encode(streamingRef.current).length,
 							fromHistory: true,
 						});
 						streamingRef.current = '';
@@ -777,6 +778,7 @@ export default function App() {
 								role: 'assistant',
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
+								bytes: new TextEncoder().encode(streamingRef.current).length,
 								fromHistory: true,
 							});
 							streamingRef.current = '';
@@ -799,6 +801,7 @@ export default function App() {
 								role: 'assistant',
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
+								bytes: new TextEncoder().encode(streamingRef.current).length,
 								fromHistory: true,
 								intermediate: event.intermediate || undefined,
 							});

@@ -270,6 +270,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const msgs = await this.session.getMessages();
 			const interesting = msgs.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message');
 			if (interesting.length <= this.lastSyncedCount) return;
+			// If lastSyncedCount is 0 (never seeded), this is our first look at the message list.
+			// We have no baseline to know which messages are truly "new", and history replay will
+			// deliver them all properly. Just seed the cursor and bail to avoid flooding clients
+			// with the entire session history as individual sync events.
+			if (this.lastSyncedCount === 0) {
+				this.lastSyncedCount = interesting.length;
+				this.log(`[Sync] Seeded lastSyncedCount=${this.lastSyncedCount} (skipping initial broadcast)`);
+				return;
+			}
 			const newMsgs = interesting.slice(this.lastSyncedCount);
 			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${interesting.length})`);
 			for (const msg of newMsgs) {
