@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -668,6 +668,8 @@ export default function App() {
 					toolCallId?: string;
 					mcpServerName?: string;
 					displayLabel?: string;
+					intermediate?: boolean;
+					role?: string;
 				};
 
 				if (event.type === 'history_meta') {
@@ -823,8 +825,6 @@ export default function App() {
 					} else {
 						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						setCliApprovalInfo(null);
-						setIsThinking(false);
-						setThinkingText('');
 						setIsStreaming(true);
 					}
 				} else if (event.type === 'thinking') {
@@ -846,13 +846,13 @@ export default function App() {
 					}
 				} else if (event.type === 'sync') {
 					// Message synced from CLI activity — dedup against locally-added messages
-					const syncEvent = event as typeof event & { role?: string };
-					const role = syncEvent.role === 'user' ? 'user' : 'assistant';
+					const role = event.role === 'user' ? 'user' : 'assistant';
 					const content = event.content ?? '';
+					const intermediate = event.intermediate || undefined;
 					if (content) {
 						setMessages((prev) => {
 							if (prev.some(m => m.role === role && m.content === content)) return prev;
-							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now() }];
+							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now(), intermediate }];
 						});
 						// A new user message from CLI means a new turn is starting — clear tool events
 						if (role === 'user') { setToolEvents([]); lastStreamedRef.current = ''; }

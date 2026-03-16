@@ -281,11 +281,29 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			}
 			const newMsgs = interesting.slice(this.lastSyncedCount);
 			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${interesting.length})`);
+			// Broadcast assistant messages with intermediate flag where appropriate:
+			// all-but-last assistant.message in a round (between user messages) are
+			// intermediate "notes to self" — show as dashed thought boxes on the client.
+			const roundMsgs: string[] = [];
+			const flushRound = (allIntermediate = false) => {
+				for (let i = 0; i < roundMsgs.length; i++) {
+					const content = roundMsgs[i];
+					if (!content) continue;
+					const intermediate = allIntermediate || i < roundMsgs.length - 1;
+					this.broadcast({ type: 'sync', role: 'assistant', content, intermediate: intermediate || undefined });
+				}
+				roundMsgs.length = 0;
+			};
 			for (const msg of newMsgs) {
-				const role = msg.type === 'user.message' ? 'user' : 'assistant';
-				const content = (msg.data as { content?: string })?.content ?? '';
-				if (content) this.broadcast({ type: 'sync', role, content });
+				if (msg.type === 'user.message') {
+					flushRound();
+					const content = (msg.data as { content?: string })?.content ?? '';
+					if (content) this.broadcast({ type: 'sync', role: 'user', content });
+				} else if (msg.type === 'assistant.message') {
+					roundMsgs.push((msg.data as { content?: string })?.content ?? '');
+				}
 			}
+			flushRound(this.isTurnActive); // if turn still active, all are intermediate
 			this.lastSyncedCount = interesting.length;
 			// Signal thinking/idle to the UI based on what arrived
 			const lastNew = newMsgs[newMsgs.length - 1];
