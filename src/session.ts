@@ -25,6 +25,7 @@ export interface PortalEvent {
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
+	timestamp?: number; // ms epoch — set on history events if the SDK provides it
 	total?: number;
 	shown?: number;
 	requestId?: string;
@@ -180,6 +181,9 @@ export class SessionHandle {
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
 		const events = await this.session.getMessages();
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
+		// Log the first user.message event to inspect available timestamp fields
+		const firstMsg = events.find((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
+		if (firstMsg) this.log(`[History] Event keys: ${JSON.stringify(Object.keys(firstMsg))} | sample: ${JSON.stringify(firstMsg).slice(0, 300)}`);
 		const relevantEvents = events.filter((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
 const total = relevantEvents.length;
 const slicedEvents = (limit != null && total > limit)
@@ -201,24 +205,30 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// Collect assistant messages per round (between user.messages) so we can
 		// mark all-but-last as intermediate (they were mid-turn "notes to self")
 		const roundMsgs: string[] = [];
+		const roundTimestamps: (number | undefined)[] = [];
 
 		const flushRound = (allIntermediate = false) => {
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				if (!content) continue;
 				const intermediate = allIntermediate || i < roundMsgs.length - 1;
-				result.push({ type: 'delta', content });
+				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
 				result.push({ type: 'idle', intermediate: intermediate || undefined });
 			}
 			roundMsgs.length = 0;
+			roundTimestamps.length = 0;
 		};
 
 		for (const e of slicedEvents) {
+			const raw = e as { type: string; data?: { content?: string }; createdAt?: number; timestamp?: string | number; ts?: number };
+			const tsRaw = raw.createdAt ?? raw.timestamp ?? raw.ts;
+			const ts = typeof tsRaw === 'string' ? new Date(tsRaw).getTime() : tsRaw;
 			if (e.type === 'user.message') {
 				flushRound();
-				result.push({ type: 'history_user', content: e.data?.content ?? '' });
+				result.push({ type: 'history_user', content: raw.data?.content ?? '', timestamp: ts });
 			} else if (e.type === 'assistant.message') {
-				roundMsgs.push(e.data?.content ?? '');
+				roundMsgs.push(raw.data?.content ?? '');
+				roundTimestamps.push(ts);
 			}
 		}
 		// If the turn is still active, every message in the last round is intermediate
@@ -478,8 +488,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	handlePermissionRequest(req: PermissionRequest): Promise<PermissionRequestResult> {
 		const requestId = `approval-${++this.counter}`;
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
-		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; url?: string; toolName?: string; subject?: string; intention?: string };
-		const summary = r.fullCommandText ?? r.path ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
+		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string };
+		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
 		const alwaysPattern = RulesStore.computePattern(req);
 
 		// Auto-approve if a matching rule exists

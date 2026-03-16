@@ -23,7 +23,7 @@ export class RulesStore {
 	static computePattern(req: PermissionRequest): string {
 		const r = req as PermissionRequest & {
 			fullCommandText?: string;
-			path?: string;
+			path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string;
 			url?: string;
 			toolName?: string;
 			serverName?: string;
@@ -37,7 +37,7 @@ export class RulesStore {
 			}
 			case 'read':
 			case 'write': {
-				const filePath = r.path ?? req.kind;
+				const filePath = r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? req.kind;
 				const dir = path.dirname(filePath);
 				return dir && dir !== '.' ? path.join(dir, '*') : filePath;
 			}
@@ -88,7 +88,7 @@ export class RulesStore {
 	matchesRequest(sessionId: string, req: PermissionRequest): ApprovalRule | null {
 		const r = req as PermissionRequest & {
 			fullCommandText?: string;
-			path?: string;
+			path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string;
 			url?: string;
 			toolName?: string;
 			serverName?: string;
@@ -106,12 +106,13 @@ export class RulesStore {
 				}
 				case 'read':
 				case 'write': {
-					if (rule.pattern === r.path) return rule;
+					const filePath = r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target;
+					if (rule.pattern === filePath) return rule;
 					// dir\* pattern — match any file directly in that directory
 					const dirWildcard = path.sep + '*';
 					if (rule.pattern.endsWith(dirWildcard)) {
 						const dir = rule.pattern.slice(0, -dirWildcard.length);
-						if (r.path && path.dirname(r.path) === dir) return rule;
+						if (filePath && path.dirname(filePath) === dir) return rule;
 					}
 					break;
 				}

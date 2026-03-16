@@ -470,7 +470,8 @@ function SessionDrawer({
 			)}
 		</div>
 	);
-}
+}
+
 
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
@@ -523,6 +524,7 @@ export default function App() {
 	const wsRef = useRef<WebSocket | null>(null);
 	const mgmtWsRef = useRef<WebSocket | null>(null);
 	const streamingRef = useRef('');
+	const historyTimestampRef = useRef<number | undefined>(undefined); // timestamp from last history delta event
 	const reasoningRef = useRef('');
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
@@ -705,7 +707,7 @@ export default function App() {
 							id: `hist-${Date.now()}-a`,
 							role: 'assistant',
 							content: streamingRef.current,
-							timestamp: Date.now(),
+							timestamp: historyTimestampRef.current ?? Date.now(),
 							fromHistory: true,
 						});
 						streamingRef.current = '';
@@ -774,31 +776,34 @@ export default function App() {
 								id: `hist-${Date.now()}-a`,
 								role: 'assistant',
 								content: streamingRef.current,
-								timestamp: Date.now(),
+								timestamp: historyTimestampRef.current ?? Date.now(),
 								fromHistory: true,
 							});
 							streamingRef.current = '';
+							historyTimestampRef.current = undefined;
 						}
 						historyBufferRef.current.push({
 							id: `hist-${Date.now()}-u`,
 							role: 'user',
 							content: event.content ?? '',
-							timestamp: Date.now(),
+							timestamp: event.timestamp ?? Date.now(),
 							fromHistory: true,
 						});
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';
+						if (event.timestamp) historyTimestampRef.current = event.timestamp;
 					} else if (event.type === 'idle') {
 						if (streamingRef.current) {
 							historyBufferRef.current.push({
 								id: `hist-${Date.now()}-a`,
 								role: 'assistant',
 								content: streamingRef.current,
-								timestamp: Date.now(),
+								timestamp: historyTimestampRef.current ?? Date.now(),
 								fromHistory: true,
 								intermediate: event.intermediate || undefined,
 							});
 							streamingRef.current = '';
+							historyTimestampRef.current = undefined;
 						}
 					}
 					return;
@@ -1431,18 +1436,23 @@ export default function App() {
 			>
 				<div className="flex items-center gap-2.5">
 					<svg className="size-8" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								{/* Original logo preserved as comment:
+								  Filled oval: <ellipse cx="8" cy="12" rx="7" ry="9.5" fill/stroke, rotate(20,8,12)>
+								*/}
 								<defs>
-									<clipPath id="pcp"><ellipse cx="8" cy="12" rx="7" ry="9.5" transform="rotate(20, 8, 12)"/></clipPath>
+									<clipPath id="pcpOuter"><ellipse cx="8" cy="12" rx="7.5" ry="10" transform="rotate(20, 8, 12)"/></clipPath>
 								</defs>
-								{/* Filled oval portal */}
-								<ellipse cx="8" cy="12" rx="7" ry="9.5" fill="currentColor" stroke="currentColor" strokeWidth="1.5" transform="rotate(20, 8, 12)"/>
-								{/* Dark halo — expanded rect clipped to oval, drawn before white window */}
-								<g clipPath="url(#pcp)">
+								{/* Outer ellipse — forms the ring body */}
+								<ellipse cx="8" cy="12" rx="7.5" ry="10" fill="currentColor" transform="rotate(20, 8, 12)"/>
+								{/* Inner ellipse punched out, offset right — left rim thicker (near), right rim thinner (far) */}
+								<ellipse cx="8.2" cy="13" rx="4.8" ry="7.8" fill="var(--bg)" transform="rotate(20, 8.2, 13)"/>
+								{/* Dark halo behind app rect */}
+								<g clipPath="url(#pcpOuter)">
 									<rect x="8" y="4" width="17" height="16" rx="2.5" fill="var(--bg)" stroke="none"/>
 								</g>
-								{/* White window on top — covers halo except around edges */}
-								<rect x="10" y="6" width="13" height="12" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5"/>
-								<line x1="10" y1="9.5" x2="23" y2="9.5" stroke="currentColor" strokeWidth="1.5"/>
+								{/* App window */}
+								<rect x="11" y="8" width="13" height="10" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5"/>
+								<line x1="11" y1="10" x2="24" y2="10" stroke="currentColor" strokeWidth="1.5"/>
 							</svg>
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
@@ -1838,4 +1848,4 @@ export default function App() {
 			</main>
 		</div>
 	);
-}
+}
