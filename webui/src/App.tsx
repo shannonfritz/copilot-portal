@@ -1113,7 +1113,7 @@ export default function App() {
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-	}, [messages, streamingContent, toolEvents, isThinking]);
+	}, [messages, streamingContent, toolEvents, isThinking, notification]);
 
 	const openPicker = useCallback(async () => {
 		try {
@@ -1752,7 +1752,7 @@ export default function App() {
 								color: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)',
 							}}
 						>
-							<strong>{notification.type === 'warning' ? '⚠ Warning:' : 'ℹ Info:'}</strong> {notification.message}
+							<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}
 						</div>
 					)}
 
