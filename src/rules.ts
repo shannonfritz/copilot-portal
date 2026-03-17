@@ -19,8 +19,9 @@ export class RulesStore {
 		this.rulesDir = path.join(dataDir, 'rules');
 	}
 
-	/** Computes a human-readable pattern that describes what the rule will match. */
-	static computePattern(req: PermissionRequest): string {
+	/** Computes a human-readable pattern that describes what the rule will match.
+	 *  Returns undefined if no sensible pattern can be derived. */
+	static computePattern(req: PermissionRequest): string | undefined {
 		const r = req as PermissionRequest & {
 			fullCommandText?: string;
 			path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string;
@@ -32,8 +33,13 @@ export class RulesStore {
 		switch (req.kind) {
 			case 'shell': {
 				const cmd = r.fullCommandText?.trim() ?? '';
-				const baseCmd = cmd.split(/\s+/)[0] ?? cmd;
-				return baseCmd ? `${baseCmd} *` : cmd;
+				// Strip leading comments and blank lines
+				const lines = cmd.split(/\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+				const firstLine = lines[0] ?? '';
+				const baseCmd = firstLine.split(/\s+/)[0] ?? '';
+				// Reject empty, shell operators, or obviously non-command tokens
+				if (!baseCmd || /^[#;|&<>(){}\[\]$!`"']/.test(baseCmd)) return undefined;
+				return `${baseCmd} *`;
 			}
 			case 'read':
 			case 'write': {

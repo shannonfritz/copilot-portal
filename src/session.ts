@@ -530,12 +530,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
 			return Promise.resolve({ kind: 'approved' });
 		}
-		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string; canOfferSessionApproval?: boolean; warning?: string };
+		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string; warning?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
-		// Only offer "always allow" when the SDK says the command is safe for session-wide approval
-		const canOffer = r.kind !== 'shell' || r.canOfferSessionApproval !== false;
-		const alwaysPattern = canOffer ? RulesStore.computePattern(req) : undefined;
+		const alwaysPattern = RulesStore.computePattern(req);
 		const warning = r.warning;
+		this.log(`[Session] Approval ${requestId}: kind=${r.kind} pattern=${alwaysPattern ?? 'none'} warning=${warning ?? 'none'}`);
 
 		// Auto-approve if a matching rule exists
 		const matchingRule = this.rulesStore?.matchesRequest(this.sessionId, req) ?? null;
