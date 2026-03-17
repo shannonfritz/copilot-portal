@@ -1184,8 +1184,20 @@ export class SessionPool {
 
 	async start(): Promise<void> {
 		this.log('[Pool] Starting Copilot client...');
-		await this.client.start();
+		try {
+			await this.client.start();
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/auth|token|login|credential|unauthorized/i.test(msg)) {
+				this.log(`\n❌ Authentication failed. Please run:\n\n   copilot auth login\n\nThen restart the server.\n`);
+			}
+			throw e;
+		}
 		const auth = await this.client.getAuthStatus();
+		if (!auth.isAuthenticated) {
+			this.log(`\n❌ Not authenticated. Please run:\n\n   copilot auth login\n\nThen restart the server.\n`);
+			throw new Error('Not authenticated — run "copilot auth login" first');
+		}
 		this.log(`[Pool] Authenticated as: ${auth.login ?? 'unknown'}`);
 	}
 

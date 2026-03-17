@@ -5,10 +5,10 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v18 or later
-- GitHub Copilot access, authenticated via the [`gh` CLI](https://cli.github.com/):
+- [GitHub Copilot CLI](https://github.com/github/copilot-cli), signed in:
   ```
-  gh auth login
-  gh extension install github/gh-copilot
+  winget install GitHub.Copilot
+  copilot auth login
   ```
 
 ## Setup
