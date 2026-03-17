@@ -805,10 +805,36 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.broadcast({ type: 'error', content: d.message ?? 'Unknown error' });
 	}
 
+	private onSessionTruncation(data: unknown): void {
+		const d = data as { messagesRemovedDuringTruncation?: number; tokensRemovedDuringTruncation?: number };
+		const msgs = d.messagesRemovedDuringTruncation ?? 0;
+		const tokens = d.tokensRemovedDuringTruncation ?? 0;
+		this.log(`[Session] Truncation: ${msgs} messages, ${tokens} tokens removed`);
+		this.broadcast({ type: 'warning', content: `Context truncated — ${msgs} older messages removed to stay within token limits` });
+	}
+
+	private onSessionCompactionStart(): void {
+		this.log(`[Session] Compaction starting…`);
+		this.broadcast({ type: 'info', content: 'Compacting context — summarizing older conversation…' });
+	}
+
 	private onSessionCompactionComplete(data: unknown): void {
-		const d = data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number } };
+		const d = data as { postCompactionTokens?: number; compactionTokensUsed?: { output?: number }; success?: boolean; messagesRemoved?: number; checkpointNumber?: number };
 		this.tokensSinceCompaction = d.postCompactionTokens ?? d.compactionTokensUsed?.output ?? 0;
 		this.log(`[Session] Compaction complete — token baseline: ${this.tokensSinceCompaction}`);
+		if (d.success !== false) {
+			const parts = ['Context compacted'];
+			if (d.checkpointNumber != null) parts.push(`checkpoint #${d.checkpointNumber}`);
+			if (d.messagesRemoved) parts.push(`${d.messagesRemoved} messages summarized`);
+			this.broadcast({ type: 'info', content: parts.join(' — ') });
+		}
+	}
+
+	private onSessionSnapshotRewind(data: unknown): void {
+		const d = data as { eventsRemoved?: number };
+		const count = d.eventsRemoved ?? 0;
+		this.log(`[Session] Snapshot rewind: ${count} events removed`);
+		this.broadcast({ type: 'warning', content: `Session rewound to checkpoint — ${count} events removed` });
 	}
 
 	private onSessionIdle(): void {
@@ -1017,7 +1043,10 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'tool.execution_partial_result':    (d) => this.onToolExecutionPartialResult(d),
 		'session.resume':                   () => this.onSessionResume(),
 		'session.error':                    (d) => this.onSessionError(d),
+		'session.truncation':               (d) => this.onSessionTruncation(d),
+		'session.compaction_start':         ()  => this.onSessionCompactionStart(),
 		'session.compaction_complete':      (d) => this.onSessionCompactionComplete(d),
+		'session.snapshot_rewind':          (d) => this.onSessionSnapshotRewind(d),
 		'session.idle':                     () => this.onSessionIdle(),
 		'permission.requested':             (d) => this.onPermissionRequested(d),
 		'permission.completed':             (d) => this.onPermissionCompleted(d),
