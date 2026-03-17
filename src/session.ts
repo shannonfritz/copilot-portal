@@ -26,6 +26,7 @@ export interface PortalEvent {
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
 	timestamp?: number; // ms epoch — set on history events if the SDK provides it
+	toolSummary?: Array<{ toolName: string; display: string; completed: boolean }>;
 	total?: number;
 	shown?: number;
 	requestId?: string;
@@ -203,6 +204,23 @@ export class SessionHandle {
 		for (const fn of this.listeners) fn(event);
 	}
 
+	/** Extract tool name + display from a raw SDK tool.execution_start event. */
+	private static parseToolEvent(data: unknown): { toolName: string; display: string; completed: boolean } {
+		const d = data as Record<string, unknown> | undefined;
+		const toolName = (d?.toolName as string) ?? 'tool';
+		let display = (d?.displayLabel as string) ?? '';
+		if (!display) {
+			try {
+				// SDK history stores arguments as an object; live events send it as a JSON string
+				const raw = d?.arguments;
+				const args = (typeof raw === 'string' ? JSON.parse(raw) : raw ?? {}) as Record<string, unknown>;
+				const val = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
+				display = String(val).replace(/\s+/g, ' ').trim().slice(0, 200);
+			} catch { display = ''; }
+		}
+		return { toolName, display, completed: true };
+	}
+
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
 		const events = await this.session.getMessages();
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
@@ -231,29 +249,36 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// mark all-but-last as intermediate (they were mid-turn "notes to self")
 		const roundMsgs: string[] = [];
 		const roundTimestamps: (number | undefined)[] = [];
+		let roundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
+			const tools = roundTools.length > 0 ? [...roundTools] : undefined;
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				if (!content) continue;
 				const intermediate = allIntermediate || i < roundMsgs.length - 1;
+				const isLast = i === roundMsgs.length - 1;
 				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
-				result.push({ type: 'idle', intermediate: intermediate || undefined });
+				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? tools : undefined });
 			}
 			roundMsgs.length = 0;
 			roundTimestamps.length = 0;
+			roundTools = [];
 		};
 
 		for (const e of slicedEvents) {
-			const raw = e as { type: string; data?: { content?: string }; createdAt?: number; timestamp?: string | number; ts?: number };
+			const raw = e as { type: string; data?: unknown; createdAt?: number; timestamp?: string | number; ts?: number };
 			const tsRaw = raw.createdAt ?? raw.timestamp ?? raw.ts;
 			const ts = typeof tsRaw === 'string' ? new Date(tsRaw).getTime() : tsRaw;
 			if (e.type === 'user.message') {
 				flushRound();
-				result.push({ type: 'history_user', content: raw.data?.content ?? '', timestamp: ts });
+				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts });
 			} else if (e.type === 'assistant.message') {
-				roundMsgs.push(raw.data?.content ?? '');
+				roundMsgs.push((raw.data as { content?: string })?.content ?? '');
 				roundTimestamps.push(ts);
+			} else if (e.type === 'tool.execution_start') {
+				const toolName = (raw.data as { toolName?: string })?.toolName;
+				if (toolName !== 'report_intent') roundTools.push(SessionHandle.parseToolEvent(raw.data));
 			}
 		}
 		// If the turn is still active, every message in the last round is intermediate
@@ -292,8 +317,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private async syncMessages(): Promise<void> {
 		if (this.listeners.size === 0) return;
 		try {
-			const msgs = await this.session.getMessages();
-			const interesting = msgs.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message');
+			const allEvents = await this.session.getMessages();
+			const interesting = allEvents.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message');
 			if (interesting.length <= this.lastSyncedCount) return;
 			// If lastSyncedCount is 0 (never seeded), this is our first look at the message list.
 			// We have no baseline to know which messages are truly "new", and history replay will
@@ -304,9 +329,42 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				this.log(`[Sync] Seeded lastSyncedCount=${this.lastSyncedCount} (skipping initial broadcast)`);
 				return;
 			}
+
+			// Walk full event stream to build per-message tool summaries
+			type ToolInfo = Array<{ toolName: string; display: string; completed: boolean }>;
+			let msgIdx = 0;
+			let turnTools: ToolInfo = [];
+			let lastAssistantIdx = -1;
+			const toolsForMsg = new Map<number, ToolInfo>();
+
+			for (const evt of allEvents) {
+				const e = evt as { type: string; data?: unknown };
+				if (e.type === 'user.message') {
+					// Finalize tools for previous turn's last assistant
+					if (lastAssistantIdx >= 0 && turnTools.length > 0) {
+						toolsForMsg.set(lastAssistantIdx, [...turnTools]);
+					}
+					turnTools = [];
+					lastAssistantIdx = -1;
+					msgIdx++;
+				} else if (e.type === 'assistant.message') {
+					lastAssistantIdx = msgIdx;
+					msgIdx++;
+				} else if (e.type === 'tool.execution_start') {
+					const toolName = (e.data as { toolName?: string })?.toolName;
+					if (toolName !== 'report_intent') turnTools.push(SessionHandle.parseToolEvent(e.data));
+				}
+			}
+			// Finalize last turn
+			if (lastAssistantIdx >= 0 && turnTools.length > 0) {
+				toolsForMsg.set(lastAssistantIdx, [...turnTools]);
+			}
+
 			const newMsgs = interesting.slice(this.lastSyncedCount);
 			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${interesting.length})`);
-			for (const msg of newMsgs) {
+			for (let i = 0; i < newMsgs.length; i++) {
+				const globalIdx = this.lastSyncedCount + i;
+				const msg = newMsgs[i];
 				if (msg.type === 'user.message') {
 					const content = (msg.data as { content?: string })?.content ?? '';
 					if (content) {
@@ -316,7 +374,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					const content = (msg.data as { content?: string })?.content ?? '';
 					// Skip empty assistant messages — SDK noise that causes false idle
 					if (content) {
-						this.broadcast({ type: 'sync', role: 'assistant', content });
+						const tools = toolsForMsg.get(globalIdx);
+						this.broadcast({ type: 'sync', role: 'assistant', content, toolSummary: tools });
 					}
 				}
 			}

@@ -809,6 +809,7 @@ export default function App() {
 								timestamp: historyTimestampRef.current ?? Date.now(),
 								bytes: new TextEncoder().encode(streamingRef.current).length,
 								intermediate: event.intermediate || undefined,
+								toolSummary: event.toolSummary || undefined,
 							});
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
@@ -849,7 +850,7 @@ export default function App() {
 					if (content) {
 						setMessages((prev) => {
 							if (prev.some(m => m.role === role && m.content === content)) return prev;
-							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now() }];
+							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now(), toolSummary: event.toolSummary || undefined }];
 						});
 						if (role === 'user') {
 							// CLI turn starting — show thinking indicator
