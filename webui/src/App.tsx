@@ -520,7 +520,6 @@ export default function App() {
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
 	const [cliInputInfo, setCliInputInfo] = useState<string | null>(null);
 	const isCliTurnRef = useRef(false);
-	const cliHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
@@ -827,7 +826,6 @@ export default function App() {
 						if (stopClearTimerRef.current) clearTimeout(stopClearTimerRef.current);
 						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
 					} else {
-						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						setCliApprovalInfo(null);
 						setIsStreaming(true);
 					}
@@ -837,10 +835,6 @@ export default function App() {
 						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
 					} else {
 						setIsThinking(true);
-						if (isCliTurnRef.current) {
-							if (cliHintTimerRef.current) clearTimeout(cliHintTimerRef.current);
-							cliHintTimerRef.current = setTimeout(() => setCliApprovalInfo('Tool approval needed — respond in your terminal'), 15000);
-						}
 						if (event.content) setThinkingText(event.content);
 					}
 				} else if (event.type === 'reasoning_delta') {
@@ -869,7 +863,6 @@ export default function App() {
 							isCliTurnRef.current = false;
 							setCliApprovalInfo(null);
 							setCliInputInfo(null);
-							if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						}
 					}
 				} else if (event.type === 'message_end') {
@@ -908,7 +901,6 @@ export default function App() {
 							pendingMsgRef.current = null;
 							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
 						}
-						if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						setCliApprovalInfo(null);
 						if (!isStoppingRef.current) {
 							// Keep indicator visible — update text to show which tool is running
@@ -966,7 +958,6 @@ export default function App() {
 					setReasoningText('');
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
-					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 					isCliTurnRef.current = false;
 					setToolEvents([]);
 					if (isStoppingRef.current) {
@@ -980,10 +971,8 @@ export default function App() {
 						}, 800);
 					}
 				} else if (event.type === 'cli_approval_pending') {
-					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 					setCliApprovalInfo(event.content ?? 'Tool approval needed — respond in your terminal');
 				} else if (event.type === 'cli_approval_resolved') {
-					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 					setCliApprovalInfo(null);
 				} else if (event.type === 'cli_input_pending') {
 					setCliInputInfo(event.content ?? 'User input needed — respond in your terminal');
