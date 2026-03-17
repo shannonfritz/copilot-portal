@@ -56,7 +56,8 @@ export class PortalServer {
 			const ip = req.socket.remoteAddress ?? 'unknown';
 			const url = new URL(req.url ?? '/', 'http://localhost');
 			let sessionId = url.searchParams.get('session') ?? null;
-				const loadAll = url.searchParams.get('all') === '1';
+				const historyParam = url.searchParams.get('history');
+				const historyLimit = historyParam === 'all' ? undefined : (historyParam ? parseInt(historyParam, 10) || 50 : 50);
 			const isManagement = url.searchParams.get('management') === '1';
 
 			this.log(`[${clientId}] Connected from ${ip}, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
@@ -142,7 +143,7 @@ export class PortalServer {
 			// Replay history + pending requests.
 			// We capture sessionId at this point — it never changes for this connection.
 			const historySessionId = sessionId;
-			handle.getHistory(loadAll ? undefined : 100).then((events) => {
+			handle.getHistory(historyLimit).then((events) => {
 				if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 				ws.send(JSON.stringify({ type: 'history_start', sessionId: historySessionId }));
 				for (const e of events) {

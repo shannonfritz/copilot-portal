@@ -591,6 +591,7 @@ export default function App() {
 		const params = new URLSearchParams(window.location.search);
 		params.delete('session');
 		params.delete('all');
+		params.delete('history');
 		window.history.replaceState(null, '', `?${params.toString()}`);
 
 		// Open a lightweight management WS to receive session broadcasts (delete/shield)
@@ -648,7 +649,8 @@ export default function App() {
 
 		const sessionId = new URLSearchParams(window.location.search).get('session');
 		const sessionParam = sessionId ? `&session=${sessionId}` : '';
-		const wsUrl = `ws://${window.location.host}?token=${token}${sessionParam}${new URLSearchParams(window.location.search).get('all') === '1' ? '&all=1' : ''}`;
+		const historyParam = new URLSearchParams(window.location.search).get('history');
+		const wsUrl = `ws://${window.location.host}?token=${token}${sessionParam}${historyParam ? `&history=${historyParam}` : ''}`;
 		const ws = new WebSocket(wsUrl);
 		wsRef.current = ws;
 		let hadMsg = false;
@@ -746,6 +748,7 @@ export default function App() {
 						const params = new URLSearchParams(window.location.search);
 						params.set('session', newId);
 						params.delete('all');
+						params.delete('history');
 						window.history.replaceState(null, '', `?${params.toString()}`);
 					}
 					return;
@@ -1624,12 +1627,27 @@ export default function App() {
 				)}
 				<div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
 					{historyTruncated && (() => {
-						const url = new URL(window.location.href);
-						url.searchParams.set('all', '1');
+						const { shown, total } = historyTruncated;
+						const makeUrl = (n: number | 'all') => {
+							const u = new URL(window.location.href);
+							u.searchParams.set('history', String(n));
+							return u.toString();
+						};
+						// Dynamic steps: modest bump (+150), half, all
+						const steps: { label: string; value: number | 'all' }[] = [];
+						const step1 = shown + 150;
+						const step2 = Math.floor(total / 2);
+						if (step1 < total) steps.push({ label: String(step1), value: step1 });
+						if (step2 > (steps.length ? (steps[steps.length - 1].value as number) : shown) && step2 < total)
+							steps.push({ label: String(step2), value: step2 });
+						steps.push({ label: 'ALL', value: 'all' });
+						const linkStyle = { color: 'var(--accent)', textDecoration: 'underline' as const, cursor: 'pointer' as const };
 						return (
 							<div style={{ textAlign: 'center', padding: '8px 12px', marginBottom: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-								Showing {historyTruncated.shown} of {historyTruncated.total} messages.{' '}
-								<a href={url.toString()} style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>Load full history</a>
+								Showing {shown} of {total} messages. Load more:{' '}
+								{steps.map((s, i) => (
+									<span key={s.label}>{i > 0 && ' · '}<a href={makeUrl(s.value)} style={linkStyle}>{s.label}</a></span>
+								))}
 							</div>
 						);
 					})()}
