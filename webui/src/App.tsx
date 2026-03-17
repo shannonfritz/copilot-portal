@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -23,7 +23,7 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 		</div>
 	),
 	th: ({ children }) => (
-		<th style={{ textAlign: 'left', background: 'rgba(255,255,255,0.06)', fontWeight: 600 }}>{children}</th>
+		<th style={{ textAlign: 'left', background: 'var(--subtle-bg)', fontWeight: 600 }}>{children}</th>
 	),
 	a: ({ href, children }) => (
 		<a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--accent)' }}>{children}</a>
@@ -54,7 +54,6 @@ interface Message {
 	content: string;
 	reasoning?: string;
 	timestamp: number;
-	fromHistory?: boolean;
 	intermediate?: boolean; // mid-turn "notes to self" — shown as thought bubble, not a chat message
 	toolSummary?: ToolSummaryItem[]; // tools that ran before this message
 }
@@ -260,7 +259,7 @@ function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: stri
 			<button
 				type="button"
 				className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs"
-				style={{ background: 'rgba(100,100,120,0.12)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+				style={{ background: 'var(--muted-tint)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
 				onClick={() => setExpanded(e => !e)}
 			>
 				<span style={{ fontSize: '10px' }}>{expanded ? '▾' : '▸'}</span>
@@ -270,7 +269,7 @@ function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: stri
 				<div
 					className="mt-1 rounded-xl px-3 py-2 text-xs"
 					style={{
-						background: 'rgba(100,100,120,0.08)',
+						background: 'var(--muted-tint)',
 						border: '1px solid var(--border)',
 						color: 'var(--text-muted)',
 						whiteSpace: 'pre-wrap',
@@ -295,12 +294,12 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		return () => clearInterval(timer);
 	}, [tc.type, tc.timestamp]);
 	if (tc.type === 'tool_output') return (
-		<div className="mb-1 rounded-lg border px-3 py-2 text-xs font-mono" style={{ borderColor: 'var(--border)', background: 'rgba(128,128,160,0.06)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', overflowY: 'auto' }}>
+		<div className="mb-1 rounded-lg border px-3 py-2 text-xs font-mono" style={{ borderColor: 'var(--border)', background: 'var(--muted-tint)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', overflowY: 'auto' }}>
 			{tc.content}
 		</div>
 	);
 	if (tc.type === 'intent') return (
-		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple, #c586c0)' }}>
+		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple)' }}>
 			<span>●</span><span>{tc.content}</span>
 		</div>
 	);
@@ -308,7 +307,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 	const isFailed = isComplete && tc.content === 'failed';
 	const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
 	const borderColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
-	const bgColor = isFailed ? 'rgba(244,135,113,0.08)' : isComplete ? 'rgba(78,201,176,0.08)' : 'rgba(220,220,170,0.08)';
+	const bgColor = isFailed ? 'var(--error-tint)' : isComplete ? 'var(--success-tint)' : 'var(--tool-call-tint)';
 	const textColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
 	const hasDetail = !!(tc.displayLabel || tc.content);
 	return (
@@ -459,7 +458,7 @@ function SessionDrawer({
 										key={m.id}
 										type="button"
 										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-										style={{ background: m.id === currentModelId ? 'rgba(88,166,255,0.12)' : 'transparent' }}
+										style={{ background: m.id === currentModelId ? 'var(--primary-tint)' : 'transparent' }}
 										onClick={() => { onChangeModel(m.id); setShowModelPicker(false); }}
 									>
 										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>
@@ -720,7 +719,6 @@ export default function App() {
 							content: streamingRef.current,
 							timestamp: historyTimestampRef.current ?? Date.now(),
 							bytes: new TextEncoder().encode(streamingRef.current).length,
-							fromHistory: true,
 						});
 						streamingRef.current = '';
 					}
@@ -790,7 +788,6 @@ export default function App() {
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
 								bytes: new TextEncoder().encode(streamingRef.current).length,
-								fromHistory: true,
 							});
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
@@ -800,7 +797,6 @@ export default function App() {
 							role: 'user',
 							content: event.content ?? '',
 							timestamp: event.timestamp ?? Date.now(),
-							fromHistory: true,
 						});
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';
@@ -813,7 +809,6 @@ export default function App() {
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
 								bytes: new TextEncoder().encode(streamingRef.current).length,
-								fromHistory: true,
 								intermediate: event.intermediate || undefined,
 							});
 							streamingRef.current = '';
@@ -1283,7 +1278,7 @@ export default function App() {
 			{showQR && (
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center p-4"
-					style={{ background: 'rgba(0,0,0,0.6)' }}
+					style={{ background: 'var(--overlay)' }}
 					onClick={() => setShowQR(false)}
 				>
 					<div
@@ -1306,7 +1301,7 @@ export default function App() {
 			{showRules && (
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center p-4"
-					style={{ background: 'rgba(0,0,0,0.6)' }}
+					style={{ background: 'var(--overlay)' }}
 					onClick={() => setShowRules(false)}
 				>
 					<div
@@ -1331,7 +1326,7 @@ export default function App() {
 						{/* Approve All toggle */}
 						<div
 							className="mb-3 flex items-center justify-between rounded-xl px-3 py-2.5"
-							style={{ background: approveAll ? 'rgba(78,201,176,0.12)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : 'var(--border)'}` }}
+							style={{ background: approveAll ? 'var(--success-tint)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : 'var(--border)'}` }}
 						>
 							<div>
 								<div className="text-sm font-medium">Auto-approve all (yolo)</div>
@@ -1361,7 +1356,7 @@ export default function App() {
 										className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2"
 										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
 									>
-										<span className="rounded px-1.5 py-0.5 text-xs font-mono" style={{ background: 'rgba(220,220,170,0.15)', color: 'var(--tool-call)', border: '1px solid var(--tool-call)' }}>
+										<span className="rounded px-1.5 py-0.5 text-xs font-mono" style={{ background: 'var(--tool-call-tint)', color: 'var(--tool-call)', border: '1px solid var(--tool-call)' }}>
 											{rule.kind}
 										</span>
 										<code className="min-w-0 flex-1 truncate text-xs font-mono" style={{ color: 'var(--text)' }}>
@@ -1389,7 +1384,7 @@ export default function App() {
 			{showPicker && (
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center p-4"
-					style={{ background: 'rgba(0,0,0,0.6)' }}
+					style={{ background: 'var(--overlay)' }}
 					onClick={() => { if (!noSession) setShowPicker(false); }}
 				>
 					<div
@@ -1417,7 +1412,7 @@ export default function App() {
 										key={s.sessionId}
 										className="mb-2 flex items-center rounded-xl"
 										style={{
-											background: isActive ? 'rgba(88,166,255,0.12)' : 'var(--bg)',
+											background: isActive ? 'var(--primary-tint)' : 'var(--bg)',
 											border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
 										}}
 									>
@@ -1462,7 +1457,7 @@ export default function App() {
 													title={s.shielded ? 'Remove shield' : 'Shield session'}
 													type="button"
 												>
-													<svg className="size-4" viewBox="0 0 24 24" fill={s.shielded ? '#f5a623' : 'none'} stroke={s.shielded ? '#f5a623' : 'currentColor'} strokeWidth="2">
+													<svg className="size-4" viewBox="0 0 24 24" fill={s.shielded ? 'var(--shield)' : 'none'} stroke={s.shielded ? 'var(--shield)' : 'currentColor'} strokeWidth="2">
 														<path d="M12 2L4 5v6c0 5.25 3.75 10.15 8 11 4.25-.85 8-5.75 8-11V5L12 2z" />
 													</svg>
 												</button>
@@ -1577,7 +1572,7 @@ export default function App() {
 						</button>
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: approveAll ? 'rgba(78,201,176,0.15)' : rules.length > 0 ? 'rgba(88,166,255,0.12)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined }}
+							style={{ background: approveAll ? 'var(--success-tint)' : rules.length > 0 ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined }}
 							onClick={() => setShowRules(v => !v)}
 							type="button"
 							title={approveAll ? 'Auto-approve all (yolo) enabled' : `Always-allow rules (${rules.length})`}
@@ -1763,9 +1758,9 @@ export default function App() {
 						<div
 							className="mb-2 rounded-xl px-4 py-3 text-sm"
 							style={{
-								background: notification.type === 'warning' ? 'rgba(230,180,60,0.12)' : 'rgba(100,160,255,0.12)',
-								border: `1px solid ${notification.type === 'warning' ? 'var(--warning, #e6b43c)' : 'var(--accent)'}`,
-								color: notification.type === 'warning' ? 'var(--warning, #e6b43c)' : 'var(--accent)',
+								background: notification.type === 'warning' ? 'var(--warning-tint)' : 'var(--primary-tint)',
+								border: `1px solid ${notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)'}`,
+								color: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)',
 							}}
 						>
 							<strong>{notification.type === 'warning' ? '⚠ Warning:' : 'ℹ Info:'}</strong> {notification.message}
@@ -1775,7 +1770,7 @@ export default function App() {
 					{error && (
 						<div
 							className="mb-2 rounded-xl px-4 py-3 text-sm"
-							style={{ background: 'rgba(244,135,113,0.12)', border: '1px solid var(--error)', color: 'var(--error)' }}
+							style={{ background: 'var(--error-tint)', border: '1px solid var(--error)', color: 'var(--error)' }}
 						>
 							<strong>Error:</strong> {error}
 						</div>
@@ -1789,7 +1784,7 @@ export default function App() {
 					<div className="border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
 
 						{cliApprovalInfo && (
-							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'rgba(128,128,160,0.08)' }}>
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'var(--muted-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
 									<span>⏳</span> CLI waiting for approval
 								</div>
@@ -1798,7 +1793,7 @@ export default function App() {
 							</div>
 						)}
 						{cliInputInfo && (
-							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'rgba(100,160,255,0.08)' }}>
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--primary-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
 									<span>💬</span> CLI waiting for your input
 								</div>
@@ -1807,13 +1802,13 @@ export default function App() {
 							</div>
 						)}
 						{pendingApproval && (
-							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--tool-call)', background: 'rgba(220,220,170,0.08)' }}>
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--tool-call)', background: 'var(--tool-call-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tool-call)' }}>
 									<span>⚠️</span> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
 								<pre className="mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
 								{pendingApproval.warning && (
-									<div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1 text-xs" style={{ background: 'rgba(255,180,0,0.12)', color: 'var(--tool-call)' }}>
+									<div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1 text-xs" style={{ background: 'var(--warning-tint)', color: 'var(--tool-call)' }}>
 										<span>⚠</span> {pendingApproval.warning}
 									</div>
 								)}
@@ -1825,7 +1820,7 @@ export default function App() {
 									{pendingApproval.alwaysPattern && (
 										<button
 											className="w-full rounded-lg py-1.5 text-xs font-medium"
-											style={{ background: 'rgba(220,200,100,0.15)', border: '1px solid var(--tool-call)', color: 'var(--tool-call)' }}
+											style={{ background: 'var(--tool-call-tint)', border: '1px solid var(--tool-call)', color: 'var(--tool-call)' }}
 											onClick={respondApprovalAlways}
 											type="button"
 										>
@@ -1836,7 +1831,7 @@ export default function App() {
 							</div>
 						)}
 						{pendingInput && (
-							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'rgba(88,166,255,0.08)' }}>
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'var(--primary-tint)' }}>
 								<div className="mb-2 text-sm font-semibold">{pendingInput.question}</div>
 								{pendingInput.choices && pendingInput.choices.length > 0 && (
 									<div className="mb-2 flex flex-col gap-1.5">
