@@ -93,6 +93,7 @@ interface ApprovalRequest {
 	summary: string;
 	details: unknown;
 	alwaysPattern?: string;
+	warning?: string;
 }
 
 interface ApprovalRule {
@@ -1811,6 +1812,11 @@ export default function App() {
 									<span>⚠️</span> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
 								<pre className="mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
+								{pendingApproval.warning && (
+									<div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1 text-xs" style={{ background: 'rgba(255,180,0,0.12)', color: 'var(--tool-call)' }}>
+										<span>⚠</span> {pendingApproval.warning}
+									</div>
+								)}
 								<div className="flex flex-col gap-1.5">
 									<div className="flex gap-2">
 										<button className="flex-1 rounded-lg py-2 text-sm font-medium" style={{ background: 'var(--success)', color: 'white' }} onClick={() => respondApproval(true)} type="button">Allow</button>

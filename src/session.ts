@@ -29,7 +29,7 @@ export interface PortalEvent {
 	total?: number;
 	shown?: number;
 	requestId?: string;
-	approval?: { requestId: string; action: string; summary: string; details: unknown; alwaysPattern?: string };
+	approval?: { requestId: string; action: string; summary: string; details: unknown; alwaysPattern?: string; warning?: string };
 	inputRequest?: { requestId: string; question: string; choices?: string[]; allowFreeform?: boolean };
 	sessionId?: string;
 	context?: SessionContext | null;
@@ -530,9 +530,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
 			return Promise.resolve({ kind: 'approved' });
 		}
-		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string };
+		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string; canOfferSessionApproval?: boolean; warning?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
-		const alwaysPattern = RulesStore.computePattern(req);
+		// Only offer "always allow" when the SDK says the command is safe for session-wide approval
+		const canOffer = r.kind !== 'shell' || r.canOfferSessionApproval !== false;
+		const alwaysPattern = canOffer ? RulesStore.computePattern(req) : undefined;
+		const warning = r.warning;
 
 		// Auto-approve if a matching rule exists
 		const matchingRule = this.rulesStore?.matchesRequest(this.sessionId, req) ?? null;
@@ -544,7 +547,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const event: PortalEvent = {
 			type: 'approval_request',
 			requestId,
-			approval: { requestId, action: r.kind, details: req, summary, alwaysPattern },
+			approval: { requestId, action: r.kind, details: req, summary, alwaysPattern, warning },
 		};
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
