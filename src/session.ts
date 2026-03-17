@@ -21,7 +21,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -92,6 +92,7 @@ export class SessionHandle {
 	private activeReasoningBuffer = '';
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
 	private cliApprovalSummary: string | null = null; // set when CLI turn is waiting for tool approval
+	private cliInputPending: string | null = null; // set when CLI turn is waiting for user input
 	private turnProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	private turnStartTime: number = 0; // ms timestamp when current turn started
 	// Proactive compaction: track estimated tokens since last compaction.
@@ -187,6 +188,14 @@ export class SessionHandle {
 		if (this.activeReasoningBuffer) events.push({ type: 'reasoning_delta', content: this.activeReasoningBuffer });
 		if (this.activeDeltaBuffer) events.push({ type: 'delta', content: this.activeDeltaBuffer });
 		if (this.cliApprovalSummary) events.push({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+		return events;
+	}
+
+	/** Returns CLI-pending state events for late-joining clients. */
+	getCliPendingEvents(): PortalEvent[] {
+		const events: PortalEvent[] = [];
+		if (this.cliApprovalSummary) events.push({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+		if (this.cliInputPending) events.push({ type: 'cli_input_pending', content: this.cliInputPending });
 		return events;
 	}
 
@@ -744,6 +753,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
 		const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
 		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args) });
+		// If this is ask_user on a CLI turn, show the input pending banner
+		if (d.toolName === 'ask_user' && !this.isPortalTurn) {
+			this.cliInputPending = (args as { question?: string }).question ?? 'User input needed';
+			this.log(`[Session] CLI ask_user detected: ${this.cliInputPending}`);
+			this.broadcast({ type: 'cli_input_pending', content: this.cliInputPending });
+		}
 	}
 
 	private onToolExecutionComplete(data: unknown): void {
@@ -751,6 +766,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const d = data as { toolCallId?: string; success?: boolean };
 		this.log(`[Session] Tool complete (${this.toolsInFlight} remaining): ${d.toolCallId}`);
 		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
+		// Clear CLI input pending when any tool completes (ask_user resolved)
+		if (this.cliInputPending) {
+			this.cliInputPending = null;
+			this.broadcast({ type: 'cli_input_resolved' });
+		}
 	}
 
 	private onSubagentStarted(data: unknown): void {
@@ -794,10 +814,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (this.turnProbeTimer) { clearTimeout(this.turnProbeTimer); this.turnProbeTimer = null; }
 		this.activeDeltaBuffer = '';
 		this.activeReasoningBuffer = '';
-		// Clear any lingering CLI approval banner
+		// Clear any lingering CLI approval/input banners
 		if (this.cliApprovalSummary) {
 			this.cliApprovalSummary = null;
 			this.broadcast({ type: 'cli_approval_resolved' });
+		}
+		if (this.cliInputPending) {
+			this.cliInputPending = null;
+			this.broadcast({ type: 'cli_input_resolved' });
 		}
 		if (this.toolsInFlight > 0) {
 			this.log(`[Event] session.idle with ${this.toolsInFlight} tools still in flight — resetting counter`);
@@ -839,19 +863,72 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
-	/** Scan message history for an unresolved permission.requested event.
-	 *  Called after reconnect / initial connect to catch approvals the live listener missed. */
+	private onUserInputRequested(data: unknown): void {
+		// CLI turn waiting for user input — portal can't respond, but inform the user
+		if (!this.isPortalTurn) {
+			const d = data as { question?: string };
+			this.cliInputPending = d?.question ?? 'User input needed';
+			this.log(`[Session] CLI waiting for input: ${this.cliInputPending}`);
+			this.broadcast({ type: 'cli_input_pending', content: this.cliInputPending });
+		}
+	}
+
+	private onUserInputCompleted(): void {
+		if (this.cliInputPending) {
+			this.cliInputPending = null;
+			this.broadcast({ type: 'cli_input_resolved' });
+		}
+	}
+
+	/** Scan message history for unresolved permission.requested or ask_user tool calls.
+	 *  Called after reconnect / initial connect to catch prompts the live listener missed. */
 	private detectPendingCliApproval(msgs: Array<{type: string; data?: unknown}>): void {
-		if (this.isPortalTurn || this.cliApprovalSummary) return;
+		if (this.isPortalTurn) return;
+		// Reset pending state — scan will re-set if still pending
+		const prevInput = this.cliInputPending;
+		const prevApproval = this.cliApprovalSummary;
+		this.cliInputPending = null;
+		this.cliApprovalSummary = null;
+		// Scan backwards for unresolved permission.requested or ask_user tool without completion
+		const openToolStarts = new Set<string>(); // toolCallIds seen as completed (scanning backwards)
 		for (let i = msgs.length - 1; i >= 0; i--) {
 			const m = msgs[i];
-			if (m.type === 'permission.completed' || m.type === 'session.idle') break;
-			if (m.type === 'permission.requested') {
+			// Stop at session.idle — anything before that is resolved
+			if (m.type === 'session.idle') break;
+			// Track tool completions (scanning backwards, so we see completions before starts)
+			if (m.type === 'tool.execution_complete') {
+				const d = m.data as { toolCallId?: string } | undefined;
+				if (d?.toolCallId) openToolStarts.add(d.toolCallId);
+			}
+			// Check for unresolved ask_user tool
+			if (m.type === 'tool.execution_start') {
+				const d = m.data as { toolCallId?: string; toolName?: string; arguments?: unknown } | undefined;
+				if (d?.toolName === 'ask_user' && d?.toolCallId && !openToolStarts.has(d.toolCallId)) {
+					if (!this.cliInputPending) {
+						const args = (d.arguments ?? {}) as { question?: string };
+						this.cliInputPending = args.question ?? 'User input needed';
+						this.log(`[Sync] Detected pending ask_user tool from history: ${this.cliInputPending}`);
+					}
+				}
+				if (d?.toolCallId) openToolStarts.delete(d.toolCallId);
+			}
+			// Check for unresolved permission.requested
+			if (m.type === 'permission.completed') break;
+			if (m.type === 'permission.requested' && !this.cliApprovalSummary) {
 				this.cliApprovalSummary = SessionHandle.describePermission(m.data);
 				this.log(`[Sync] Detected pending CLI approval from history: ${this.cliApprovalSummary}`);
-				this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
-				break;
 			}
+		}
+		// Broadcast state changes
+		if (this.cliInputPending && this.cliInputPending !== prevInput) {
+			this.broadcast({ type: 'cli_input_pending', content: this.cliInputPending });
+		} else if (!this.cliInputPending && prevInput) {
+			this.broadcast({ type: 'cli_input_resolved' });
+		}
+		if (this.cliApprovalSummary && this.cliApprovalSummary !== prevApproval) {
+			this.broadcast({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
+		} else if (!this.cliApprovalSummary && prevApproval) {
+			this.broadcast({ type: 'cli_approval_resolved' });
 		}
 	}
 
@@ -942,6 +1019,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'session.idle':                     () => this.onSessionIdle(),
 		'permission.requested':             (d) => this.onPermissionRequested(d),
 		'permission.completed':             (d) => this.onPermissionCompleted(d),
+		'user_input.requested':             (d) => this.onUserInputRequested(d),
+		'user_input.completed':             () => this.onUserInputCompleted(),
 		'session.warning':                  (d) => this.onSessionWarning(d),
 		'session.info':                     (d) => this.onSessionInfo(d),
 		'session.model_change':             (d) => this.onModelChange(d),

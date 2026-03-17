@@ -157,6 +157,7 @@ export class PortalServer {
 				for (const e of activeTurnEvents) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
+				for (const e of handle.getCliPendingEvents()) ws.send(JSON.stringify(e));
 				// Send current approval rules and approveAll state for this session
 				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
 				ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: handle.getApproveAll() }));

@@ -518,6 +518,7 @@ export default function App() {
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
+	const [cliInputInfo, setCliInputInfo] = useState<string | null>(null);
 	const isCliTurnRef = useRef(false);
 	const cliHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
@@ -584,8 +585,8 @@ export default function App() {
 		setShowPicker(true);
 		setPendingApproval(null);
 		setCliApprovalInfo(null);
+		setCliInputInfo(null);
 		setActiveSessionSummary(null);
-		setPendingInput(null);
 		setRules([]);
 		setApproveAll(false);
 		const params = new URLSearchParams(window.location.search);
@@ -871,6 +872,7 @@ export default function App() {
 							setThinkingText('');
 							isCliTurnRef.current = false;
 							setCliApprovalInfo(null);
+							setCliInputInfo(null);
 							if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 						}
 					}
@@ -967,6 +969,7 @@ export default function App() {
 					setThinkingText('');
 					setReasoningText('');
 					setCliApprovalInfo(null);
+					setCliInputInfo(null);
 					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 					isCliTurnRef.current = false;
 					setToolEvents([]);
@@ -986,6 +989,10 @@ export default function App() {
 				} else if (event.type === 'cli_approval_resolved') {
 					if (cliHintTimerRef.current) { clearTimeout(cliHintTimerRef.current); cliHintTimerRef.current = null; }
 					setCliApprovalInfo(null);
+				} else if (event.type === 'cli_input_pending') {
+					setCliInputInfo(event.content ?? 'User input needed — respond in your terminal');
+				} else if (event.type === 'cli_input_resolved') {
+					setCliInputInfo(null);
 				} else if (event.type === 'turn_stopping') {
 					// Another client hit Stop — mirror their stopping state so our UI reflects it
 					if (!isStoppingRef.current) {
@@ -1777,7 +1784,7 @@ export default function App() {
 				</div>
 
 				{/* Pinned interaction zone — approval & input cards sit above the input bar */}
-				{(pendingApproval || pendingInput || cliApprovalInfo) && (
+				{(pendingApproval || pendingInput || cliApprovalInfo || cliInputInfo) && (
 					<div className="border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
 
 						{cliApprovalInfo && (
@@ -1787,6 +1794,15 @@ export default function App() {
 								</div>
 								<div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{cliApprovalInfo}</div>
 								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Approve or deny in your terminal to continue.</div>
+							</div>
+						)}
+						{cliInputInfo && (
+							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'rgba(100,160,255,0.08)' }}>
+								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
+									<span>💬</span> CLI waiting for your input
+								</div>
+								<div className="text-xs" style={{ color: 'var(--text)' }}>{cliInputInfo}</div>
+								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Respond in your terminal to continue.</div>
 							</div>
 						)}
 						{pendingApproval && (
