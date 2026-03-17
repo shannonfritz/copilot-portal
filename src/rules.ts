@@ -14,6 +14,7 @@ export interface ApprovalRule {
 export class RulesStore {
 	private rulesDir: string;
 	private cache = new Map<string, ApprovalRule[]>();
+	private approveAllCache = new Map<string, boolean>();
 
 	constructor(dataDir: string) {
 		this.rulesDir = path.join(dataDir, 'rules');
@@ -64,9 +65,20 @@ export class RulesStore {
 
 	getRules(sessionId: string): ApprovalRule[] {
 		if (!this.cache.has(sessionId)) {
-			this.cache.set(sessionId, this.load(sessionId));
+			this.cache.set(sessionId, this.load(sessionId).rules);
 		}
 		return this.cache.get(sessionId)!;
+	}
+
+	getApproveAll(sessionId: string): boolean {
+		// Ensure file is loaded into cache
+		this.getRules(sessionId);
+		return this.approveAllCache.get(sessionId) ?? false;
+	}
+
+	setApproveAll(sessionId: string, enabled: boolean): void {
+		this.approveAllCache.set(sessionId, enabled);
+		this.save(sessionId, this.getRules(sessionId), enabled);
 	}
 
 	addRule(sessionId: string, kind: string, pattern: string): ApprovalRule {
@@ -146,20 +158,30 @@ export class RulesStore {
 
 	removeSession(sessionId: string): void {
 		this.cache.delete(sessionId);
+		this.approveAllCache.delete(sessionId);
 	}
 
-	private load(sessionId: string): ApprovalRule[] {
+	private load(sessionId: string): { rules: ApprovalRule[]; approveAll: boolean } {
 		try {
 			const f = path.join(this.rulesDir, `${sessionId}.json`);
-			if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+			if (fs.existsSync(f)) {
+				const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+				// Support both old format (plain array) and new format ({ rules, approveAll })
+				if (Array.isArray(data)) {
+					return { rules: data, approveAll: false };
+				}
+				this.approveAllCache.set(sessionId, !!data.approveAll);
+				return { rules: data.rules ?? [], approveAll: !!data.approveAll };
+			}
 		} catch {}
-		return [];
+		return { rules: [], approveAll: false };
 	}
 
-	private save(sessionId: string, rules: ApprovalRule[]): void {
+	private save(sessionId: string, rules: ApprovalRule[], approveAll?: boolean): void {
+		const yolo = approveAll ?? this.approveAllCache.get(sessionId) ?? false;
 		try {
 			fs.mkdirSync(this.rulesDir, { recursive: true });
-			fs.writeFileSync(path.join(this.rulesDir, `${sessionId}.json`), JSON.stringify(rules, null, 2));
+			fs.writeFileSync(path.join(this.rulesDir, `${sessionId}.json`), JSON.stringify({ rules, approveAll: yolo }, null, 2));
 		} catch {}
 	}
 }

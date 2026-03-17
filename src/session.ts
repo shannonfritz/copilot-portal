@@ -84,7 +84,6 @@ export class SessionHandle {
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
-	private approveAll = false;
 
 	// Active turn state — replayed to newly joining clients
 	private isTurnActive = false;
@@ -585,7 +584,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
 
 		// approveAll mode — instant approval, no UI
-		if (this.approveAll) {
+		if (this.getApproveAll()) {
 			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
 			return Promise.resolve({ kind: 'approved' });
 		}
@@ -658,11 +657,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	getApproveAll(): boolean {
-		return this.approveAll;
+		return this.rulesStore?.getApproveAll(this.sessionId) ?? false;
 	}
 
 	setApproveAll(enabled: boolean): void {
-		this.approveAll = enabled;
+		if (this.rulesStore) this.rulesStore.setApproveAll(this.sessionId, enabled);
 		this.log(`[Session] approveAll ${enabled ? 'enabled' : 'disabled'}`);
 		this.broadcast({ type: 'approve_all_changed', approveAll: enabled });
 		if (enabled) {
