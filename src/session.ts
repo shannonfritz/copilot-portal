@@ -27,6 +27,7 @@ export interface PortalEvent {
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
 	timestamp?: number; // ms epoch — set on history events if the SDK provides it
 	toolSummary?: Array<{ toolName: string; display: string; completed: boolean }>;
+	askUserChoices?: string[]; // choices that were presented for an ask_user response
 	total?: number;
 	shown?: number;
 	requestId?: string;
@@ -246,8 +247,13 @@ const result: PortalEvent[] = [];
 if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// Collect assistant messages per round (between user.messages) so we can
 		// mark all-but-last as intermediate (they were mid-turn "notes to self")
+		// Exception: messages followed by ask_user are user-facing, not intermediate
 		const roundMsgs: string[] = [];
 		const roundTimestamps: (number | undefined)[] = [];
+		const roundFollowingTools: (string | null)[] = []; // tool name after each message
+		const askUserToolIds = new Set<string>(); // track ask_user tool calls to extract user answers
+		const askUserChoices = new Map<string, string[]>(); // choices presented to the user
+		let pendingAskUserAnswers: Array<{ content: string; choices?: string[]; timestamp?: number }> = [];// buffered until round flushes
 		let roundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
@@ -255,13 +261,20 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				if (!content) continue;
-				const intermediate = allIntermediate || i < roundMsgs.length - 1;
 				const isLast = i === roundMsgs.length - 1;
+				const followedByUserFacingTool = roundFollowingTools[i] === 'ask_user';
+				const intermediate = followedByUserFacingTool ? false : (allIntermediate || i < roundMsgs.length - 1);
 				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
 				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? tools : undefined });
+				// Emit any buffered ask_user answers right after the question message
+				if (followedByUserFacingTool && pendingAskUserAnswers.length > 0) {
+					const answer = pendingAskUserAnswers.shift()!;
+					result.push({ type: 'history_user', content: answer.content, timestamp: answer.timestamp, askUserChoices: answer.choices });
+				}
 			}
 			roundMsgs.length = 0;
 			roundTimestamps.length = 0;
+			roundFollowingTools.length = 0;
 			roundTools = [];
 		};
 
@@ -275,9 +288,33 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			} else if (e.type === 'assistant.message') {
 				roundMsgs.push((raw.data as { content?: string })?.content ?? '');
 				roundTimestamps.push(ts);
+				roundFollowingTools.push(null); // will be filled if a tool follows
 			} else if (e.type === 'tool.execution_start') {
 				const toolName = (raw.data as { toolName?: string })?.toolName;
+				// Tag the preceding message with the tool that follows it
+				if (roundMsgs.length > 0 && roundFollowingTools[roundFollowingTools.length - 1] === null) {
+					roundFollowingTools[roundFollowingTools.length - 1] = toolName ?? null;
+				}
+				if (toolName === 'ask_user') {
+					const toolCallId = (raw.data as { toolCallId?: string })?.toolCallId ?? '';
+					askUserToolIds.add(toolCallId);
+					// Capture the choices from the tool arguments
+					const rawArgs = (raw.data as { arguments?: unknown })?.arguments;
+					try {
+						const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
+						askUserChoices.set(toolCallId, (args as { choices?: string[] })?.choices ?? []);
+					} catch { /* ignore */ }
+				}
 				if (toolName !== 'report_intent') roundTools.push(SessionHandle.parseToolEvent(raw.data));
+			} else if (e.type === 'tool.execution_complete') {
+				const d = raw.data as { toolCallId?: string; result?: { content?: string } };
+				if (d.toolCallId && askUserToolIds.has(d.toolCallId)) {
+					const answer = d.result?.content ?? '';
+					const choices = askUserChoices.get(d.toolCallId);
+					if (answer) pendingAskUserAnswers.push({ content: answer, choices, timestamp: ts });
+					askUserToolIds.delete(d.toolCallId);
+					askUserChoices.delete(d.toolCallId);
+				}
 			}
 		}
 		// If the turn is still active, every message in the last round is intermediate

@@ -56,6 +56,7 @@ interface Message {
 	timestamp: number;
 	intermediate?: boolean; // mid-turn "notes to self" — shown as thought bubble, not a chat message
 	toolSummary?: ToolSummaryItem[]; // tools that ran before this message
+	askUserChoices?: string[]; // choices presented when this is an ask_user response
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -531,6 +532,7 @@ export default function App() {
 	const mgmtWsRef = useRef<WebSocket | null>(null);
 	const streamingRef = useRef('');
 	const historyTimestampRef = useRef<number | undefined>(undefined); // timestamp from last history delta event
+	const historyIdCounter = useRef(0); // monotonic counter for unique history message IDs
 	const reasoningRef = useRef('');
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
@@ -715,7 +717,7 @@ export default function App() {
 					// Flush any remaining assistant content
 					if (streamingRef.current) {
 						historyBufferRef.current.push({
-							id: `hist-${Date.now()}-a`,
+							id: `hist-${historyIdCounter.current++}-a`,
 							role: 'assistant',
 							content: streamingRef.current,
 							timestamp: historyTimestampRef.current ?? Date.now(),
@@ -785,7 +787,7 @@ export default function App() {
 						// Flush any pending assistant content first
 						if (streamingRef.current) {
 							historyBufferRef.current.push({
-								id: `hist-${Date.now()}-a`,
+								id: `hist-${historyIdCounter.current++}-a`,
 								role: 'assistant',
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
@@ -794,11 +796,15 @@ export default function App() {
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
 						}
+						const rawContent = event.content ?? '';
+						const isAskUserResponse = !!event.askUserChoices?.length || rawContent.startsWith('User selected: ') || rawContent.startsWith('User responded: ');
+						const content = isAskUserResponse ? rawContent.replace(/^User (selected|responded): /, '') : rawContent;
 						historyBufferRef.current.push({
-							id: `hist-${Date.now()}-u`,
+							id: `hist-${historyIdCounter.current++}-u`,
 							role: 'user',
-							content: event.content ?? '',
+							content,
 							timestamp: event.timestamp ?? Date.now(),
+							askUserChoices: event.askUserChoices,
 						});
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';
@@ -806,7 +812,7 @@ export default function App() {
 					} else if (event.type === 'idle') {
 						if (streamingRef.current) {
 							historyBufferRef.current.push({
-								id: `hist-${Date.now()}-a`,
+								id: `hist-${historyIdCounter.current++}-a`,
 								role: 'assistant',
 								content: streamingRef.current,
 								timestamp: historyTimestampRef.current ?? Date.now(),
@@ -900,8 +906,10 @@ export default function App() {
 						} catch { /* ignore parse errors */ }
 					} else {
 						// A real tool is starting — any buffered message was an intermediate "notes to self"
+						// Exception: ask_user is user-facing, so the preceding message is substantive content
 						if (pendingMsgRef.current) {
-							const msg = { ...pendingMsgRef.current, intermediate: true };
+							const isUserFacing = event.toolName === 'ask_user';
+							const msg = { ...pendingMsgRef.current, intermediate: isUserFacing ? undefined : true };
 							pendingMsgRef.current = null;
 							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
 						}
@@ -1221,6 +1229,14 @@ export default function App() {
 	const respondInput = useCallback((answer: string, wasFreeform: boolean) => {
 		if (!pendingInput) return;
 		wsRef.current?.send(JSON.stringify({ type: 'input_response', requestId: pendingInput.requestId, answer, wasFreeform }));
+		// Show the user's answer in the chat
+		setMessages(prev => [...prev, {
+			id: `input-${Date.now()}`,
+			role: 'user',
+			content: answer,
+			timestamp: Date.now(),
+			askUserChoices: pendingInput.choices,
+		}]);
 		setPendingInput(null);
 		setFreeformAnswer('');
 	}, [pendingInput]);
@@ -1703,6 +1719,25 @@ export default function App() {
 								{msg.role === 'assistant'
 									? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} bytes={msg.bytes} />
 									: <>
+										{msg.askUserChoices && msg.askUserChoices.length > 0 && (
+											<details style={{ marginBottom: '6px' }}>
+												<summary style={{
+													cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
+													gap: '5px', fontSize: '11px', opacity: 0.7, userSelect: 'none',
+												}}>
+													<span>👉</span>
+													<span>Selected</span>
+												</summary>
+												<div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+													{msg.askUserChoices.map((choice, i) => (
+														<div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', opacity: 0.8 }}>
+															<span style={{ flexShrink: 0 }}>{choice === msg.content ? '●' : '○'}</span>
+															<span>{choice}</span>
+														</div>
+													))}
+												</div>
+											</details>
+										)}
 										<div className="whitespace-pre-wrap break-words">{msg.content}</div>
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 											<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
