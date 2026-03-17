@@ -15,7 +15,19 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 
 1. Unzip this package to a folder of your choice.
 2. Open a terminal in that folder.
-3. Start the server:
+3. Run the installer:
+
+   **Windows:**
+   ```
+   install.cmd
+   ```
+
+   **Mac / Linux:**
+   ```
+   sh install.sh
+   ```
+
+4. Start the server:
 
    **Windows:**
    ```
@@ -33,12 +45,6 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
    To also open the portal automatically in your browser:
    ```
    sh start-and-launch.sh
-   ```
-
-   Or directly:
-   ```
-   node dist/server.js
-   node dist/server.js --launch
    ```
 
 4. The console will print a URL and QR code, e.g.:
