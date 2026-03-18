@@ -67,6 +67,9 @@ export class PortalServer {
 				const pingInterval = setInterval(() => {
 					if (ws.readyState === WebSocket.OPEN) ws.ping();
 				}, 30_000);
+				ws.on('message', (data) => {
+					try { if (JSON.parse(data.toString()).type === 'ping') ws.send('{"type":"pong"}'); } catch {}
+				});
 				ws.on('close', () => clearInterval(pingInterval));
 				return;
 			}
@@ -197,7 +200,10 @@ export class PortalServer {
 				pattern?: string;
 				ruleId?: string;
 			};
-			if (msg.type === 'prompt' && msg.content) {
+			if (msg.type === 'ping') {
+				// Application-level heartbeat — browser WebSocket API doesn't expose protocol pings
+				ws.send('{"type":"pong"}');
+			} else if (msg.type === 'prompt' && msg.content) {
 				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
 				handle.send(msg.content).catch((e) => {
 					if (handle.listenerCount > 0) {

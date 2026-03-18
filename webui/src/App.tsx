@@ -539,6 +539,7 @@ export default function App() {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isStoppingRef = useRef(false);
 	const stopClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const heartbeatRef = useRef<{ interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> | null } | null>(null);
 	const chatEndRef = useRef<HTMLDivElement>(null);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
@@ -571,6 +572,7 @@ export default function App() {
 		if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.close(); }
 		wsRef.current = null;
 		if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 		noSessionRef.current = true;
 		isStoppingRef.current = false;
@@ -658,7 +660,22 @@ export default function App() {
 		wsRef.current = ws;
 		let hadMsg = false;
 
-		ws.onopen = () => { fastFailCount.current = 0; setConnectionState('connected'); };
+		ws.onopen = () => {
+			fastFailCount.current = 0;
+			setConnectionState('connected');
+			// Start application-level heartbeat (browser WS API doesn't expose protocol pings)
+			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); }
+			const hb = { interval: setInterval(() => {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send('{"type":"ping"}');
+					hb.timeout = setTimeout(() => {
+						// No pong received — connection is stale
+						ws.close();
+					}, 5000);
+				}
+			}, 30_000), timeout: null as ReturnType<typeof setTimeout> | null };
+			heartbeatRef.current = hb;
+		};
 
 		ws.onmessage = (e) => {
 			hadMsg = true;
@@ -683,6 +700,12 @@ export default function App() {
 					intermediate?: boolean;
 					role?: string;
 				};
+
+				if (event.type === 'pong') {
+					// Heartbeat response — clear the stale-connection timeout
+					if (heartbeatRef.current?.timeout) { clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current.timeout = null; }
+					return;
+				}
 
 				if (event.type === 'history_meta') {
 								setHistoryTruncated({ total: event.total!, shown: event.shown! });
@@ -1033,6 +1056,8 @@ export default function App() {
 		ws.onclose = (e) => {
 			// Ignore close events from replaced connections
 			if (wsRef.current !== ws) return;
+			// Stop heartbeat
+			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 			setConnectionState('disconnected');
 			setIsStreaming(false);
 			setIsThinking(false);
@@ -1095,21 +1120,30 @@ export default function App() {
 		return () => clearInterval(t);
 	}, [connectionState]);
 
-	// iOS Safari: reconnect when page becomes visible/focused after being backgrounded.
-	// Guard: skip if connect() was called < 3s ago (initial load / just reconnected).
+	// Reconnect when page becomes visible/focused after being backgrounded.
+	// Also sends a heartbeat ping to detect stale connections that still report OPEN.
 	useEffect(() => {
-		const tryReconnect = () => {
-			if (Date.now() - lastConnectTime.current < 1500) return; // too soon after last connect
+		const checkConnection = () => {
+			if (Date.now() - lastConnectTime.current < 1500) return;
 			const ws = wsRef.current;
-			if (!ws || ws.readyState === WebSocket.OPEN) return;
+			if (!ws) return;
+			if (ws.readyState === WebSocket.OPEN) {
+				// Connection looks alive — send a ping to verify. If no pong within 5s, onclose fires.
+				ws.send('{"type":"ping"}');
+				if (heartbeatRef.current) {
+					if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout);
+					heartbeatRef.current.timeout = setTimeout(() => ws.close(), 5000);
+				}
+				return;
+			}
 			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
 			if (ws.readyState === WebSocket.CONNECTING) ws.close();
 			connect();
 		};
-		const onVisibility = () => { if (document.visibilityState === 'visible') tryReconnect(); };
+		const onVisibility = () => { if (document.visibilityState === 'visible') checkConnection(); };
 		document.addEventListener('visibilitychange', onVisibility);
-		window.addEventListener('focus', tryReconnect);
-		window.addEventListener('pageshow', tryReconnect);
+		window.addEventListener('focus', checkConnection);
+		window.addEventListener('pageshow', checkConnection);
 		// Retry every 2s if still not connected — iOS needs ~3 attempts before succeeding.
 		// Skip if already CONNECTING to avoid cycling through open/close/open rapidly.
 		const retryInterval = setInterval(() => {
@@ -1118,8 +1152,8 @@ export default function App() {
 		}, 2000);
 		return () => {
 			document.removeEventListener('visibilitychange', onVisibility);
-			window.removeEventListener('focus', tryReconnect);
-			window.removeEventListener('pageshow', tryReconnect);
+			window.removeEventListener('focus', checkConnection);
+			window.removeEventListener('pageshow', checkConnection);
 			clearInterval(retryInterval);
 		};
 	}, [connect]);
