@@ -4,12 +4,9 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v18 or later
-- [GitHub Copilot CLI](https://github.com/github/copilot-cli), signed in:
-  ```
-  winget install GitHub.Copilot
-  copilot auth login
-  ```
+- [Node.js](https://nodejs.org/) v22 or later
+
+That's it — the installer handles everything else (including GitHub authentication).
 
 ## Setup
 
@@ -27,27 +24,24 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
    sh install.sh
    ```
 
+   The installer will:
+   - Install npm dependencies (includes the Copilot CLI engine)
+   - Apply a compatibility patch
+   - Sign you in to GitHub (opens a browser window if needed)
+
 4. Start the server:
 
    **Windows:**
-   ```
-   start.cmd
-   ```
-   To also open the portal automatically in your browser:
    ```
    start-and-launch.cmd
    ```
 
    **Mac / Linux:**
    ```
-   sh start.sh
-   ```
-   To also open the portal automatically in your browser:
-   ```
    sh start-and-launch.sh
    ```
 
-4. The console will print a URL and QR code, e.g.:
+5. The console will print a URL and QR code, e.g.:
    ```
    Open: http://192.168.1.42:3847?token=abc123...
    ```

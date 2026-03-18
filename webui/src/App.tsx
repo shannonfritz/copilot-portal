@@ -536,6 +536,7 @@ export default function App() {
 	const reasoningRef = useRef('');
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isStoppingRef = useRef(false);
 	const stopClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const chatEndRef = useRef<HTMLDivElement>(null);
@@ -1268,6 +1269,14 @@ export default function App() {
 		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 	};
 
+	// Auto-resize textarea to fit content (up to maxHeight)
+	useEffect(() => {
+		const ta = textareaRef.current;
+		if (!ta) return;
+		ta.style.height = 'auto';
+		ta.style.height = `${ta.scrollHeight}px`;
+	}, [input]);
+
 	if (connectionState === 'no_token') {
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
@@ -1919,8 +1928,9 @@ export default function App() {
 					<div className="flex items-center gap-2">
 						<div className="relative flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							<textarea
+								ref={textareaRef}
 								className="w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
-								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 120 }}
+								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
 								placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
 								disabled={connectionState !== 'connected'}
 								rows={1}

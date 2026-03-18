@@ -1189,14 +1189,14 @@ export class SessionPool {
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
 			if (/auth|token|login|credential|unauthorized/i.test(msg)) {
-				this.log(`\n❌ Authentication failed. Please run:\n\n   copilot auth login\n\nThen restart the server.\n`);
+				this.log(`\n❌ Authentication failed. Please run:\n\n   npx copilot login\n\nThen restart the server.\n`);
 			}
 			throw e;
 		}
 		const auth = await this.client.getAuthStatus();
 		if (!auth.isAuthenticated) {
-			this.log(`\n❌ Not authenticated. Please run:\n\n   copilot auth login\n\nThen restart the server.\n`);
-			throw new Error('Not authenticated — run "copilot auth login" first');
+			this.log(`\n❌ Not authenticated. Please run:\n\n   npx copilot login\n\nThen restart the server.\n`);
+			throw new Error('Not authenticated — run "npx copilot login" first');
 		}
 		this.log(`[Pool] Authenticated as: ${auth.login ?? 'unknown'}`);
 	}
