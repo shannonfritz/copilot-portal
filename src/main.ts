@@ -10,6 +10,7 @@ if (args.includes('--help') || args.includes('-h')) {
 Options:
   --port <n>     Port to listen on (default: 3847)
   --data <dir>   Data directory for token, rules, and settings
+  --new-token    Generate a new access token (invalidates existing URLs)
   --launch       Open the portal URL in your default browser on start
   --no-qr        Suppress the QR code output
   --help         Show this help
@@ -27,8 +28,9 @@ const PORT = parseInt(getArg('--port') ?? '3847', 10);
 const DATA_DIR = getArg('--data');
 const LAUNCH = args.includes('--launch');
 const NO_QR = args.includes('--no-qr');
+const NEW_TOKEN = args.includes('--new-token');
 
-const server = new PortalServer(PORT, DATA_DIR);
+const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN });
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');

@@ -23,10 +23,14 @@ export class PortalServer {
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
-	constructor(private port: number, dataDir?: string) {
+	constructor(private port: number, dataDir?: string, opts?: { newToken?: boolean }) {
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
 		this.dataDir = dataDir ?? path.join(__dirname, '..', 'data');
+		if (opts?.newToken) {
+			const tokenFile = path.join(this.dataDir, 'token.txt');
+			try { fs.unlinkSync(tokenFile); } catch {}
+		}
 		this.token = this.loadOrCreateToken();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir));
 		this.pool.onTitleChanged = (sessionId, summary) => {
