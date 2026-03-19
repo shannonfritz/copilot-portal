@@ -64,3 +64,48 @@ To rotate the token (invalidate existing URLs), delete `data/token.txt` and rest
 ## Stopping the server
 
 Press `Ctrl+C` in the terminal.
+
+---
+
+## Development
+
+These sections are for contributors working from the source repository.
+
+### Building from source
+
+```bash
+npm install          # install dependencies
+npm run build        # build server + web UI
+```
+
+### Packaging a release
+
+```bash
+npm run package
+```
+
+This will:
+1. Increment the build number in `BUILD`
+2. Build the server and web UI
+3. Create a distributable zip: `copilot-portal-v0.2.0-build-260319-02.zip`
+
+The zip contains everything an end user needs — no dev dependencies or source code.
+
+### Versioning
+
+The project uses two identifiers shown in the portal title bar:
+
+- **Version** (`v0.2.0`) — from `package.json`. Bump manually when cutting a release.
+- **Build** (`260319-02`) — `YYMMDD-NN` format, auto-incremented by `npm run package`. The `BUILD` file in the repo tracks the current number.
+
+For GitHub Releases, attach the zip and use the version as the tag (e.g. `v0.2.0`). Multiple builds can exist for the same version during development.
+
+### Project structure
+
+```
+src/           Server source (TypeScript → dist/server.js)
+webui/src/     Frontend source (React + Vite → dist/webui/)
+BUILD          Current build number
+package.mjs    Packaging script
+patch.mjs      Post-install SDK compatibility patch
+```

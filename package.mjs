@@ -12,19 +12,20 @@ const prev = parseInt(readFileSync('BUILD', 'utf8').trim(), 10) || 0;
 const buildNum = prev + 1;
 writeFileSync('BUILD', `${buildNum}\n`);
 
-// 2. Compute version string
+// 2. Read version from package.json and compute build string
+const { version: pkgVersion } = JSON.parse(readFileSync('package.json', 'utf8'));
 const now = new Date();
 const yy = now.getUTCFullYear().toString().slice(2);
 const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
 const dd = String(now.getUTCDate()).padStart(2, '0');
-const version = `${yy}${mm}${dd}-${String(buildNum).padStart(2, '0')}`;
-console.log(`\n  Building version: ${version}\n`);
+const build = `${yy}${mm}${dd}-${String(buildNum).padStart(2, '0')}`;
+console.log(`\n  Version: ${pkgVersion}  Build: ${build}\n`);
 
 // 3. Build
 execSync('npm run build', { stdio: 'inherit' });
 
 // 4. Stage files
-const stamp = `copilot-portal-${version}`;
+const stamp = `copilot-portal-v${pkgVersion}-build-${build}`;
 const stage = join(process.env.TEMP || '/tmp', stamp);
 if (existsSync(stage)) rmSync(stage, { recursive: true });
 mkdirSync(stage, { recursive: true });
