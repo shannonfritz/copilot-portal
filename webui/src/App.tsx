@@ -451,7 +451,7 @@ function SessionDrawer({
 						</button>
 						{showModelPicker && (
 							<div
-								className="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
+								className="chat-scroll absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
 								style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
 							>
 								{models.map(m => (
@@ -1455,7 +1455,7 @@ export default function App() {
 								+ New
 							</button>
 						</div>
-						<div style={{ maxHeight: "calc(100vh - 12rem)", overflowY: "auto" }}>
+						<div className="chat-scroll" style={{ maxHeight: "calc(100vh - 12rem)", overflowY: "auto" }}>
 							{sessions.map((s) => {
 								const isActive = s.sessionId === activeSessionId;
 								const isConfirming = confirmDeleteId === s.sessionId;
