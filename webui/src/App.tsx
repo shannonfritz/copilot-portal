@@ -1401,7 +1401,7 @@ export default function App() {
 								No rules yet. Use "Allow Always" on a permission request to add one.
 							</p>
 						) : (
-							<div style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto' }}>
+							<div className="chat-scroll" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto' }}>
 								{rules.map(rule => (
 									<div
 										key={rule.id}
