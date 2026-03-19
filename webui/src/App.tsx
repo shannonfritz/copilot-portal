@@ -295,7 +295,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		return () => clearInterval(timer);
 	}, [tc.type, tc.timestamp]);
 	if (tc.type === 'tool_output') return (
-		<div className="mb-1 rounded-lg border px-3 py-2 text-xs font-mono" style={{ borderColor: 'var(--border)', background: 'var(--muted-tint)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', overflowY: 'auto' }}>
+		<div className="chat-scroll mb-1 rounded-lg border px-3 py-2 text-xs font-mono" style={{ borderColor: 'var(--border)', background: 'var(--muted-tint)', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', overflowY: 'auto' }}>
 			{tc.content}
 		</div>
 	);
@@ -1892,7 +1892,7 @@ export default function App() {
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tool-call)' }}>
 									<span>⚠️</span> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
-								<pre className="mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
+								<pre className="chat-scroll mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
 								{pendingApproval.warning && (
 									<div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1 text-xs" style={{ background: 'var(--warning-tint)', color: 'var(--tool-call)' }}>
 										<span>⚠</span> {pendingApproval.warning}
@@ -1963,7 +1963,7 @@ export default function App() {
 						<div className="relative flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							<textarea
 								ref={textareaRef}
-								className="w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
+								className="chat-scroll w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
 								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
 								placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
 								disabled={connectionState !== 'connected'}
