@@ -15,6 +15,7 @@
 		"dev": "node esbuild.cjs --watch",
 		"watch:ui": "cd webui && npm run dev",
 		"test": "node tools/test-client.mjs",
+		"package": "node package.mjs",
 		"postinstall": "patch-package"
 	},
 	"devDependencies": {

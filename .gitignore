@@ -9,3 +9,6 @@ webui/dist/
 # Runtime-generated data — session-specific, never commit
 data/
 debug/
+
+# Build artifacts
+copilot-portal-*.zip

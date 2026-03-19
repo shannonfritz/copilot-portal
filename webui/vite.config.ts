@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { createRequire } from 'module';
+import { readFileSync } from 'fs';
 
-const require = createRequire(import.meta.url);
-const { version } = require('../package.json') as { version: string };
+const buildNum = parseInt(readFileSync('../BUILD', 'utf8').trim(), 10) || 0;
+const yy = new Date().getUTCFullYear().toString().slice(2);
+const mm = String(new Date().getUTCMonth() + 1).padStart(2, '0');
+const dd = String(new Date().getUTCDate()).padStart(2, '0');
+const version = `${yy}${mm}${dd}-${String(buildNum).padStart(2, '0')}`;
 const buildTime = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
 export default defineConfig({

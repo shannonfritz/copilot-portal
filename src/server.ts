@@ -465,7 +465,7 @@ export class PortalServer {
 			this.httpServer.on('error', reject);
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
 				this.initDebugFiles();
-				this.log(`[Build] ${__BUILD_TIME__}`);
+				this.log(`[Build] ${__VERSION__} (${__BUILD_TIME__})`);
 				this.log(`Server started on port ${this.port}`);
 				this.log(`Open: ${this.getURL()}`);
 				resolve();
