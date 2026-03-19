@@ -41,9 +41,11 @@ for (const f of files) {
 	cpSync(f, dest, { recursive: true });
 }
 
-// 5. Create zip (PowerShell on Windows, zip on Unix)
+// 5. Create zip in builds/ directory
+const buildsDir = join(root, 'builds');
+if (!existsSync(buildsDir)) mkdirSync(buildsDir, { recursive: true });
 const zipName = `${stamp}.zip`;
-const zipPath = join(root, zipName);
+const zipPath = join(buildsDir, zipName);
 if (existsSync(zipPath)) rmSync(zipPath);
 
 if (process.platform === 'win32') {
