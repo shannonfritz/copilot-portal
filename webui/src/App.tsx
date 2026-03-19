@@ -1563,7 +1563,7 @@ export default function App() {
 							</svg>
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
-						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · {__BUILD_TIME__}</div>
+						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · build {__BUILD__}</div>
 					</div>
 				</div>
 				<div className="flex flex-col items-end gap-0.5">
