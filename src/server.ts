@@ -172,7 +172,12 @@ export class PortalServer {
 				if (!cancelled && ws.readyState === WebSocket.OPEN) ws.ping();
 			}, 30_000);
 
-			ws.on('message', (data) => this.handleMessage(data.toString(), clientId, handle));
+			ws.on('message', (data) => {
+				const str = data.toString();
+				// Application-level heartbeat — browser WS API doesn't expose protocol pings
+				if (str === '{"type":"ping"}') { ws.send('{"type":"pong"}'); return; }
+				this.handleMessage(str, clientId, handle);
+			});
 			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
 				cancelled = true; // prevent any pending async sends for this connection
@@ -200,10 +205,7 @@ export class PortalServer {
 				pattern?: string;
 				ruleId?: string;
 			};
-			if (msg.type === 'ping') {
-				// Application-level heartbeat — browser WebSocket API doesn't expose protocol pings
-				ws.send('{"type":"pong"}');
-			} else if (msg.type === 'prompt' && msg.content) {
+			if (msg.type === 'prompt' && msg.content) {
 				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
 				handle.send(msg.content).catch((e) => {
 					if (handle.listenerCount > 0) {
