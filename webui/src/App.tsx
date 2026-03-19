@@ -591,6 +591,7 @@ export default function App() {
 		setCliApprovalInfo(null);
 		setCliInputInfo(null);
 		setActiveSessionSummary(null);
+		setActiveModel(null);
 		setRules([]);
 		setApproveAll(false);
 		const params = new URLSearchParams(window.location.search);
@@ -764,6 +765,7 @@ export default function App() {
 					setActiveSessionId(newId);
 					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
+					setActiveModel((event as { model?: string | null }).model ?? null);
 					if (newId) {
 						const summary = (event as { summary?: string | null }).summary ?? undefined;
 						setSessions(prev => prev.some(s => s.sessionId === newId)
