@@ -149,6 +149,7 @@ Steps 1–4 are backend-only and can be tested with curl. Steps 5–7 add the UI
 ## Security Considerations
 
 - Scoped tokens cannot escalate: no session creation, no token management
+- **Update and restart endpoints are primary-only** — scoped tokens must not be able to trigger `npm update`, rebuild, or server restart
 - Token strings are only shown once at creation time
 - Primary token can always revoke any scoped token
 - `--new-token` regenerates primary only; scoped tokens survive

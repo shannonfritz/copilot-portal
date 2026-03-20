@@ -1501,14 +1501,39 @@ export default function App() {
 					>
 						<div className="mb-3 flex items-center justify-between">
 							<h2 className="font-semibold">Sessions</h2>
-							<button
-								className="rounded-lg px-3 py-1.5 text-sm font-medium"
-								style={{ background: 'var(--primary)', color: 'white' }}
-								onClick={newSession}
-								type="button"
-							>
-								+ New
-							</button>
+							<div className="flex items-center gap-2">
+								<button
+									className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+									onClick={() => setShowQR(v => !v)}
+									type="button"
+									title="Show QR code"
+								>
+									<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<path fillRule="evenodd" d="M2 2h8v8H2V2zm1.5 1.5v5h5v-5h-5z" />
+										<rect x="5" y="5" width="2" height="2" />
+										<path fillRule="evenodd" d="M14 2h8v8h-8V2zm1.5 1.5v5h5v-5h-5z" />
+										<rect x="17" y="5" width="2" height="2" />
+										<path fillRule="evenodd" d="M2 14h8v8H2v-8zm1.5 1.5v5h5v-5h-5z" />
+										<rect x="5" y="17" width="2" height="2" />
+										<rect x="14" y="14" width="2" height="2" />
+										<rect x="18" y="14" width="2" height="2" />
+										<rect x="16" y="16" width="2" height="2" />
+										<rect x="14" y="18" width="2" height="2" />
+										<rect x="18" y="18" width="2" height="2" />
+										<rect x="20" y="16" width="2" height="2" />
+										<rect x="14" y="20" width="2" height="2" />
+									</svg>
+								</button>
+								<button
+									className="rounded-lg px-3 py-1.5 text-sm font-medium"
+									style={{ background: 'var(--primary)', color: 'white' }}
+									onClick={newSession}
+									type="button"
+								>
+									+ New
+								</button>
+							</div>
 						</div>
 						<div className="chat-scroll" style={{ maxHeight: "calc(100vh - 12rem)", overflowY: "auto" }}>
 							{sessions.map((s) => {
@@ -1648,33 +1673,6 @@ export default function App() {
 							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
 								<rect x="3" y="7" width="14" height="11" rx="2" />
 								<path d="M7 5h12a2 2 0 012 2v10" opacity="0.55" />
-							</svg>
-						</button>
-						<button
-							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-							onClick={() => setShowQR(v => !v)}
-							type="button"
-							title="Show QR code"
-						>
-							<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-								{/* Top-left finder */}
-								<path fillRule="evenodd" d="M2 2h8v8H2V2zm1.5 1.5v5h5v-5h-5z" />
-								<rect x="5" y="5" width="2" height="2" />
-								{/* Top-right finder */}
-								<path fillRule="evenodd" d="M14 2h8v8h-8V2zm1.5 1.5v5h5v-5h-5z" />
-								<rect x="17" y="5" width="2" height="2" />
-								{/* Bottom-left finder */}
-								<path fillRule="evenodd" d="M2 14h8v8H2v-8zm1.5 1.5v5h5v-5h-5z" />
-								<rect x="5" y="17" width="2" height="2" />
-								{/* Bottom-right data modules */}
-								<rect x="14" y="14" width="2" height="2" />
-								<rect x="18" y="14" width="2" height="2" />
-								<rect x="16" y="16" width="2" height="2" />
-								<rect x="14" y="18" width="2" height="2" />
-								<rect x="18" y="18" width="2" height="2" />
-								<rect x="20" y="16" width="2" height="2" />
-								<rect x="14" y="20" width="2" height="2" />
 							</svg>
 						</button>
 						<button
