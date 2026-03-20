@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
 import { RulesStore } from './rules.js';
@@ -412,19 +411,11 @@ export class PortalServer {
 
 		if (url.pathname === '/api/restart' && method === 'POST') {
 			this.sendJson(res, 200, { ok: true, message: 'Restarting...' });
-			this.log('[Update] Restart requested — spawning replacement process...');
-			// Graceful restart: stop the server, spawn a new process, then exit.
-			// The new process will bind to the same port after we release it.
+			this.log('[Update] Restart requested — exiting with restart code 75...');
+			// Exit with code 75 — the start script watches for this and relaunches.
 			setTimeout(async () => {
 				await this.stop();
-				const child = spawn(process.execPath, process.argv.slice(1), {
-					cwd: process.cwd(),
-					env: process.env,
-					stdio: 'inherit',
-					detached: true,
-				});
-				child.unref();
-				process.exit(0);
+				process.exit(75);
 			}, 500); // small delay so the HTTP response can flush
 			return;
 		}

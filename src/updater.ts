@@ -23,6 +23,7 @@ export interface UpdateStatus {
 	lastChecked: number | null;  // ms epoch
 	checking: boolean;
 	applying: boolean;
+	restartNeeded: boolean;
 	error: string | null;
 }
 
@@ -40,9 +41,18 @@ export class UpdateChecker {
 	private error: string | null = null;
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private log: (msg: string) => void;
+	/** Versions at process start — if on-disk versions differ after an apply, restart is needed */
+	private startupVersions: Record<string, string> = {};
 
 	constructor(log: (msg: string) => void) {
 		this.log = log;
+		// Snapshot versions at startup
+		for (const name of TRACKED_PACKAGES) {
+			const v = getInstalledVersion(name);
+			if (v) this.startupVersions[name] = v;
+		}
+		const cliV = getInstalledVersion('@github/copilot');
+		if (cliV) this.startupVersions['@github/copilot'] = cliV;
 	}
 
 	/** Start periodic checking. First check runs immediately. */
@@ -62,8 +72,18 @@ export class UpdateChecker {
 			lastChecked: this.lastChecked,
 			checking: this.checking,
 			applying: this.applying,
+			restartNeeded: this.isRestartNeeded(),
 			error: this.error,
 		};
+	}
+
+	/** True if on-disk versions differ from what this process loaded at startup */
+	private isRestartNeeded(): boolean {
+		for (const [name, startVer] of Object.entries(this.startupVersions)) {
+			const currentOnDisk = getInstalledVersion(name);
+			if (currentOnDisk && currentOnDisk !== startVer) return true;
+		}
+		return false;
 	}
 
 	/** Returns true if any tracked package has an update available */
@@ -116,10 +136,12 @@ export class UpdateChecker {
 		try {
 			this.log(`[Update] Applying updates...`);
 
-			// Update tracked packages. @github/copilot is a transitive dependency of
-			// @github/copilot-sdk so updating the SDK also pulls the latest CLI binary.
-			const pkgNames = [...TRACKED_PACKAGES].join(' ');
-			await runCommand(`npm update ${pkgNames}`, PROJECT_ROOT);
+			// Update all tracked packages plus the CLI binary.
+			// @github/copilot is a transitive dep of copilot-sdk — npm won't eagerly
+			// update it via `npm update @github/copilot-sdk` if the current version
+			// satisfies the range, so we name it explicitly.
+			const allPkgs = [...new Set([...TRACKED_PACKAGES, ...this.packages.filter(p => p.hasUpdate).map(p => p.name)])];
+			await runCommand(`npm update ${allPkgs.join(' ')}`, PROJECT_ROOT);
 			this.log(`[Update] npm update complete`);
 
 			// 2. Rebuild the server and UI

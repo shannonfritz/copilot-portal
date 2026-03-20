@@ -35,5 +35,17 @@ if (watch) {
 		console.log('Watching for changes...');
 	}).catch(console.error);
 } else {
-	esbuild.build(options).catch(() => process.exit(1));
+	Promise.all([
+		esbuild.build(options),
+		esbuild.build({
+			entryPoints: ['src/launcher.ts'],
+			bundle: true,
+			outfile: 'dist/launcher.js',
+			packages: 'external',
+			format: 'esm',
+			platform: 'node',
+			target: 'node22',
+			minify: production,
+		}),
+	]).catch(() => process.exit(1));
 }

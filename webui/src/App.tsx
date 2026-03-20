@@ -146,6 +146,7 @@ interface UpdateStatus {
 	lastChecked: number | null;
 	checking: boolean;
 	applying: boolean;
+	restartNeeded: boolean;
 	error: string | null;
 }
 
@@ -544,7 +545,6 @@ export default function App() {
 	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 	const [updateDismissed, setUpdateDismissed] = useState(false);
-	const [restartNeeded, setRestartNeeded] = useState(false);
 
 	const wsRef = useRef<WebSocket | null>(null);
 	const mgmtWsRef = useRef<WebSocket | null>(null);
@@ -694,6 +694,11 @@ export default function App() {
 		ws.onopen = () => {
 			fastFailCount.current = 0;
 			setConnectionState('connected');
+			// Re-check update status on (re)connect — server may have restarted with new versions
+			apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
+				setUpdateStatus(s);
+				if (!s.packages.some(p => p.hasUpdate) && !s.restartNeeded) setUpdateDismissed(false);
+			}).catch(() => {});
 			// Start application-level heartbeat (browser WS API doesn't expose protocol pings)
 			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); }
 			const hb = { interval: setInterval(() => {
@@ -1243,7 +1248,6 @@ export default function App() {
 			const res = await apiFetch('/api/updates/apply', { method: 'POST' });
 			const status = await res.json() as UpdateStatus;
 			setUpdateStatus(status);
-			if (!status.error) setRestartNeeded(true);
 		} catch (e) {
 			setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
 		}
@@ -1739,17 +1743,18 @@ export default function App() {
 				{/* Update banner */}
 				{updateStatus && !updateDismissed && (() => {
 					const updatable = updateStatus.packages.filter(p => p.hasUpdate);
+					const restart = updateStatus.restartNeeded;
 					// Nothing to show: no updates, not applying, no error, no restart pending
-					if (updatable.length === 0 && !updateStatus.applying && !updateStatus.error && !restartNeeded) return null;
+					if (updatable.length === 0 && !updateStatus.applying && !updateStatus.error && !restart) return null;
 
 					return (
 						<div
 							className="flex items-center gap-2 px-4 py-2 text-xs"
-							style={{ background: restartNeeded ? 'var(--success-tint)' : 'var(--primary-tint)', borderBottom: '1px solid var(--border)' }}
+							style={{ background: restart ? 'var(--success-tint)' : 'var(--primary-tint)', borderBottom: '1px solid var(--border)' }}
 						>
 							{/* Icon */}
-							<svg className="size-4 shrink-0" fill="none" stroke={restartNeeded ? 'var(--success)' : 'var(--primary)'} strokeWidth="2" viewBox="0 0 24 24">
-								{restartNeeded
+							<svg className="size-4 shrink-0" fill="none" stroke={restart ? 'var(--success)' : 'var(--primary)'} strokeWidth="2" viewBox="0 0 24 24">
+								{restart
 									? <path d="M4 4v5h5M20 20v-5h-5M5 19.5A9 9 0 0112 3m7 1.5A9 9 0 0112 21" strokeLinecap="round" strokeLinejoin="round" />
 									: <path d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
 								}
@@ -1759,7 +1764,7 @@ export default function App() {
 								<span className="flex-1" style={{ color: 'var(--text)' }}>Updating… this may take a minute</span>
 							) : updateStatus.error ? (
 								<span className="flex-1" style={{ color: 'var(--error)' }}>Update failed: {updateStatus.error}</span>
-							) : restartNeeded ? (
+							) : restart ? (
 								<span className="flex-1" style={{ color: 'var(--text)' }}>Update installed — restart to apply</span>
 							) : (
 								<span className="flex-1" style={{ color: 'var(--text)' }}>
@@ -1768,7 +1773,7 @@ export default function App() {
 							)}
 
 							{/* Action buttons */}
-							{!updateStatus.applying && !restartNeeded && updatable.length > 0 && (
+							{!updateStatus.applying && !restart && updatable.length > 0 && (
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
@@ -1778,11 +1783,11 @@ export default function App() {
 									Update now
 								</button>
 							)}
-							{restartNeeded && (
+							{restart && (
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
-									style={{ background: 'var(--success)', color: 'white' }}
+									style={{ background: 'var(--success)', color: '#111' }}
 									onClick={restartServer}
 								>
 									Restart now

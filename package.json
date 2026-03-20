@@ -11,7 +11,7 @@
 		"build": "node esbuild.cjs --production && cd webui && npm run build",
 		"build:ext": "node esbuild.cjs",
 		"build:ui": "cd webui && npm run build",
-		"start": "node dist/server.js",
+		"start": "node dist/launcher.js",
 		"dev": "node esbuild.cjs --watch",
 		"watch:ui": "cd webui && npm run dev",
 		"test": "node tools/test-client.mjs",
