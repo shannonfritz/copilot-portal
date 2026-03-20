@@ -412,13 +412,32 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/restart' && method === 'POST') {
+			// Check for active turns across all sessions
+			const activeSessions = this.pool.getActiveTurnSessions();
+
+			const body = await this.readBody(req).catch(() => '{}');
+			const { force } = JSON.parse(body || '{}') as { force?: boolean };
+
+			if (activeSessions.length > 0 && !force) {
+				this.sendJson(res, 409, {
+					error: 'Active turns in progress',
+					activeSessions: activeSessions.map(id => id.slice(0, 8)),
+					message: 'Sessions have active turns. Wait for them to finish or use force:true to restart anyway.',
+				});
+				return;
+			}
+
 			this.sendJson(res, 200, { ok: true, message: 'Restarting...' });
-			this.log('[Update] Restart requested — exiting with restart code 75...');
-			// Exit with code 75 — the start script watches for this and relaunches.
+			this.log('[Update] Restart requested — graceful shutdown...');
+
+			// Notify all connected clients that a restart is imminent
+			this.broadcastAll({ type: 'info', content: 'Server restarting…' });
+
+			// Graceful shutdown: stop pool (disconnects sessions), close HTTP, exit with restart code
 			setTimeout(async () => {
 				await this.stop();
 				process.exit(75);
-			}, 500); // small delay so the HTTP response can flush
+			}, 500); // small delay so the HTTP response and broadcast can flush
 			return;
 		}
 

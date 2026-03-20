@@ -1253,9 +1253,21 @@ export default function App() {
 		}
 	}, []);
 
-	const restartServer = useCallback(async () => {
+	const restartServer = useCallback(async (force = false) => {
 		try {
-			await apiFetch('/api/restart', { method: 'POST' });
+			const res = await apiFetch('/api/restart', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ force }),
+			});
+			if (res.status === 409) {
+				const data = await res.json() as { activeSessions?: string[] };
+				const ids = data.activeSessions?.join(', ') ?? 'unknown';
+				if (confirm(`Active turns in progress (${ids}). Force restart anyway?`)) {
+					restartServer(true);
+				}
+				return;
+			}
 			// Server will restart — our WebSocket reconnect logic handles the rest
 		} catch { /* expected — server is shutting down */ }
 	}, []);
@@ -1790,7 +1802,7 @@ export default function App() {
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--success)', color: '#111' }}
-									onClick={restartServer}
+									onClick={() => restartServer()}
 								>
 									Restart now
 								</button>

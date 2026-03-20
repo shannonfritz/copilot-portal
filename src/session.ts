@@ -1209,6 +1209,11 @@ export class SessionPool {
 		await this.client.stop();
 	}
 
+	/** Returns session IDs that currently have an active turn (agent is working). */
+	getActiveTurnSessions(): string[] {
+		return [...this.pool.entries()].filter(([, h]) => h.turnActive).map(([id]) => id);
+	}
+
 	async listSessions(): Promise<SessionMetadata[]> {
 		const sessions = await this.client.listSessions();
 		return sessions.sort((a, b) =>
