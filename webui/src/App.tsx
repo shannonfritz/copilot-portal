@@ -1384,7 +1384,7 @@ export default function App() {
 			{/* QR Code Modal */}
 			{showQR && (
 				<div
-					className="fixed inset-0 z-[60] flex items-start justify-center p-4"
+					className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
 					onClick={() => setShowQR(false)}
 				>
@@ -1407,7 +1407,7 @@ export default function App() {
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
-					className="fixed inset-0 z-50 flex items-start justify-center p-4"
+					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
 					onClick={() => setShowRules(false)}
 				>
@@ -1490,7 +1490,7 @@ export default function App() {
 			{/* Session Picker Modal */}
 			{showPicker && (
 				<div
-					className="fixed inset-0 z-50 flex items-start justify-center p-4"
+					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
 					onClick={() => { if (!noSession) setShowPicker(false); }}
 				>
