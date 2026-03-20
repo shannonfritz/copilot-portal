@@ -8,6 +8,10 @@ import type {
 	UserInputRequest,
 	UserInputResponse,
 } from '@github/copilot-sdk';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 import { RulesStore } from './rules.js';
 import type { ApprovalRule } from './rules.js';
 
@@ -1253,8 +1257,66 @@ export class SessionPool {
 		}
 	}
 
+	/**
+	 * Scan the session's events.jsonl for tool.execution_start events that never
+	 * got a matching tool.execution_complete. If found, inject a synthetic
+	 * completion event so the API doesn't reject the conversation history.
+	 * This can happen when the server is killed mid-tool-execution.
+	 */
+	private async repairOrphanedTools(sessionId: string): Promise<void> {
+		try {
+			const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
+			if (!fs.existsSync(eventsPath)) return;
+
+			const content = fs.readFileSync(eventsPath, 'utf8');
+			const lines = content.split('\n').filter(l => l.trim());
+
+			// Track tool starts and completions by toolCallId
+			const starts = new Map<string, { lineIndex: number; parentId: string; timestamp: string }>();
+			const completed = new Set<string>();
+
+			for (let i = 0; i < lines.length; i++) {
+				try {
+					const event = JSON.parse(lines[i]) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
+					const toolCallId = event.data?.toolCallId;
+					if (!toolCallId) continue;
+					if (event.type === 'tool.execution_start') {
+						starts.set(toolCallId, { lineIndex: i, parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
+					} else if (event.type === 'tool.execution_complete') {
+						completed.add(toolCallId);
+					}
+				} catch { /* skip unparseable lines */ }
+			}
+
+			// Find orphans: started but never completed
+			const orphans = [...starts.entries()].filter(([id]) => !completed.has(id));
+			if (orphans.length === 0) return;
+
+			this.log(`[Pool] Repairing ${orphans.length} orphaned tool event(s) in session ${sessionId.slice(0, 8)}`);
+
+			// Inject synthetic completions at the end of the file
+			const repairs: string[] = [];
+			for (const [toolCallId, { parentId, timestamp }] of orphans) {
+				repairs.push(JSON.stringify({
+					type: 'tool.execution_complete',
+					data: { toolCallId, success: false, result: { content: 'Error: Server was interrupted during execution' } },
+					id: crypto.randomUUID(),
+					timestamp,
+					parentId,
+				}));
+			}
+
+			fs.appendFileSync(eventsPath, '\n' + repairs.join('\n') + '\n');
+			this.log(`[Pool] Injected ${repairs.length} synthetic tool completion(s)`);
+		} catch (e) {
+			this.log(`[Pool] Tool repair failed (non-fatal): ${e}`);
+		}
+	}
+
 	private async _doConnect(sessionId: string): Promise<SessionHandle> {
 		this.log(`[Pool] Connecting: ${sessionId.slice(0, 8)}...`);
+		// Repair any orphaned tool_use events before the SDK loads the session
+		await this.repairOrphanedTools(sessionId);
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
