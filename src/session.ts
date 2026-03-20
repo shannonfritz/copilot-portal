@@ -901,7 +901,81 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.activeUserMessage = '';
 		this.activeDeltaBuffer = '';
 		this.activeReasoningBuffer = '';
+
+		// Detect orphaned tool_use errors and auto-repair
+		if (d.message?.includes('tool_use') && d.message?.includes('tool_result')) {
+			this.log('[Session] Detected orphaned tool_use — attempting auto-repair...');
+			this.broadcast({ type: 'info', content: 'Repairing session history…' });
+			this.repairAndReconnect();
+			return;
+		}
+
 		this.broadcast({ type: 'error', content: d.message ?? 'Unknown error' });
+	}
+
+	/** Repair orphaned tools and reconnect the session so the fix takes effect. */
+	private async repairAndReconnect(): Promise<void> {
+		try {
+			await this.repairOrphanedToolsDirect(this.sessionId);
+			// Reconnect so the SDK reloads the patched event log
+			if (this.reconnectFn) {
+				this.isReconnecting = true;
+				const gen = ++this.sessionGeneration;
+				const newSession = await this.reconnectFn(this.sessionId, this.currentModel ?? undefined);
+				if (gen !== this.sessionGeneration) return; // stale
+				this.session = newSession;
+				this.isReconnecting = false;
+				this.attachListeners();
+				this.log('[Session] Auto-repair complete — session reconnected');
+				this.broadcast({ type: 'info', content: 'Session repaired — try again' });
+			}
+		} catch (e) {
+			this.log(`[Session] Auto-repair failed: ${e}`);
+			this.broadcast({ type: 'error', content: 'Session has corrupted history. Try creating a new session.' });
+		}
+	}
+
+	/** Static repair: scan events.jsonl and fix orphaned tool starts. Usable from both SessionHandle and SessionPool. */
+	private async repairOrphanedToolsDirect(sessionId: string): Promise<number> {
+		const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
+		if (!fs.existsSync(eventsPath)) return 0;
+
+		const content = fs.readFileSync(eventsPath, 'utf8');
+		const lines = content.split('\n').filter(l => l.trim());
+
+		const starts = new Map<string, { parentId: string; timestamp: string }>();
+		const completed = new Set<string>();
+
+		for (const line of lines) {
+			try {
+				const event = JSON.parse(line) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
+				const toolCallId = event.data?.toolCallId;
+				if (!toolCallId) continue;
+				if (event.type === 'tool.execution_start') {
+					starts.set(toolCallId, { parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
+				} else if (event.type === 'tool.execution_complete') {
+					completed.add(toolCallId);
+				}
+			} catch { /* skip */ }
+		}
+
+		const orphans = [...starts.entries()].filter(([id]) => !completed.has(id));
+		if (orphans.length === 0) return 0;
+
+		this.log(`[Session] Repairing ${orphans.length} orphaned tool event(s)`);
+		const repairs: string[] = [];
+		for (const [toolCallId, { parentId, timestamp }] of orphans) {
+			repairs.push(JSON.stringify({
+				type: 'tool.execution_complete',
+				data: { toolCallId, success: false, result: { content: 'Error: Server was interrupted during execution' } },
+				id: crypto.randomUUID(),
+				timestamp,
+				parentId,
+			}));
+		}
+		fs.appendFileSync(eventsPath, '\n' + repairs.join('\n') + '\n');
+		this.log(`[Session] Injected ${repairs.length} synthetic tool completion(s)`);
+		return orphans.length;
 	}
 
 	private onSessionTruncation(data: unknown): void {

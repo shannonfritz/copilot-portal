@@ -1593,7 +1593,7 @@ export default function App() {
 											</div>
 											<div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
 												{s.modifiedTime ? timeAgo(s.modifiedTime) : ''}
-												{' · '}<button onClick={(e) => { e.stopPropagation(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline" type="button">{s.sessionId.slice(0, 8)}</button>
+												{' · '}<span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline">{s.sessionId.slice(0, 8)}</span>
 											</div>
 										</button>
 
