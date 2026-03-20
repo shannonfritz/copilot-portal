@@ -889,8 +889,30 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (d.output) this.broadcast({ type: 'tool_call', toolCallId: d.toolCallId, content: d.output });
 	}
 
-	private onSessionResume(): void {
+	private onSessionResume(data: unknown): void {
 		this.log('[Session] session.resume — connection re-established');
+		this.extractAndBroadcastContext(data);
+	}
+
+	private onSessionStart(data: unknown): void {
+		this.log('[Session] session.start');
+		this.extractAndBroadcastContext(data);
+	}
+
+	private onSessionContextChanged(data: unknown): void {
+		const d = data as { cwd?: string; gitRoot?: string; repository?: string; branch?: string };
+		this.log(`[Session] session.context_changed: ${d.cwd ?? '(no cwd)'}`);
+		if (d.cwd) {
+			this.broadcast({ type: 'session_context_updated', sessionId: this.session.sessionId, context: d });
+		}
+	}
+
+	/** Extract context from session.start or session.resume event data and broadcast to clients. */
+	private extractAndBroadcastContext(data: unknown): void {
+		const d = data as { context?: { cwd?: string; gitRoot?: string; repository?: string; branch?: string } };
+		if (d.context?.cwd) {
+			this.broadcast({ type: 'session_context_updated', sessionId: this.session.sessionId, context: d.context });
+		}
 	}
 
 	private onSessionError(data: unknown): void {
@@ -902,11 +924,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.activeDeltaBuffer = '';
 		this.activeReasoningBuffer = '';
 
-		// Detect orphaned tool_use errors and auto-repair
+		// Show a friendlier message for tool corruption errors
 		if (d.message?.includes('tool_use') && d.message?.includes('tool_result')) {
-			this.log('[Session] Detected orphaned tool_use — attempting auto-repair...');
-			this.broadcast({ type: 'info', content: 'Repairing session history…' });
-			this.repairAndReconnect();
+			this.broadcast({ type: 'error', content: 'Session history is corrupted (orphaned tool events). Restart the server to auto-repair, or create a new session.' });
 			return;
 		}
 
@@ -943,29 +963,45 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const content = fs.readFileSync(eventsPath, 'utf8');
 		const lines = content.split('\n').filter(l => l.trim());
 
-		const starts = new Map<string, { parentId: string; timestamp: string }>();
-		const completed = new Set<string>();
+		// First pass: find all starts and completions
+		const starts = new Map<string, { lineIndex: number; parentId: string; timestamp: string }>();
+		const completions = new Map<string, number[]>(); // toolCallId → line indices
 
-		for (const line of lines) {
+		for (let i = 0; i < lines.length; i++) {
 			try {
-				const event = JSON.parse(line) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
+				const event = JSON.parse(lines[i]) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
 				const toolCallId = event.data?.toolCallId;
 				if (!toolCallId) continue;
 				if (event.type === 'tool.execution_start') {
-					starts.set(toolCallId, { parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
+					starts.set(toolCallId, { lineIndex: i, parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
 				} else if (event.type === 'tool.execution_complete') {
-					completed.add(toolCallId);
+					if (!completions.has(toolCallId)) completions.set(toolCallId, []);
+					completions.get(toolCallId)!.push(i);
 				}
 			} catch { /* skip */ }
 		}
 
-		const orphans = [...starts.entries()].filter(([id]) => !completed.has(id));
-		if (orphans.length === 0) return 0;
+		// Find problems:
+		// 1. Orphaned starts (no completion)
+		const orphanedStarts = [...starts.entries()].filter(([id]) => !completions.has(id));
+		// 2. Orphaned completions (no start)
+		const orphanedCompletionLines = new Set<number>();
+		for (const [tcid, indices] of completions) {
+			if (!starts.has(tcid)) indices.forEach(i => orphanedCompletionLines.add(i));
+		}
+		// 3. Duplicate completions (keep first, remove rest)
+		for (const [, indices] of completions) {
+			if (indices.length > 1) indices.slice(1).forEach(i => orphanedCompletionLines.add(i));
+		}
 
-		this.log(`[Session] Repairing ${orphans.length} orphaned tool event(s)`);
-		const repairs: string[] = [];
-		for (const [toolCallId, { parentId, timestamp }] of orphans) {
-			repairs.push(JSON.stringify({
+		if (orphanedStarts.length === 0 && orphanedCompletionLines.size === 0) return 0;
+
+		this.log(`[Session] Repairing: ${orphanedStarts.length} orphaned start(s), ${orphanedCompletionLines.size} orphaned/duplicate completion(s)`);
+
+		// Build new lines: remove bad completions, inject completions for orphaned starts
+		const insertions = new Map<number, string>();
+		for (const [toolCallId, { lineIndex, parentId, timestamp }] of orphanedStarts) {
+			insertions.set(lineIndex, JSON.stringify({
 				type: 'tool.execution_complete',
 				data: { toolCallId, success: false, result: { content: 'Error: Server was interrupted during execution' } },
 				id: crypto.randomUUID(),
@@ -973,9 +1009,18 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				parentId,
 			}));
 		}
-		fs.appendFileSync(eventsPath, '\n' + repairs.join('\n') + '\n');
-		this.log(`[Session] Injected ${repairs.length} synthetic tool completion(s)`);
-		return orphans.length;
+
+		const newLines: string[] = [];
+		for (let i = 0; i < lines.length; i++) {
+			if (orphanedCompletionLines.has(i)) continue; // skip bad completions
+			newLines.push(lines[i]);
+			if (insertions.has(i)) newLines.push(insertions.get(i)!);
+		}
+
+		fs.writeFileSync(eventsPath, newLines.join('\n') + '\n');
+		const totalFixed = orphanedStarts.length + orphanedCompletionLines.size;
+		this.log(`[Session] Repaired ${totalFixed} event(s) (inline)`);
+		return totalFixed;
 	}
 
 	private onSessionTruncation(data: unknown): void {
@@ -1214,7 +1259,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'subagent.started':                 (d) => this.onSubagentStarted(d),
 		'subagent.failed':                  (d) => this.onSubagentFailed(d),
 		'tool.execution_partial_result':    (d) => this.onToolExecutionPartialResult(d),
-		'session.resume':                   () => this.onSessionResume(),
+		'session.resume':                   (d) => this.onSessionResume(d),
+		'session.start':                    (d) => this.onSessionStart(d),
+		'session.context_changed':          (d) => this.onSessionContextChanged(d),
 		'session.error':                    (d) => this.onSessionError(d),
 		'session.truncation':               (d) => this.onSessionTruncation(d),
 		'session.compaction_start':         ()  => this.onSessionCompactionStart(),
@@ -1345,9 +1392,8 @@ export class SessionPool {
 			const content = fs.readFileSync(eventsPath, 'utf8');
 			const lines = content.split('\n').filter(l => l.trim());
 
-			// Track tool starts and completions by toolCallId
 			const starts = new Map<string, { lineIndex: number; parentId: string; timestamp: string }>();
-			const completed = new Set<string>();
+			const completions = new Map<string, number[]>();
 
 			for (let i = 0; i < lines.length; i++) {
 				try {
@@ -1357,21 +1403,26 @@ export class SessionPool {
 					if (event.type === 'tool.execution_start') {
 						starts.set(toolCallId, { lineIndex: i, parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
 					} else if (event.type === 'tool.execution_complete') {
-						completed.add(toolCallId);
+						if (!completions.has(toolCallId)) completions.set(toolCallId, []);
+						completions.get(toolCallId)!.push(i);
 					}
-				} catch { /* skip unparseable lines */ }
+				} catch { /* skip */ }
 			}
 
-			// Find orphans: started but never completed
-			const orphans = [...starts.entries()].filter(([id]) => !completed.has(id));
-			if (orphans.length === 0) return;
+			// Orphaned starts, orphaned completions, duplicate completions
+			const orphanedStarts = [...starts.entries()].filter(([id]) => !completions.has(id));
+			const removeLines = new Set<number>();
+			for (const [tcid, indices] of completions) {
+				if (!starts.has(tcid)) indices.forEach(i => removeLines.add(i));
+				if (indices.length > 1) indices.slice(1).forEach(i => removeLines.add(i));
+			}
 
-			this.log(`[Pool] Repairing ${orphans.length} orphaned tool event(s) in session ${sessionId.slice(0, 8)}`);
+			if (orphanedStarts.length === 0 && removeLines.size === 0) return;
+			this.log(`[Pool] Repairing ${orphanedStarts.length} orphaned start(s), ${removeLines.size} orphaned/duplicate completion(s) in session ${sessionId.slice(0, 8)}`);
 
-			// Inject synthetic completions at the end of the file
-			const repairs: string[] = [];
-			for (const [toolCallId, { parentId, timestamp }] of orphans) {
-				repairs.push(JSON.stringify({
+			const insertions = new Map<number, string>();
+			for (const [toolCallId, { lineIndex, parentId, timestamp }] of orphanedStarts) {
+				insertions.set(lineIndex, JSON.stringify({
 					type: 'tool.execution_complete',
 					data: { toolCallId, success: false, result: { content: 'Error: Server was interrupted during execution' } },
 					id: crypto.randomUUID(),
@@ -1380,8 +1431,15 @@ export class SessionPool {
 				}));
 			}
 
-			fs.appendFileSync(eventsPath, '\n' + repairs.join('\n') + '\n');
-			this.log(`[Pool] Injected ${repairs.length} synthetic tool completion(s)`);
+			const newLines: string[] = [];
+			for (let i = 0; i < lines.length; i++) {
+				if (removeLines.has(i)) continue;
+				newLines.push(lines[i]);
+				if (insertions.has(i)) newLines.push(insertions.get(i)!);
+			}
+
+			fs.writeFileSync(eventsPath, newLines.join('\n') + '\n');
+			this.log(`[Pool] Repaired ${orphanedStarts.length + removeLines.size} event(s) (inline)`);
 		} catch (e) {
 			this.log(`[Pool] Tool repair failed (non-fatal): ${e}`);
 		}

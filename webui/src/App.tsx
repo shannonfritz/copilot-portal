@@ -364,6 +364,7 @@ function SessionDrawer({
 	context,
 	activeModel,
 	onChangeModel,
+	onFetchModels,
 	activeSessionId,
 	sessionSummary,
 }: {
@@ -427,23 +428,25 @@ function SessionDrawer({
 					</div>
 
 					{/* cwd / branch */}
-					{cwd && (
-						<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-							</svg>
+					<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+						</svg>
+						{cwd ? (
 							<span className="whitespace-nowrap font-mono" style={{ color: 'var(--text-muted)' }}>{cwd}</span>
-							{branch && (
-								<>
-									<span style={{ color: 'var(--border)' }}>·</span>
-									<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-										<path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
-									</svg>
-									<span className="font-mono" style={{ color: 'var(--text-muted)' }}>{branch}</span>
-								</>
-							)}
-						</div>
-					)}
+						) : (
+							<span className="whitespace-nowrap font-mono italic" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>Loading…</span>
+						)}
+						{branch && (
+							<>
+								<span style={{ color: 'var(--border)' }}>·</span>
+								<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
+								</svg>
+								<span className="font-mono" style={{ color: 'var(--text-muted)' }}>{branch}</span>
+							</>
+						)}
+					</div>
 
 					{/* Model selector */}
 					<div className="relative">
