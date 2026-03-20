@@ -1503,26 +1503,30 @@ export default function App() {
 							<h2 className="font-semibold">Sessions</h2>
 							<div className="flex items-center gap-2">
 								<button
-									className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
+									className="inline-flex items-center justify-center rounded-lg px-3 py-1.5"
 									style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
 									onClick={() => setShowQR(v => !v)}
 									type="button"
 									title="Show QR code"
 								>
-									<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-										<path fillRule="evenodd" d="M2 2h8v8H2V2zm1.5 1.5v5h5v-5h-5z" />
-										<rect x="5" y="5" width="2" height="2" />
-										<path fillRule="evenodd" d="M14 2h8v8h-8V2zm1.5 1.5v5h5v-5h-5z" />
-										<rect x="17" y="5" width="2" height="2" />
-										<path fillRule="evenodd" d="M2 14h8v8H2v-8zm1.5 1.5v5h5v-5h-5z" />
-										<rect x="5" y="17" width="2" height="2" />
-										<rect x="14" y="14" width="2" height="2" />
-										<rect x="18" y="14" width="2" height="2" />
-										<rect x="16" y="16" width="2" height="2" />
-										<rect x="14" y="18" width="2" height="2" />
-										<rect x="18" y="18" width="2" height="2" />
-										<rect x="20" y="16" width="2" height="2" />
-										<rect x="14" y="20" width="2" height="2" />
+									<svg className="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										{/* Top-left finder */}
+										<path fillRule="evenodd" d="M2 2h9v9H2V2zm2 2v5h5V4H4z" />
+										<rect x="5.5" y="5.5" width="2" height="2" />
+										{/* Top-right finder */}
+										<path fillRule="evenodd" d="M13 2h9v9h-9V2zm2 2v5h5V4h-5z" />
+										<rect x="16.5" y="5.5" width="2" height="2" />
+										{/* Bottom-left finder */}
+										<path fillRule="evenodd" d="M2 13h9v9H2v-9zm2 2v5h5v-5H4z" />
+										<rect x="5.5" y="16.5" width="2" height="2" />
+										{/* Data modules */}
+										<rect x="13" y="13" width="2.5" height="2.5" />
+										<rect x="17" y="13" width="2.5" height="2.5" />
+										<rect x="15" y="15.5" width="2.5" height="2.5" />
+										<rect x="13" y="18" width="2.5" height="2.5" />
+										<rect x="17" y="18" width="2.5" height="2.5" />
+										<rect x="19.5" y="15.5" width="2.5" height="2.5" />
+										<rect x="13" y="20.5" width="2.5" height="2.5" />
 									</svg>
 								</button>
 								<button
@@ -1647,7 +1651,7 @@ export default function App() {
 					</div>
 				</div>
 				<div className="flex flex-col items-end gap-0.5">
-					<div className="flex items-center gap-1.5">
+					<div className="flex items-center gap-2.5">
 						{isAgentActive && (
 							<button
 								className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
