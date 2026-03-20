@@ -1175,11 +1175,13 @@ export class SessionPool {
 	private connecting = new Map<string, Promise<SessionHandle>>();
 	private log: (msg: string) => void;
 	readonly rulesStore: RulesStore;
+	private workspacePath: string;
 
-	constructor(log: (msg: string) => void, rulesStore: RulesStore) {
+	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspacePath: string) {
 		this.log = log;
 		this.client = new CopilotClient();
 		this.rulesStore = rulesStore;
+		this.workspacePath = workspacePath;
 	}
 
 	async start(): Promise<void> {
@@ -1308,6 +1310,7 @@ export class SessionPool {
 		this.log('[Pool] Creating new session...');
 		let handle!: SessionHandle;
 		const session = await this.client.createSession({
+			workingDirectory: this.workspacePath,
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});

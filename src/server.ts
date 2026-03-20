@@ -34,7 +34,9 @@ export class PortalServer {
 			try { fs.unlinkSync(tokenFile); } catch {}
 		}
 		this.token = this.loadOrCreateToken();
-		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir));
+		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
+		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
+		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
 			this.broadcastAll({ type: 'session_renamed', sessionId, summary });
