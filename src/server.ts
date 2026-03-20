@@ -139,16 +139,20 @@ export class PortalServer {
 				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, model: handle.currentModel ?? null }));
 
 				// For brand-new sessions the CLI subprocess may not have written cwd yet —
-				// retry once after a short delay and push an update if context arrives.
+				// retry with increasing delays until context arrives or we give up.
 				if (!meta?.context) {
-					setTimeout(async () => {
+					const retryDelays = [1000, 2000, 3000];
+					const tryContext = async (attempt: number) => {
 						if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 						const sessions2 = await this.pool.listSessions().catch(() => []);
 						const meta2 = sessions2.find(s => s.sessionId === sessionId);
 						if (meta2?.context) {
 							ws.send(JSON.stringify({ type: 'session_context_updated', sessionId, context: meta2.context }));
+						} else if (attempt < retryDelays.length - 1) {
+							setTimeout(() => tryContext(attempt + 1), retryDelays[attempt + 1]);
 						}
-					}, 1500);
+					};
+					setTimeout(() => tryContext(0), retryDelays[0]);
 				}
 			}
 

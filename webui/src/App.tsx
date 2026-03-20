@@ -428,11 +428,11 @@ function SessionDrawer({
 
 					{/* cwd / branch */}
 					{cwd && (
-						<div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+						<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 							</svg>
-							<span className="truncate font-mono" style={{ color: 'var(--text-muted)' }}>{cwd}</span>
+							<span className="whitespace-nowrap font-mono" style={{ color: 'var(--text-muted)' }}>{cwd}</span>
 							{branch && (
 								<>
 									<span style={{ color: 'var(--border)' }}>·</span>
@@ -1217,10 +1217,28 @@ export default function App() {
 		noSessionRef.current = false;
 		setNoSession(false);
 		setShowPicker(false);
+		setMessages([]);
+		setStreamingContent('');
+		setIsStreaming(false);
+		setIsThinking(false);
+		setPendingApproval(null);
+		setCliApprovalInfo(null);
+		setCliInputInfo(null);
+		setActiveModel(null);
+		setSessionContext(null);
+		setActiveSessionSummary(null);
 		const params = new URLSearchParams(window.location.search);
 		params.set('session', sessionId);
-		window.location.search = params.toString();
-	}, []);
+		params.delete('all');
+		params.delete('history');
+		window.history.replaceState(null, '', `?${params.toString()}`);
+		// Close existing WS — onclose will trigger reconnect with new session
+		const ws = wsRef.current;
+		if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.close(); }
+		wsRef.current = null;
+		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
+		connect();
+	}, [connect]);
 
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
