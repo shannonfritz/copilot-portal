@@ -4,9 +4,11 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
 import { RulesStore } from './rules.js';
+import { UpdateChecker } from './updater.js';
 import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +25,7 @@ export class PortalServer {
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
+	private updater: UpdateChecker;
 	constructor(private port: number, dataDir?: string, opts?: { newToken?: boolean }) {
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
@@ -33,6 +36,7 @@ export class PortalServer {
 		}
 		this.token = this.loadOrCreateToken();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir));
+		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
 			this.broadcastAll({ type: 'session_renamed', sessionId, summary });
 		};
@@ -383,6 +387,48 @@ export class PortalServer {
 			return;
 		}
 
+		// --- Update management endpoints ---
+
+		if (url.pathname === '/api/updates' && method === 'GET') {
+			this.sendJson(res, 200, this.updater.getStatus());
+			return;
+		}
+
+		if (url.pathname === '/api/updates/check' && method === 'POST') {
+			const status = await this.updater.check();
+			this.sendJson(res, 200, status);
+			return;
+		}
+
+		if (url.pathname === '/api/updates/apply' && method === 'POST') {
+			if (this.updater.getStatus().applying) {
+				this.sendJson(res, 409, { error: 'Update already in progress' });
+				return;
+			}
+			const status = await this.updater.apply();
+			this.sendJson(res, 200, status);
+			return;
+		}
+
+		if (url.pathname === '/api/restart' && method === 'POST') {
+			this.sendJson(res, 200, { ok: true, message: 'Restarting...' });
+			this.log('[Update] Restart requested — spawning replacement process...');
+			// Graceful restart: stop the server, spawn a new process, then exit.
+			// The new process will bind to the same port after we release it.
+			setTimeout(async () => {
+				await this.stop();
+				const child = spawn(process.execPath, process.argv.slice(1), {
+					cwd: process.cwd(),
+					env: process.env,
+					stdio: 'inherit',
+					detached: true,
+				});
+				child.unref();
+				process.exit(0);
+			}, 500); // small delay so the HTTP response can flush
+			return;
+		}
+
 		if (url.pathname === '/' || url.pathname === '/index.html') {
 			if (!this.checkToken(url, req)) {
 				res.writeHead(401, { 'Content-Type': 'text/html' });
@@ -467,6 +513,8 @@ export class PortalServer {
 		} catch (e) {
 			this.log(`[Pool] Could not fetch portal info: ${e}`);
 		}
+		// Start periodic update checker
+		this.updater.start();
 		return new Promise((resolve, reject) => {
 			this.httpServer.on('error', reject);
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
@@ -496,6 +544,7 @@ export class PortalServer {
 	}
 
 	async stop(): Promise<void> {
+		this.updater.stop();
 		await this.pool.stop();
 		// Forcefully close all open WebSocket connections so httpServer.close() doesn't hang
 		for (const client of this.wss.clients) client.terminate();

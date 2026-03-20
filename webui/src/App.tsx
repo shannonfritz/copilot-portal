@@ -134,6 +134,21 @@ interface SessionInfo {
 
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'no_token';
 
+interface PackageUpdate {
+	name: string;
+	installed: string;
+	latest: string;
+	hasUpdate: boolean;
+}
+
+interface UpdateStatus {
+	packages: PackageUpdate[];
+	lastChecked: number | null;
+	checking: boolean;
+	applying: boolean;
+	error: string | null;
+}
+
 function getToken(): string | null {
 	const urlToken = new URLSearchParams(window.location.search).get('token');
 	if (urlToken) {
@@ -527,6 +542,9 @@ export default function App() {
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [noSession, setNoSession] = useState(!hasSessionInUrl);
 	const noSessionRef = useRef(!hasSessionInUrl);
+	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+	const [updateDismissed, setUpdateDismissed] = useState(false);
+	const [restartNeeded, setRestartNeeded] = useState(false);
 
 	const wsRef = useRef<WebSocket | null>(null);
 	const mgmtWsRef = useRef<WebSocket | null>(null);
@@ -554,6 +572,18 @@ export default function App() {
 		if (!hasSessionInUrl) {
 			apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
 		}
+	}, []);
+
+	// Poll for available updates every 5 minutes (server checks npm every 4 hours)
+	useEffect(() => {
+		const poll = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
+			setUpdateStatus(s);
+			// Reset dismissed if no updates (so banner reappears for new updates)
+			if (!s.packages.some(p => p.hasUpdate)) setUpdateDismissed(false);
+		}).catch(() => {});
+		poll();
+		const timer = setInterval(poll, 5 * 60 * 1000);
+		return () => clearInterval(timer);
 	}, []);
 
 	// Auto-collapse drawer when first message arrives
@@ -1207,6 +1237,25 @@ export default function App() {
 		wsRef.current?.send(JSON.stringify({ type: 'set_model', content: modelId }));
 	}, []);
 
+	const applyUpdates = useCallback(async () => {
+		setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
+		try {
+			const res = await apiFetch('/api/updates/apply', { method: 'POST' });
+			const status = await res.json() as UpdateStatus;
+			setUpdateStatus(status);
+			if (!status.error) setRestartNeeded(true);
+		} catch (e) {
+			setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
+		}
+	}, []);
+
+	const restartServer = useCallback(async () => {
+		try {
+			await apiFetch('/api/restart', { method: 'POST' });
+			// Server will restart — our WebSocket reconnect logic handles the rest
+		} catch { /* expected — server is shutting down */ }
+	}, []);
+
 	const toggleShield = useCallback(async (sessionId: string, e: React.MouseEvent) => {
 		e.stopPropagation();
 		setSessions(prev => prev.map(s => s.sessionId === sessionId ? { ...s, shielded: !s.shielded } : s));
@@ -1686,6 +1735,73 @@ export default function App() {
 					sessionSummary={activeSessionSummary}
 					/>
 				)}
+
+				{/* Update banner */}
+				{updateStatus && !updateDismissed && (() => {
+					const updatable = updateStatus.packages.filter(p => p.hasUpdate);
+					// Nothing to show: no updates, not applying, no error, no restart pending
+					if (updatable.length === 0 && !updateStatus.applying && !updateStatus.error && !restartNeeded) return null;
+
+					return (
+						<div
+							className="flex items-center gap-2 px-4 py-2 text-xs"
+							style={{ background: restartNeeded ? 'var(--success-tint)' : 'var(--primary-tint)', borderBottom: '1px solid var(--border)' }}
+						>
+							{/* Icon */}
+							<svg className="size-4 shrink-0" fill="none" stroke={restartNeeded ? 'var(--success)' : 'var(--primary)'} strokeWidth="2" viewBox="0 0 24 24">
+								{restartNeeded
+									? <path d="M4 4v5h5M20 20v-5h-5M5 19.5A9 9 0 0112 3m7 1.5A9 9 0 0112 21" strokeLinecap="round" strokeLinejoin="round" />
+									: <path d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+								}
+							</svg>
+
+							{updateStatus.applying ? (
+								<span className="flex-1" style={{ color: 'var(--text)' }}>Updating… this may take a minute</span>
+							) : updateStatus.error ? (
+								<span className="flex-1" style={{ color: 'var(--error)' }}>Update failed: {updateStatus.error}</span>
+							) : restartNeeded ? (
+								<span className="flex-1" style={{ color: 'var(--text)' }}>Update installed — restart to apply</span>
+							) : (
+								<span className="flex-1" style={{ color: 'var(--text)' }}>
+									{updatable.map(p => `${p.name.replace('@github/', '')} ${p.installed} → ${p.latest}`).join(', ')}
+								</span>
+							)}
+
+							{/* Action buttons */}
+							{!updateStatus.applying && !restartNeeded && updatable.length > 0 && (
+								<button
+									type="button"
+									className="rounded-md px-2.5 py-1 text-xs font-medium"
+									style={{ background: 'var(--primary)', color: 'white' }}
+									onClick={applyUpdates}
+								>
+									Update now
+								</button>
+							)}
+							{restartNeeded && (
+								<button
+									type="button"
+									className="rounded-md px-2.5 py-1 text-xs font-medium"
+									style={{ background: 'var(--success)', color: 'white' }}
+									onClick={restartServer}
+								>
+									Restart now
+								</button>
+							)}
+							{!updateStatus.applying && (
+								<button
+									type="button"
+									className="rounded-md px-2 py-1 text-xs"
+									style={{ color: 'var(--text-muted)' }}
+									onClick={() => setUpdateDismissed(true)}
+								>
+									✕
+								</button>
+							)}
+						</div>
+					);
+				})()}
+
 				<div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
 					{historyTruncated && (() => {
 						const { shown, total } = historyTruncated;
