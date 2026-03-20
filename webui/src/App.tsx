@@ -1384,7 +1384,7 @@ export default function App() {
 			{/* QR Code Modal */}
 			{showQR && (
 				<div
-					className="fixed inset-0 z-50 flex items-start justify-center p-4"
+					className="fixed inset-0 z-[60] flex items-start justify-center p-4"
 					style={{ background: 'var(--overlay)' }}
 					onClick={() => setShowQR(false)}
 				>
