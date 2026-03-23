@@ -166,9 +166,21 @@ Fallback: `npm start -- --standalone` uses the old subprocess model (no CLI wind
 - If portal denies while CLI prompt is still showing: tool is denied, CLI shows error
   `"Unhandled permission result kind: [object Object]"`
 - For portal-initiated turns, only the portal handler is called — CLI TUI just shows conversation
+- **DANGER: Portal yolo mode auto-approves CLI-initiated tools before CLI can show prompt**
+  CLI TUI shows stale/confusing approval prompt after tool already ran
+
+**Yolo interaction matrix:**
+
+| Case | CLI | Portal | CLI turn | Portal turn |
+|------|-----|--------|----------|-------------|
+| 1 | yolo | ask | CLI auto-approves, portal not called | Portal prompts user |
+| 2 | ask | yolo | ⚠️ Portal wins race, bypasses CLI prompt | Portal auto-approves |
+| 3 | ask | ask | Both prompted, race condition ⚠️ | Portal prompts user |
+| 4 | yolo | yolo | CLI auto-approves, portal not called | Portal auto-approves |
 
 **Design rule for v1:** Portal must NOT respond to permission requests for CLI-initiated turns.
 Use `isPortalTurn` flag — if false, let the callback hang so CLI TUI handles it.
+This makes all four cases safe regardless of yolo settings on either side.
 
 ### Trust Prompt
 - On first session, CLI prompts about trusting the CWD
