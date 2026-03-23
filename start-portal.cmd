@@ -26,7 +26,7 @@ if %errorlevel% neq 0 (
 :: Dependencies (only if node_modules is missing)
 if not exist node_modules (
     echo.
-    echo  First-time setup — installing dependencies...
+    echo  First-time setup - installing dependencies...
     echo.
     call npm install --no-fund --no-audit
     if %errorlevel% neq 0 (
@@ -46,7 +46,7 @@ pwsh --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo  NOTE: PowerShell 7 is not installed.
-    echo  Copilot CLI uses it for running commands — some tools won't work without it.
+    echo  Copilot CLI uses it for running commands - some tools won't work without it.
     echo.
     set /p INSTALL_PWSH="  Install PowerShell 7 now? (Y/n): "
     if /i not "%INSTALL_PWSH%"=="n" (
