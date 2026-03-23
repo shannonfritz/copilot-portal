@@ -43,6 +43,7 @@ export class UpdateChecker {
 	private log: (msg: string) => void;
 	/** Versions at process start — if on-disk versions differ after an apply, restart is needed */
 	private startupVersions: Record<string, string> = {};
+	private hasLoggedVersions = false;
 
 	constructor(log: (msg: string) => void) {
 		this.log = log;
@@ -112,6 +113,14 @@ export class UpdateChecker {
 
 			this.packages = results;
 			this.lastChecked = Date.now();
+
+			// Log installed versions on first check (startup)
+			if (!this.hasLoggedVersions) {
+				this.hasLoggedVersions = true;
+				for (const p of results) {
+					this.log(`[Version] ${p.name} ${p.installed}`);
+				}
+			}
 
 			const updatable = results.filter(p => p.hasUpdate);
 			if (updatable.length > 0) {
