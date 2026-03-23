@@ -4,10 +4,14 @@
   "description": "Mobile-friendly web portal for GitHub Copilot CLI",
   "type": "module",
   "main": "./dist/server.js",
-  "engines": { "node": ">=18.0.0" },
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "start": "node dist/launcher.js",
+    "postinstall": "patch-package"
+  },
   "dependencies": {
-    "@github/copilot": "^1.0.2",
     "@github/copilot-sdk": "^0.1.32",
+    "patch-package": "^8.0.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.18.0"

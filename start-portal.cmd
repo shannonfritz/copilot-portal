@@ -80,4 +80,12 @@ if %errorlevel% neq 0 (
 )
 
 :: ---- Start the portal ----
+echo.
+echo  Starting Copilot Portal...
+echo.
 npm start
+if %errorlevel% neq 0 (
+    echo.
+    echo  Portal exited with an error. See above for details.
+    pause
+)
