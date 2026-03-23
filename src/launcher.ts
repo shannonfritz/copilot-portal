@@ -53,31 +53,32 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 
 /** Launch the CLI as a headless JSON-RPC server */
 function launchCli(port: number): void {
-	const child = spawn('copilot', ['--server', '--port', String(port)], {
-		stdio: 'ignore',
-		detached: true,
-		windowsHide: true,
-	});
-	child.unref();
-	cliChild = child;
-	console.log(`[Launcher] CLI server started (PID ${child.pid})`);
+	if (process.platform === 'win32') {
+		// Use PowerShell Start-Process -WindowStyle Hidden with full exe path
+		exec(`pwsh -NoProfile -Command "Start-Process -FilePath 'copilot.exe' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true });
+	} else {
+		const child = spawn('copilot', ['--server', '--port', String(port)], {
+			stdio: 'ignore',
+			detached: true,
+		});
+		child.unref();
+	}
+	cliLaunched = true;
+	console.log(`[Launcher] CLI server started`);
 }
 
-let cliChild: ReturnType<typeof spawn> | null = null;
+let cliLaunched = false;
 
 /** Stop the CLI server process if we launched it */
 function stopCli(): void {
-	if (!cliChild || cliChild.killed) return;
-	console.log(`[Launcher] Stopping CLI server (PID ${cliChild.pid})...`);
+	if (!cliLaunched) return;
+	console.log(`[Launcher] Stopping CLI server...`);
 	try {
-		// On Windows, detached .cmd processes need taskkill to reach the child tree
-		if (process.platform === 'win32' && cliChild.pid) {
-			spawn('taskkill', ['/pid', String(cliChild.pid), '/t', '/f'], { stdio: 'ignore' });
-		} else {
-			cliChild.kill('SIGTERM');
+		if (process.platform === 'win32') {
+			exec(`pwsh -NoProfile -Command "Get-NetTCPConnection -LocalPort ${CLI_PORT} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`, { windowsHide: true });
 		}
 	} catch { /* already dead */ }
-	cliChild = null;
+	cliLaunched = false;
 }
 
 async function start() {
