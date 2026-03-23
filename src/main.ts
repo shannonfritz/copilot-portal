@@ -68,7 +68,7 @@ if (process.stdin.isTTY) {
 	process.stdin.setEncoding('utf8');
 
 	const showHelp = () => {
-		console.log('\n  Keys: [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
+		console.log('\n  Command Keys: [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
 	};
 	showHelp();
 
