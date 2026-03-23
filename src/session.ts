@@ -1371,6 +1371,13 @@ export class SessionPool {
 	async listModels() { return this.client.listModels(); }
 
 	async getLastSessionId(): Promise<string | null> {
+		// In shared mode, prefer the CLI's foreground session
+		if (this.shared) {
+			try {
+				const fg = await this.client.getForegroundSessionId();
+				if (fg) return fg;
+			} catch { /* fall through to default */ }
+		}
 		return this.client.getLastSessionId();
 	}
 
