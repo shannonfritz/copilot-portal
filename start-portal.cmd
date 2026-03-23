@@ -1,4 +1,5 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 
 :: ---- Quick checks (skip if already set up) ----
@@ -14,14 +15,12 @@ if %errorlevel% neq 0 (
         echo  ERROR: Could not install Node.js automatically.
         echo  Please install Node.js v22+ from https://nodejs.org
         echo  then re-run this script.
-        pause
-        exit /b 1
+        goto :done
     )
     echo.
     echo  Node.js installed. Please close this window, open a
     echo  new terminal, and re-run start-portal.cmd.
-    pause
-    exit /b 0
+    goto :done
 )
 
 :: Dependencies (only if node_modules is missing)
@@ -33,8 +32,7 @@ if not exist node_modules (
     if %errorlevel% neq 0 (
         echo.
         echo  ERROR: npm install failed. See errors above.
-        pause
-        exit /b 1
+        goto :done
     )
     if exist patch.mjs (
         echo  Applying compatibility patch...
@@ -73,17 +71,26 @@ if %errorlevel% neq 0 (
     if %errorlevel% neq 0 (
         echo.
         echo  ERROR: GitHub login failed. Please try again.
-        pause
-        exit /b 1
+        goto :done
     )
     echo.
+)
+
+:: Check if port is already in use
+netstat -ano 2>nul | findstr ":3847.*LISTENING" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo.
+    echo  Port 3847 is already in use — the portal may already be running.
+    echo  Close the other instance first, or use: npm start -- --port 3848
+    goto :done
 )
 
 :: ---- Start the portal ----
 echo.
 echo  Starting Copilot Portal...
 echo.
-npm start
+call npm start
+
+:done
 echo.
-echo  Portal has stopped.
 pause
