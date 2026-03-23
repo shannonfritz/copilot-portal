@@ -85,6 +85,9 @@ function stopCli(): void {
 }
 
 async function start() {
+	// Set terminal tab title
+	process.stdout.write('\x1b]0;Copilot Portal\x07');
+
 	let cliUrl: string | undefined;
 
 	if (!standalone) {
