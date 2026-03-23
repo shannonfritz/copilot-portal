@@ -1268,7 +1268,8 @@ export default function App() {
 		try {
 			const res = await apiFetch('/api/updates/apply', { method: 'POST' });
 			const status = await res.json() as UpdateStatus;
-			setUpdateStatus(status);
+			// Force restartNeeded on client side — older servers may not track it
+			setUpdateStatus({ ...status, restartNeeded: true });
 		} catch (e) {
 			setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
 		}
