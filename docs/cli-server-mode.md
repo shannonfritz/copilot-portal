@@ -149,3 +149,63 @@ Fallback: `npm start -- --standalone` uses the old subprocess model (no CLI wind
 | **Crash isolation** | CLI crash doesn't kill portal | CLI crash disconnects portal |
 | **Orphan tools** | Common (separate processes) | Rare (single process) |
 | **Complexity** | Sync poller + orphan repair | Simple connection |
+
+## Test Results (2026-03-23)
+
+### Approval Routing — VALIDATED ✅
+
+| Scenario | Portal handler called? | CLI TUI shows prompt? | Tool runs? |
+|----------|----------------------|----------------------|-----------|
+| Portal sends, tool needs approval | ✅ Yes — approves | ❌ No | ✅ Yes |
+| CLI sends, tool auto-approved (trusted/yolo) | ❌ No | ❌ No | ✅ Yes |
+| CLI sends, tool needs approval | ✅ Yes — denied in test | ✅ Yes | ❌ Denied (portal won race) |
+
+**Key findings:**
+- For CLI-initiated turns, BOTH the CLI TUI and portal handler receive the approval request
+- Whichever responds first wins — the SDK takes the first response
+- If portal denies while CLI prompt is still showing: tool is denied, CLI shows error
+  `"Unhandled permission result kind: [object Object]"`
+- For portal-initiated turns, only the portal handler is called — CLI TUI just shows conversation
+
+**Design rule for v1:** Portal must NOT respond to permission requests for CLI-initiated turns.
+Use `isPortalTurn` flag — if false, let the callback hang so CLI TUI handles it.
+
+### Trust Prompt
+- On first session, CLI prompts about trusting the CWD
+- This happens BEFORE tool approvals and blocks the CLI TUI
+- Portal's handler still works independently while trust prompt is pending
+- Launcher should consider passing trusted folder or documenting this
+
+### Firewall
+- Windows prompts for a firewall rule when CLI opens the listening port
+- If denied, only localhost connections work (sufficient for portal)
+- Should document in setup instructions
+
+## Phase 2: Cross-Device Approval (future)
+
+Allow users to respond to CLI-initiated approval prompts from the portal UI
+(e.g. approve a tool from your phone while away from the CLI terminal).
+
+**How it would work:**
+1. Tool approval requested → both CLI TUI and portal show the prompt
+2. User approves on either side → that handler responds first, SDK accepts it
+3. Other side sees `permission.completed` event → dismisses its prompt
+
+**Why deferred:**
+- Race condition risk if both respond simultaneously
+- SDK shows `"Unhandled permission result kind"` error on the losing side
+- May be better handled by future CLI/SDK versions (--ui-server is still
+  undocumented, suggesting active development)
+
+## Version Monitoring Note
+
+`--ui-server` is a hidden flag (`.hideHelp()`) present since v0.0.407. Since it's
+undocumented, it may be under active development. Future CLI versions could:
+- Add proper multi-client approval coordination
+- Change the callback routing behavior
+- Add new events for cross-client communication
+- Formalize the protocol and document it
+
+**Recommendation:** When the updater detects a new CLI version, log the version
+change prominently. Consider maintaining a compatibility test suite that runs
+against new versions to detect behavioral changes early.
