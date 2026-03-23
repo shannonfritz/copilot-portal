@@ -6,12 +6,9 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
-const buildNum = parseInt(readFileSync('../BUILD', 'utf8').trim(), 10) || 0;
-const now = new Date();
-const yy = now.getUTCFullYear().toString().slice(2);
-const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-const dd = String(now.getUTCDate()).padStart(2, '0');
-const build = `${yy}${mm}${dd}-${String(buildNum).padStart(2, '0')}`;
+// BUILD file format: "YYMMDD-NN" (e.g. "260323-01") or legacy plain number
+const buildRaw = readFileSync('../BUILD', 'utf8').trim();
+const build = /^\d{6}-\d+$/.test(buildRaw) ? buildRaw : `000000-${String(buildRaw).padStart(2, '0')}`;
 
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
