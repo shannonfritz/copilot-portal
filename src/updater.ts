@@ -144,9 +144,14 @@ export class UpdateChecker {
 			await runCommand(`npm update ${allPkgs.join(' ')}`, PROJECT_ROOT);
 			this.log(`[Update] npm update complete`);
 
-			// 2. Rebuild the server and UI
-			await runCommand('npm run build', PROJECT_ROOT);
-			this.log(`[Update] Rebuild complete`);
+			// 2. Rebuild the server and UI (skip if no build script — e.g. release packages ship pre-built)
+			const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+			if (pkg.scripts?.build) {
+				await runCommand('npm run build', PROJECT_ROOT);
+				this.log(`[Update] Rebuild complete`);
+			} else {
+				this.log(`[Update] No build script — skipping rebuild (pre-built release)`);
+			}
 
 			// 3. Re-check versions so the status reflects post-update state
 			await this.check();
