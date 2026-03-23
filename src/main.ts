@@ -8,12 +8,13 @@ if (args.includes('--help') || args.includes('-h')) {
 	console.log(`Usage: node dist/server.js [options]
 
 Options:
-  --port <n>     Port to listen on (default: 3847)
-  --data <dir>   Data directory for token, rules, and settings
-  --new-token    Generate a new access token (invalidates existing URLs)
-  --launch       Open the portal URL in your default browser on start
-  --no-qr        Suppress the QR code output
-  --help         Show this help
+  --port <n>       Port to listen on (default: 3847)
+  --cli-url <url>  Connect to a running CLI server (e.g. localhost:3848)
+  --data <dir>     Data directory for token, rules, and settings
+  --new-token      Generate a new access token (invalidates existing URLs)
+  --launch         Open the portal URL in your default browser on start
+  --no-qr          Suppress the QR code output
+  --help           Show this help
 
 See README.md for full setup instructions.`);
 	process.exit(0);
@@ -25,12 +26,13 @@ const getArg = (flag: string) => {
 };
 
 const PORT = parseInt(getArg('--port') ?? '3847', 10);
+const CLI_URL = getArg('--cli-url');
 const DATA_DIR = getArg('--data');
 const LAUNCH = args.includes('--launch');
 const NO_QR = args.includes('--no-qr');
 const NEW_TOKEN = args.includes('--new-token');
 
-const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN });
+const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: CLI_URL });
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');

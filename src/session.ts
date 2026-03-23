@@ -109,6 +109,8 @@ export class SessionHandle {
 	// Per-connection tool tracking — reset on each attachListeners() call
 	private deltasSent = false;
 	private toolsInFlight = 0;
+	/** When true, this session is shared with a CLI TUI — don't respond to non-portal approvals */
+	sharedMode = false;
 
 	constructor(
 		session: CopilotSession,
@@ -329,6 +331,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private startPoll(): void {
 		if (this.pollTimer) return;
+		// In shared mode, events flow through the shared connection — no polling needed
+		if (this.sharedMode) return;
 		this.pollTimer = setInterval(() => { void this.pollForChanges(); }, 2000);
 	}
 
@@ -624,6 +628,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const requestId = `approval-${++this.counter}`;
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
 
+		// Shared mode: don't respond to CLI-initiated approvals — let the CLI TUI handle them
+		if (this.sharedMode && !this.isPortalTurn) {
+			this.log(`[Session] Shared mode — deferring approval to CLI TUI: ${requestId}`);
+			return new Promise(() => {}); // never resolves — CLI TUI will handle it
+		}
+
 		// approveAll mode — instant approval, no UI
 		if (this.getApproveAll()) {
 			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
@@ -721,6 +731,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	handleUserInputRequest(req: UserInputRequest): Promise<UserInputResponse> {
 		const requestId = `input-${++this.counter}`;
 		this.log(`[Session] Input request: "${req.question.slice(0, 80)}"`);
+
+		// Shared mode: don't respond to CLI-initiated input requests — let the CLI TUI handle them
+		if (this.sharedMode && !this.isPortalTurn) {
+			this.log(`[Session] Shared mode — deferring input to CLI TUI: ${requestId}`);
+			return new Promise(() => {}); // never resolves — CLI TUI will handle it
+		}
+
 		const event: PortalEvent = {
 			type: 'input_request',
 			requestId,
@@ -1301,16 +1318,19 @@ export class SessionPool {
 	private log: (msg: string) => void;
 	readonly rulesStore: RulesStore;
 	private workspacePath: string;
+	/** True when connected to an external CLI server (--ui-server mode) */
+	readonly shared: boolean;
 
-	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspacePath: string) {
+	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspacePath: string, cliUrl?: string) {
 		this.log = log;
-		this.client = new CopilotClient();
+		this.shared = !!cliUrl;
+		this.client = cliUrl ? new CopilotClient({ cliUrl }) : new CopilotClient();
 		this.rulesStore = rulesStore;
 		this.workspacePath = workspacePath;
 	}
 
 	async start(): Promise<void> {
-		this.log('[Pool] Starting Copilot client...');
+		this.log(`[Pool] ${this.shared ? 'Connecting to CLI server...' : 'Starting Copilot client...'}`);
 		try {
 			await this.client.start();
 		} catch (e: unknown) {
@@ -1477,6 +1497,7 @@ export class SessionPool {
 			},
 			this.rulesStore,
 		);
+		handle.sharedMode = this.shared;
 		this.pool.set(sessionId, handle);
 		// Seed the model so reconnects use the same model as the CLI.
 		// Without this, resumeSession() would default to the CLI's current default model
@@ -1514,6 +1535,7 @@ export class SessionPool {
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
 		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
+		handle.sharedMode = this.shared;
 		this.pool.set(session.sessionId, handle);
 		handle.titleChangedCallback = async () => {
 			try {

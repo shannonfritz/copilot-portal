@@ -25,7 +25,7 @@ export class PortalServer {
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
 	private updater: UpdateChecker;
-	constructor(private port: number, dataDir?: string, opts?: { newToken?: boolean }) {
+	constructor(private port: number, dataDir?: string, opts?: { newToken?: boolean; cliUrl?: string }) {
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
 		this.dataDir = dataDir ?? path.join(__dirname, '..', 'data');
@@ -36,7 +36,7 @@ export class PortalServer {
 		this.token = this.loadOrCreateToken();
 		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
 		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
-		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath);
+		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
 			this.broadcastAll({ type: 'session_renamed', sessionId, summary });
@@ -532,6 +532,7 @@ export class PortalServer {
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
 				this.initDebugFiles();
 				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
+				this.log(`[Mode] ${this.pool.shared ? 'Shared (connected to CLI server)' : 'Standalone (own CLI subprocess)'}`);
 				this.log(`Server started on port ${this.port}`);
 				this.log(`Open: ${this.getURL()}`);
 				resolve();
