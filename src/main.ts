@@ -89,13 +89,12 @@ if (process.stdin.isTTY) {
 				console.log('\nShutting down...');
 				server.stop().then(() => process.exit(0));
 				break;
-			case '?':
-			case 'h':
-				showHelp();
-				break;
 			case '\u0003': // Ctrl+C
 				console.log('\nShutting down...');
 				server.stop().then(() => process.exit(0));
+				break;
+			default:
+				showHelp();
 				break;
 		}
 	});
