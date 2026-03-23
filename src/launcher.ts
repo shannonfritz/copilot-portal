@@ -55,7 +55,7 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 function launchCli(port: number): void {
 	const cmd = `copilot --ui-server --port ${port}`;
 	if (process.platform === 'win32') {
-		exec(`start "Copilot CLI" ${cmd}`);
+		exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
 	} else if (process.platform === 'darwin') {
 		exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
 	} else {
