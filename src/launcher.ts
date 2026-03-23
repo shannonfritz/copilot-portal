@@ -3,7 +3,7 @@
  *
  * Default (shared mode):
  *   1. Check if CLI server is already listening on port 3848
- *   2. If not, launch `copilot --ui-server --port 3848` in a new window
+ *   2. If not, launch `copilot --server --port 3848` as a background process
  *   3. Wait for port 3848 to accept connections
  *   4. Start portal server with --cli-url localhost:3848
  *
@@ -51,18 +51,18 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 	return false;
 }
 
-/** Launch the CLI in a new terminal window */
+/** Launch the CLI as a headless JSON-RPC server */
 function launchCli(port: number): void {
-	const cmd = `copilot --ui-server --port ${port}`;
-	if (process.platform === 'win32') {
-		exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
-	} else if (process.platform === 'darwin') {
-		exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
-	} else {
-		// Best effort for Linux — try common terminals
-		exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" 2>/dev/null || ${cmd} &`);
-	}
+	const copilotPath = process.platform === 'win32' ? 'copilot.cmd' : 'copilot';
+	const child = spawn(copilotPath, ['--server', '--port', String(port)], {
+		stdio: 'ignore',
+		detached: true,
+	});
+	child.unref();
+	cliChild = child;
 }
+
+let cliChild: ReturnType<typeof spawn> | null = null;
 
 async function start() {
 	let cliUrl: string | undefined;
@@ -79,7 +79,7 @@ async function start() {
 			if (alreadyRunning) {
 				console.log(`[Launcher] CLI server detected on port ${CLI_PORT}`);
 			} else {
-				console.log(`[Launcher] Starting CLI in a new window (port ${CLI_PORT})...`);
+				console.log(`[Launcher] Starting CLI server (port ${CLI_PORT})...`);
 				launchCli(CLI_PORT);
 				const ready = await waitForPort(CLI_PORT, 30000);
 				if (!ready) {
