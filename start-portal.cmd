@@ -81,15 +81,17 @@ netstat -ano 2>nul | findstr ":3847.*LISTENING" >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
     echo  Port 3847 is already in use - the portal may already be running.
-    echo  Close the other instance first, or use: npm start -- --port 3848
+    echo  Close the other instance first, or use: npm start -- --port 3849
     goto :done
 )
 
 :: ---- Start the portal ----
+:: Default: shared mode (launches CLI in a new window)
+:: Use --standalone to skip CLI and spawn own subprocess
 echo.
 echo  Starting Copilot Portal...
 echo.
-call npm start
+call npm start -- %*
 
 :done
 echo.

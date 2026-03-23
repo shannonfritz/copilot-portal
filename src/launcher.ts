@@ -1,9 +1,20 @@
 /**
- * Launcher with restart support.
- * Runs dist/server.js and relaunches it when it exits with code 75 (restart requested).
- * All other exit codes terminate the launcher.
+ * Launcher with CLI server management and restart support.
+ *
+ * Default (shared mode):
+ *   1. Check if CLI server is already listening on port 3848
+ *   2. If not, launch `copilot --ui-server --port 3848` in a new window
+ *   3. Wait for port 3848 to accept connections
+ *   4. Start portal server with --cli-url localhost:3848
+ *
+ * Standalone mode (--standalone):
+ *   Starts portal server without CLI — spawns its own CLI subprocess.
+ *
+ * Restart support:
+ *   Exit code 75 triggers a relaunch of the portal server.
  */
-import { spawn } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
+import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,9 +23,87 @@ const serverScript = path.join(__dirname, 'server.js');
 const args = process.argv.slice(2);
 
 const RESTART_CODE = 75;
+const CLI_PORT = 3848;
 
-function launch() {
-	const child = spawn(process.execPath, [serverScript, ...args], {
+const standalone = args.includes('--standalone');
+// Remove --standalone from args passed to server (it doesn't know about it)
+const serverArgs = args.filter(a => a !== '--standalone');
+
+/** Check if a TCP port is accepting connections */
+function isPortListening(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const sock = net.createConnection({ port, host: 'localhost' }, () => {
+			sock.destroy();
+			resolve(true);
+		});
+		sock.on('error', () => resolve(false));
+		sock.setTimeout(1000, () => { sock.destroy(); resolve(false); });
+	});
+}
+
+/** Wait for a port to start listening, with timeout */
+async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
+	const start = Date.now();
+	while (Date.now() - start < timeoutMs) {
+		if (await isPortListening(port)) return true;
+		await new Promise(r => setTimeout(r, 500));
+	}
+	return false;
+}
+
+/** Launch the CLI in a new terminal window */
+function launchCli(port: number): void {
+	const cmd = `copilot --ui-server --port ${port}`;
+	if (process.platform === 'win32') {
+		exec(`start "Copilot CLI" ${cmd}`);
+	} else if (process.platform === 'darwin') {
+		exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
+	} else {
+		// Best effort for Linux — try common terminals
+		exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" 2>/dev/null || ${cmd} &`);
+	}
+}
+
+async function start() {
+	let cliUrl: string | undefined;
+
+	if (!standalone) {
+		// Check if --cli-url was explicitly provided
+		const cliUrlIdx = serverArgs.indexOf('--cli-url');
+		if (cliUrlIdx !== -1 && cliUrlIdx + 1 < serverArgs.length) {
+			cliUrl = serverArgs[cliUrlIdx + 1];
+			console.log(`[Launcher] Using provided CLI server: ${cliUrl}`);
+		} else {
+			// Auto-detect or launch CLI server
+			const alreadyRunning = await isPortListening(CLI_PORT);
+			if (alreadyRunning) {
+				console.log(`[Launcher] CLI server detected on port ${CLI_PORT}`);
+			} else {
+				console.log(`[Launcher] Starting CLI in a new window (port ${CLI_PORT})...`);
+				launchCli(CLI_PORT);
+				const ready = await waitForPort(CLI_PORT, 30000);
+				if (!ready) {
+					console.log(`[Launcher] CLI server did not start within 30s — falling back to standalone mode`);
+				}
+			}
+			if (await isPortListening(CLI_PORT)) {
+				cliUrl = `localhost:${CLI_PORT}`;
+			}
+		}
+	}
+
+	if (cliUrl) {
+		console.log(`[Launcher] Shared mode — connecting to ${cliUrl}`);
+	} else {
+		console.log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
+	}
+
+	launch(cliUrl);
+}
+
+function launch(cliUrl?: string) {
+	const extraArgs = cliUrl ? ['--cli-url', cliUrl] : [];
+	const child = spawn(process.execPath, [serverScript, ...serverArgs, ...extraArgs], {
 		cwd: process.cwd(),
 		stdio: 'inherit',
 	});
@@ -22,7 +111,7 @@ function launch() {
 	child.on('exit', (code) => {
 		if (code === RESTART_CODE) {
 			console.log('\n[Launcher] Restarting server...\n');
-			launch();
+			launch(cliUrl);
 		} else {
 			process.exit(code ?? 0);
 		}
@@ -36,4 +125,4 @@ function launch() {
 	process.on('SIGTERM', () => forward('SIGTERM'));
 }
 
-launch();
+start();
