@@ -38,9 +38,7 @@ mkdirSync(stage, { recursive: true });
 
 const files = [
 	'dist', 'package.dist.json', 'patch.mjs', 'README.md', 'CHANGELOG.md', 'BUILD',
-	'install.cmd', 'install.sh',
-	'start.cmd', 'start.sh',
-	'start-and-launch.cmd', 'start-and-launch.sh',
+	'start-portal.cmd',
 ];
 for (const f of files) {
 	const dest = f === 'package.dist.json' ? join(stage, 'package.json') : join(stage, f);
