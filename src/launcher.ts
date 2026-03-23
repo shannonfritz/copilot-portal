@@ -13,7 +13,7 @@
  * Restart support:
  *   Exit code 75 triggers a relaunch of the portal server.
  */
-import { spawn, exec } from 'node:child_process';
+import { spawn, spawnSync, exec } from 'node:child_process';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,13 +72,16 @@ let cliLaunched = false;
 /** Stop the CLI server process if we launched it */
 function stopCli(): void {
 	if (!cliLaunched) return;
+	cliLaunched = false;
 	console.log(`[Launcher] Stopping CLI server...`);
 	try {
 		if (process.platform === 'win32') {
-			exec(`pwsh -NoProfile -Command "Get-NetTCPConnection -LocalPort ${CLI_PORT} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`, { windowsHide: true });
+			// spawnSync so it works in 'exit' handler (synchronous only)
+			spawnSync('pwsh', ['-NoProfile', '-Command',
+				`Get-NetTCPConnection -LocalPort ${CLI_PORT} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+			], { stdio: 'ignore', windowsHide: true });
 		}
 	} catch { /* already dead */ }
-	cliLaunched = false;
 }
 
 async function start() {
@@ -142,6 +145,8 @@ function launch(cliUrl?: string) {
 	};
 	process.on('SIGINT', () => { forward('SIGINT'); stopCli(); });
 	process.on('SIGTERM', () => { forward('SIGTERM'); stopCli(); });
+	// Catch-all: clean up CLI on any exit (e.g. terminal window closed)
+	process.on('exit', () => stopCli());
 }
 
 start();
