@@ -53,7 +53,9 @@ const zipPath = join(releasesDir, zipName);
 if (existsSync(zipPath)) rmSync(zipPath);
 
 if (process.platform === 'win32') {
-	execSync(`powershell -NoProfile -Command "Compress-Archive -Path (Get-ChildItem '${stage}').FullName -DestinationPath '${zipPath}'"`, { stdio: 'inherit' });
+	// Compress-Archive needs explicit file list — wildcard and piping both have edge cases
+	const ps = `$items = @(); Get-ChildItem -LiteralPath '${stage}' | ForEach-Object { $items += $_.FullName }; Compress-Archive -LiteralPath $items -DestinationPath '${zipPath}'`;
+	execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: 'inherit' });
 } else {
 	execSync(`cd "${stage}" && zip -r "${zipPath}" .`, { stdio: 'inherit' });
 }
