@@ -53,16 +53,32 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 
 /** Launch the CLI as a headless JSON-RPC server */
 function launchCli(port: number): void {
-	const copilotPath = process.platform === 'win32' ? 'copilot.cmd' : 'copilot';
-	const child = spawn(copilotPath, ['--server', '--port', String(port)], {
+	const child = spawn('copilot', ['--server', '--port', String(port)], {
 		stdio: 'ignore',
 		detached: true,
+		windowsHide: true,
 	});
 	child.unref();
 	cliChild = child;
+	console.log(`[Launcher] CLI server started (PID ${child.pid})`);
 }
 
 let cliChild: ReturnType<typeof spawn> | null = null;
+
+/** Stop the CLI server process if we launched it */
+function stopCli(): void {
+	if (!cliChild || cliChild.killed) return;
+	console.log(`[Launcher] Stopping CLI server (PID ${cliChild.pid})...`);
+	try {
+		// On Windows, detached .cmd processes need taskkill to reach the child tree
+		if (process.platform === 'win32' && cliChild.pid) {
+			spawn('taskkill', ['/pid', String(cliChild.pid), '/t', '/f'], { stdio: 'ignore' });
+		} else {
+			cliChild.kill('SIGTERM');
+		}
+	} catch { /* already dead */ }
+	cliChild = null;
+}
 
 async function start() {
 	let cliUrl: string | undefined;
@@ -111,18 +127,20 @@ function launch(cliUrl?: string) {
 	child.on('exit', (code) => {
 		if (code === RESTART_CODE) {
 			console.log('\n[Launcher] Restarting server...\n');
+			// Don't stop CLI server on restart — it stays running
 			launch(cliUrl);
 		} else {
+			stopCli(); // clean up CLI server on normal exit
 			process.exit(code ?? 0);
 		}
 	});
 
-	// Forward SIGINT/SIGTERM to child
+	// Forward SIGINT/SIGTERM to child and clean up CLI
 	const forward = (sig: NodeJS.Signals) => {
 		child.kill(sig);
 	};
-	process.on('SIGINT', () => forward('SIGINT'));
-	process.on('SIGTERM', () => forward('SIGTERM'));
+	process.on('SIGINT', () => { forward('SIGINT'); stopCli(); });
+	process.on('SIGTERM', () => { forward('SIGTERM'); stopCli(); });
 }
 
 start();
