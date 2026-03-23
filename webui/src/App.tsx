@@ -499,8 +499,7 @@ function SessionDrawer({
 
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
-	// Always try to connect — server will auto-assign the foreground/last session if no ID in URL
-	const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [toolEvents, setToolEventsState] = useState<ToolEvent[]>([]);
 	const toolEventsRef = useRef<ToolEvent[]>([]);
@@ -521,7 +520,7 @@ export default function App() {
 	const [isStopping, setIsStopping] = useState(false);
 	// Agent is "active" whenever it's thinking, running tools, streaming, or waiting for stop to confirm
 	const isAgentActive = isStopping || isStreaming || isThinking || toolEvents.some(te => te.type === 'tool_start');
-	const [showPicker, setShowPicker] = useState(false);
+	const [showPicker, setShowPicker] = useState(!hasSessionInUrl);
 	const [showQR, setShowQR] = useState(false);
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -545,8 +544,8 @@ export default function App() {
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
-	const [noSession, setNoSession] = useState(false);
-	const noSessionRef = useRef(false);
+	const [noSession, setNoSession] = useState(!hasSessionInUrl);
+	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 	const [updateDismissed, setUpdateDismissed] = useState(false);
 
