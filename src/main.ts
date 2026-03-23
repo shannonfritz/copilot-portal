@@ -60,3 +60,43 @@ if (LAUNCH) {
 		: `xdg-open "${url}"`;
 	exec(cmd);
 }
+
+// Console key commands
+if (process.stdin.isTTY) {
+	process.stdin.setRawMode(true);
+	process.stdin.resume();
+	process.stdin.setEncoding('utf8');
+
+	const showHelp = () => {
+		console.log('\n  Keys: [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
+	};
+	showHelp();
+
+	process.stdin.on('data', (key: string) => {
+		switch (key.toLowerCase()) {
+			case 'q':
+				console.log('\nScan to open on your phone:');
+				qrcode.generate(server.getURL(), { small: true });
+				break;
+			case 'u':
+				console.log(`\n  ${server.getURL()}\n`);
+				break;
+			case 'r':
+				console.log('\nRestarting...');
+				process.exit(75); // launcher catches this and relaunches
+				break;
+			case 'x':
+				console.log('\nShutting down...');
+				server.stop().then(() => process.exit(0));
+				break;
+			case '?':
+			case 'h':
+				showHelp();
+				break;
+			case '\u0003': // Ctrl+C
+				console.log('\nShutting down...');
+				server.stop().then(() => process.exit(0));
+				break;
+		}
+	});
+}
