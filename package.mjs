@@ -55,7 +55,7 @@ const zipPath = join(releasesDir, zipName);
 if (existsSync(zipPath)) rmSync(zipPath);
 
 if (process.platform === 'win32') {
-	execSync(`powershell -NoProfile -Command "Compress-Archive -Path '${stage}\\*' -DestinationPath '${zipPath}'"`, { stdio: 'inherit' });
+	execSync(`powershell -NoProfile -Command "Compress-Archive -Path (Get-ChildItem '${stage}').FullName -DestinationPath '${zipPath}'"`, { stdio: 'inherit' });
 } else {
 	execSync(`cd "${stage}" && zip -r "${zipPath}" .`, { stdio: 'inherit' });
 }
