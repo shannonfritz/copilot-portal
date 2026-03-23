@@ -136,13 +136,14 @@ export class UpdateChecker {
 		try {
 			this.log(`[Update] Applying updates...`);
 
-			// Update all tracked packages plus the CLI binary.
-			// @github/copilot is a transitive dep of copilot-sdk — npm won't eagerly
-			// update it via `npm update @github/copilot-sdk` if the current version
-			// satisfies the range, so we name it explicitly.
-			const allPkgs = [...new Set([...TRACKED_PACKAGES, ...this.packages.filter(p => p.hasUpdate).map(p => p.name)])];
-			await runCommand(`npm update ${allPkgs.join(' ')}`, PROJECT_ROOT);
-			this.log(`[Update] npm update complete`);
+			// Update packages. Use `npm install pkg@latest` instead of `npm update`
+			// because npm update respects the semver range in package.json (e.g. ^0.1.32
+			// won't update to 0.2.0). Install @latest forces the newest version.
+			const updatable = this.packages.filter(p => p.hasUpdate).map(p => `${p.name}@latest`);
+			if (updatable.length > 0) {
+				await runCommand(`npm install --no-fund --no-audit ${updatable.join(' ')}`, PROJECT_ROOT);
+				this.log(`[Update] npm install complete`);
+			}
 
 			// 2. Rebuild the server and UI (skip if no build script — e.g. release packages ship pre-built)
 			const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
