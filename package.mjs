@@ -31,7 +31,7 @@ if (existsSync(stage)) rmSync(stage, { recursive: true });
 mkdirSync(stage, { recursive: true });
 
 const files = [
-	'dist', 'package.dist.json', 'patch.mjs', 'README.md', 'BUILD',
+	'dist', 'package.dist.json', 'patch.mjs', 'README.md', 'CHANGELOG.md', 'BUILD',
 	'install.cmd', 'install.sh',
 	'start.cmd', 'start.sh',
 	'start-and-launch.cmd', 'start-and-launch.sh',
@@ -41,11 +41,11 @@ for (const f of files) {
 	cpSync(f, dest, { recursive: true });
 }
 
-// 5. Create zip in builds/ directory
-const buildsDir = join(root, 'builds');
-if (!existsSync(buildsDir)) mkdirSync(buildsDir, { recursive: true });
+// 5. Create zip in releases/ directory
+const releasesDir = join(root, 'releases');
+if (!existsSync(releasesDir)) mkdirSync(releasesDir, { recursive: true });
 const zipName = `${stamp}.zip`;
-const zipPath = join(buildsDir, zipName);
+const zipPath = join(releasesDir, zipName);
 if (existsSync(zipPath)) rmSync(zipPath);
 
 if (process.platform === 'win32') {

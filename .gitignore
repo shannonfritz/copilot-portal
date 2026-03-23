@@ -11,5 +11,5 @@ data/
 debug/
 
 # Build artifacts
-builds/
+releases/
 copilot-portal-*.zip
