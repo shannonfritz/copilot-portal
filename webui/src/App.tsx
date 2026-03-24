@@ -2112,7 +2112,16 @@ export default function App() {
 						)}
 						{pendingInput && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'var(--primary-tint)' }}>
-								<div className="mb-2 text-sm font-semibold">{pendingInput.question}</div>
+								<div className="mb-2 flex items-center justify-between">
+									<span className="text-sm font-semibold">{pendingInput.question}</span>
+									<button
+										className="rounded px-2 py-0.5 text-xs"
+										style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+										onClick={() => { respondInput('', true); }}
+										type="button"
+										title="Skip this question"
+									>Skip</button>
+								</div>
 								{pendingInput.choices && pendingInput.choices.length > 0 && (
 									<div className="mb-2 flex flex-col gap-1.5">
 										{pendingInput.choices.map((choice, i) => (
