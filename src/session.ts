@@ -259,7 +259,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const roundFollowingTools: (string | null)[] = []; // tool name after each message
 		const askUserToolIds = new Set<string>(); // track ask_user tool calls to extract user answers
 		const askUserChoices = new Map<string, string[]>(); // choices presented to the user
-		let pendingAskUserAnswers: Array<{ content: string; choices?: string[]; timestamp?: number }> = [];// buffered until round flushes
+		const askUserQuestions = new Map<string, string>(); // question text from ask_user
+		let pendingAskUserAnswers: Array<{ question: string; content: string; choices?: string[]; timestamp?: number }> = [];// buffered until round flushes
 		let roundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
@@ -275,10 +276,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				const intermediate = followedByAskUser ? false : (allIntermediate || hasToolRequests);
 				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
 				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? toolSummary : undefined });
-				// Emit any buffered ask_user answers right after the question message
+				// Emit any buffered ask_user Q&A right after the question message
 				if (followedByAskUser && pendingAskUserAnswers.length > 0) {
-					const answer = pendingAskUserAnswers.shift()!;
-					result.push({ type: 'history_user', content: answer.content, timestamp: answer.timestamp, askUserChoices: answer.choices });
+					const qa = pendingAskUserAnswers.shift()!;
+					// Emit the question as an assistant message if it's not already in the preceding content
+					if (qa.question && !content.includes(qa.question)) {
+						result.push({ type: 'delta', content: qa.question, timestamp: qa.timestamp });
+						result.push({ type: 'idle' });
+					}
+					result.push({ type: 'history_user', content: qa.content, timestamp: qa.timestamp, askUserChoices: qa.choices });
 				}
 			}
 			roundMsgs.length = 0;
@@ -311,22 +317,26 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				if (toolName === 'ask_user') {
 					const toolCallId = (raw.data as { toolCallId?: string })?.toolCallId ?? '';
 					askUserToolIds.add(toolCallId);
-					// Capture the choices from the tool arguments
+					// Capture the question and choices from the tool arguments
 					const rawArgs = (raw.data as { arguments?: unknown })?.arguments;
 					try {
 						const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
-						askUserChoices.set(toolCallId, (args as { choices?: string[] })?.choices ?? []);
+						const a = args as { question?: string; choices?: string[] };
+						askUserChoices.set(toolCallId, a.choices ?? []);
+						askUserQuestions.set(toolCallId, a.question ?? '');
 					} catch { /* ignore */ }
 				}
-				if (toolName !== 'report_intent') roundTools.push(SessionHandle.parseToolEvent(raw.data));
+				if (toolName !== 'report_intent' && toolName !== 'ask_user') roundTools.push(SessionHandle.parseToolEvent(raw.data));
 			} else if (e.type === 'tool.execution_complete') {
 				const d = raw.data as { toolCallId?: string; result?: { content?: string } };
 				if (d.toolCallId && askUserToolIds.has(d.toolCallId)) {
 					const answer = d.result?.content ?? '';
 					const choices = askUserChoices.get(d.toolCallId);
-					if (answer) pendingAskUserAnswers.push({ content: answer, choices, timestamp: ts });
+					const question = askUserQuestions.get(d.toolCallId) ?? '';
+					if (answer) pendingAskUserAnswers.push({ question, content: answer, choices, timestamp: ts });
 					askUserToolIds.delete(d.toolCallId);
 					askUserChoices.delete(d.toolCallId);
+					askUserQuestions.delete(d.toolCallId);
 				}
 			}
 		}
