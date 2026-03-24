@@ -68,12 +68,21 @@ if (process.stdin.isTTY) {
 	process.stdin.setEncoding('utf8');
 
 	const showHelp = () => {
-		console.log('\n  Command Keys: [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
+		console.log('\n  Command Keys: [l] Launch Browser  [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
 	};
 	showHelp();
 
 	process.stdin.on('data', (key: string) => {
 		switch (key.toLowerCase()) {
+			case 'l': {
+				const url = server.getURL();
+				const cmd = process.platform === 'win32' ? `start "" "${url}"`
+					: process.platform === 'darwin' ? `open "${url}"`
+					: `xdg-open "${url}"`;
+				exec(cmd);
+				console.log(`\n  Opened in browser\n`);
+				break;
+			}
 			case 'q':
 				console.log('\nScan to open on your phone:');
 				qrcode.generate(server.getURL(), { small: true });
