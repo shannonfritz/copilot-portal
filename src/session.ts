@@ -263,17 +263,20 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		let roundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
-			const tools = roundTools.length > 0 ? [...roundTools] : undefined;
+			// Filter ask_user from tool summary — it's represented by the prompt UI, not a tool box
+			const tools = roundTools.filter(t => t.toolName !== 'ask_user');
+			const toolSummary = tools.length > 0 ? [...tools] : undefined;
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				if (!content) continue;
 				const isLast = i === roundMsgs.length - 1;
-				const followedByUserFacingTool = roundFollowingTools[i] === 'ask_user';
-				const intermediate = followedByUserFacingTool ? false : (allIntermediate || i < roundMsgs.length - 1);
+				const followedByAskUser = roundFollowingTools[i] === 'ask_user';
+				const hasToolRequests = roundFollowingTools[i] === '_has_tool_requests' || (roundFollowingTools[i] !== null && roundFollowingTools[i] !== 'ask_user');
+				const intermediate = followedByAskUser ? false : (allIntermediate || hasToolRequests);
 				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
-				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? tools : undefined });
+				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? toolSummary : undefined });
 				// Emit any buffered ask_user answers right after the question message
-				if (followedByUserFacingTool && pendingAskUserAnswers.length > 0) {
+				if (followedByAskUser && pendingAskUserAnswers.length > 0) {
 					const answer = pendingAskUserAnswers.shift()!;
 					result.push({ type: 'history_user', content: answer.content, timestamp: answer.timestamp, askUserChoices: answer.choices });
 				}
@@ -292,9 +295,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				flushRound();
 				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts });
 			} else if (e.type === 'assistant.message') {
-				roundMsgs.push((raw.data as { content?: string })?.content ?? '');
+				const d = raw.data as { content?: string; toolRequests?: unknown[] };
+				roundMsgs.push(d.content ?? '');
 				roundTimestamps.push(ts);
-				roundFollowingTools.push(null); // will be filled if a tool follows
+				// Use toolRequests to determine intermediate status directly
+				const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
+				roundFollowingTools.push(hasToolRequests ? '_has_tool_requests' : null);
 			} else if (e.type === 'tool.execution_start') {
 				const toolName = (raw.data as { toolName?: string })?.toolName;
 				// Tag the preceding message with the tool that follows it
@@ -850,7 +856,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onAssistantMessage(data: unknown): void {
-		const content = (data as { content?: string }).content ?? '';
+		const d = data as { content?: string; toolRequests?: unknown[] };
+		const content = d.content ?? '';
 		this.log(`[Session] Assistant message: ${content.slice(0, 200)}`);
 		// Accumulate estimated tokens (chars/4) for proactive compaction
 		this.tokensSinceCompaction += Math.ceil(content.length / 4);
@@ -859,7 +866,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.broadcast({ type: 'delta', content });
 		}
 		// Always commit this message on the client, whether it arrived via deltas or as a blob
-		this.broadcast({ type: 'message_end' });
+		// Include hasToolRequests so the client can distinguish intermediate vs final messages
+		const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
+		this.broadcast({ type: 'message_end', intermediate: hasToolRequests || undefined });
 		this.deltasSent = false;
 	}
 

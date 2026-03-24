@@ -61,7 +61,11 @@ interface Message {
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
 	// tool_start events get mutated to tool_complete when done — include both
-	const toolCalls = events.filter(te => te.type === 'tool_start' || te.type === 'tool_complete');
+	// Exclude ask_user and report_intent — they're not "tools" from the user's perspective
+	const toolCalls = events.filter(te =>
+		(te.type === 'tool_start' || te.type === 'tool_complete') &&
+		te.toolName !== 'ask_user' && te.toolName !== 'report_intent'
+	);
 	return toolCalls.map(te => {
 		let display = te.displayLabel ?? '';
 		if (!display) {
@@ -940,18 +944,24 @@ export default function App() {
 						}
 					}
 				} else if (event.type === 'message_end') {
-					// Buffer this message — we'll know if it's intermediate (more tools follow)
-					// or final (idle follows) at the next event
+					// Commit this message — server tells us if it's intermediate (has toolRequests)
 					const content = streamingRef.current.trim();
 					if (content) {
-						lastStreamedRef.current = (lastStreamedRef.current ? lastStreamedRef.current + '\n' : '') + content;
-						pendingMsgRef.current = {
+						const msg: Message = {
 							id: `msg-${Date.now()}`,
 							role: 'assistant',
 							content,
 							reasoning: reasoningRef.current || undefined,
+							intermediate: event.intermediate || undefined,
 							timestamp: Date.now(),
 						};
+						// If intermediate, commit immediately. If final, buffer for idle to attach tool summary.
+						if (msg.intermediate) {
+							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+						} else {
+							lastStreamedRef.current = (lastStreamedRef.current ? lastStreamedRef.current + '\n' : '') + content;
+							pendingMsgRef.current = msg;
+						}
 					}
 					streamingRef.current = '';
 					reasoningRef.current = '';
@@ -969,17 +979,14 @@ export default function App() {
 							}
 						} catch { /* ignore parse errors */ }
 					} else {
-						// A real tool is starting — any buffered message was an intermediate "notes to self"
-						// Exception: ask_user is user-facing, so the preceding message is substantive content
+						// Flush any buffered final message before showing tools
 						if (pendingMsgRef.current) {
-							const isUserFacing = event.toolName === 'ask_user';
-							const msg = { ...pendingMsgRef.current, intermediate: isUserFacing ? undefined : true };
+							const msg = pendingMsgRef.current;
 							pendingMsgRef.current = null;
 							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
 						}
 						setCliApprovalInfo(null);
 						if (!isStoppingRef.current) {
-							// Keep indicator visible — update text to show which tool is running
 							setIsThinking(true);
 							setThinkingText(`Running ${event.toolName ?? 'tool'}…`);
 						}
@@ -1870,17 +1877,7 @@ export default function App() {
 						);
 					})()}
 					{messages.map((msg) => {
-						if (msg.intermediate) {
-							return (
-								<details key={msg.id} className="mb-1" style={{ border: '1.5px dashed var(--border)', borderRadius: '8px', padding: '6px 10px', opacity: 0.75, background: 'var(--surface)' }}>
-									<summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none', fontStyle: 'italic' }}>
-										<span>💭</span>
-										<span>{msg.content.slice(0, 60)}{msg.content.length > 60 ? '…' : ''}</span>
-									</summary>
-									<pre style={{ marginTop: '4px', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-muted)' }}>{msg.content}</pre>
-								</details>
-							);
-						}
+						const isIntermediate = msg.role === 'assistant' && msg.intermediate;
 						return (
 						<div key={msg.id} className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							{msg.reasoning && (
@@ -1893,7 +1890,7 @@ export default function App() {
 										? { background: 'var(--primary)', color: 'white', borderRadius: '18px 18px 4px 18px' }
 										: {
 												background: 'var(--surface)',
-												border: '1px solid var(--border)',
+												border: isIntermediate ? '1.5px dashed var(--border)' : '1px solid var(--border)',
 												borderRadius: '18px 18px 18px 4px',
 											}
 								}
