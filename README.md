@@ -5,54 +5,49 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v22 or later
-
-That's it — the installer handles everything else (including GitHub authentication).
+- [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) installed via winget (`winget install GitHub.CopilotCLI`)
 
 ## Setup
 
 1. Unzip this package to a folder of your choice.
-2. Open a terminal in that folder.
-3. Run the installer:
+2. Double-click `start-portal.cmd` (Windows) or run `sh start-portal.sh` (Mac/Linux).
 
-   **Windows:**
-   ```
-   install.cmd
-   ```
-
-   **Mac / Linux:**
-   ```
-   sh install.sh
-   ```
-
-   The installer will:
-   - Install npm dependencies (includes the Copilot CLI engine)
-   - Apply a compatibility patch
+   On first run, the script will:
+   - Install npm dependencies
+   - Check for PowerShell 7 (suggests install if missing)
    - Sign you in to GitHub (opens a browser window if needed)
+   - Start the Copilot CLI server in the background
+   - Start the portal server
 
-4. Start the server:
-
-   **Windows:**
-   ```
-   start-and-launch.cmd
-   ```
-
-   **Mac / Linux:**
-   ```
-   sh start-and-launch.sh
-   ```
-
-5. The console will print a URL and QR code, e.g.:
+3. The console will print a URL and QR code:
    ```
    Open: http://192.168.1.42:3847?token=abc123...
    ```
    Open that URL in any browser on your local network.
+
+## Console Commands
+
+While running, press a key:
+- `q` — Show QR code
+- `u` — Show portal URL
+- `r` — Restart server
+- `x` — Exit
+
+## Architecture
+
+The portal runs in **shared mode** by default:
+- A headless Copilot CLI server runs in the background (port 3848)
+- The portal server connects to it via the SDK (port 3847)
+- Messages sent from the portal are visible in any CLI session, and vice versa
+
+Use `--standalone` to run without the CLI server (portal spawns its own subprocess).
 
 ## Port
 
 The default port is `3847`. To use a different port, pass `--port`:
 
 ```
-node dist/server.js --port 8080
+npm start -- --port 8080
 ```
 
 ## Security
@@ -63,7 +58,7 @@ To rotate the token (invalidate existing URLs), delete `data/token.txt` and rest
 
 ## Stopping the server
 
-Press `Ctrl+C` in the terminal.
+Press `x` in the console, or `Ctrl+C`. The background CLI server is automatically stopped when the portal exits.
 
 ---
 

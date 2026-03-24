@@ -1,6 +1,6 @@
 {
   "name": "copilot-portal",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Mobile-friendly web portal for GitHub Copilot CLI",
   "type": "module",
   "main": "./dist/server.js",

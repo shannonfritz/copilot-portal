@@ -267,7 +267,6 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// Filter ask_user from tool summary — it's represented by the prompt UI, not a tool box
 			const tools = roundTools.filter(t => t.toolName !== 'ask_user');
 			const toolSummary = tools.length > 0 ? [...tools] : undefined;
-			this.log(`[History] flushRound: ${roundMsgs.length} msgs, ${pendingAskUserAnswers.length} pending ask_user answers, followingTools: ${JSON.stringify(roundFollowingTools)}`);
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				const isLast = i === roundMsgs.length - 1;

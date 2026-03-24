@@ -2,7 +2,50 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.2.0 (unreleased)
+## v0.3.0
+
+### Shared CLI Server Mode
+- Portal now connects to a headless Copilot CLI server (`--server` mode) by default
+- CLI launches automatically in the background — no extra terminal window
+- Bidirectional sync: messages sent from portal or CLI are immediately visible to both
+- `--standalone` flag available for fallback to the old subprocess model
+- CLI server PID tracked and cleaned up on portal shutdown
+- Graceful handling: CLI stays alive across portal restarts, killed on exit
+
+### Startup & Console
+- Single entry point: `start-portal.cmd` handles install, auth, and server launch
+- PowerShell 7 check in installer with optional auto-install via winget
+- Console key commands: `[q]` QR code, `[u]` URL, `[r]` Restart, `[x]` Exit
+- Terminal tab title set to "Copilot Portal"
+- Port conflict detection on startup
+- Version and update status logged on startup
+
+### Message Rendering Redesign
+- Intermediate messages shown as full message bubbles with dashed border (was collapsed)
+- Messages and tool events interleaved by timestamp (was separate blocks)
+- Intermediate detection uses SDK `toolRequests` property (reliable, consistent live/history)
+- ask_user questions show in chat with collapsed "📋 N options" summary
+- ask_user excluded from tool summaries (represented by prompt UI instead)
+- Empty assistant messages (tool-dispatch-only) filtered from rendering
+
+### Update Management
+- `npm install @latest` for updates (was `npm update` which couldn't cross semver boundaries)
+- Skip build step on release packages (pre-built, no build script)
+- Force restart banner after update apply (client-side override)
+
+### Packaging & Releases
+- Output directory renamed from `builds/` to `releases/`
+- Daily build counter resets (BUILD file stores YYMMDD-NN format)
+- CHANGELOG.md included in release zip
+- Favicon (Copilot logo SVG)
+- Fixed zip packaging to include all files (not just dist/)
+
+### Documentation
+- `docs/ROADMAP.md` — prioritized feature list
+- `docs/cli-server-mode.md` — research, test results, implementation plan
+- `docs/PACKAGING.md` — how to build and distribute releases
+
+## v0.2.0
 
 ### Setup & Distribution
 - Streamlined install: only Node.js required as a prerequisite
