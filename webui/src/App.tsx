@@ -1876,8 +1876,19 @@ export default function App() {
 							</div>
 						);
 					})()}
-					{messages.map((msg) => {
-						const isIntermediate = msg.role === 'assistant' && msg.intermediate;
+					{/* Interleave messages and tool events by timestamp */}
+					{(() => {
+						const items: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
+							...messages.map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
+							...toolEvents.map(tc => ({ type: 'tool' as const, tc, ts: tc.timestamp })),
+						].sort((a, b) => a.ts - b.ts);
+
+						return items.map((item) => {
+							if (item.type === 'tool') {
+								return <ToolEventBox key={item.tc.id} tc={item.tc} />;
+							}
+							const msg = item.msg;
+							const isIntermediate = msg.role === 'assistant' && msg.intermediate;
 						return (
 						<div key={msg.id} className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							{msg.reasoning && (
@@ -1947,11 +1958,8 @@ export default function App() {
 							</div>
 						</div>
 						);
-					})}
-
-					{toolEvents.map((tc) => (
-						<ToolEventBox key={tc.id} tc={tc} />
-					))}
+					});
+					})()}
 
 					{reasoningText && isThinking && (
 						<ThoughtBubble reasoning={reasoningText} defaultExpanded />
