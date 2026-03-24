@@ -1879,7 +1879,7 @@ export default function App() {
 					{/* Interleave messages and tool events by timestamp */}
 					{(() => {
 						const items: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
-							...messages.map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
+							...messages.filter(m => m.content.trim()).map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
 							...toolEvents.map(tc => ({ type: 'tool' as const, tc, ts: tc.timestamp })),
 						].sort((a, b) => a.ts - b.ts);
 
