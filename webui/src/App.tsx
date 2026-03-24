@@ -56,7 +56,8 @@ interface Message {
 	timestamp: number;
 	intermediate?: boolean; // mid-turn "notes to self" — shown as thought bubble, not a chat message
 	toolSummary?: ToolSummaryItem[]; // tools that ran before this message
-	askUserChoices?: string[]; // choices presented when this is an ask_user response
+	askUserChoices?: string[]; // choices presented when this is an ask_user response (user msg)
+	questionChoices?: string[]; // choices offered when this is an ask_user question (assistant msg)
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -887,6 +888,7 @@ export default function App() {
 								bytes: new TextEncoder().encode(streamingRef.current).length,
 								intermediate: event.intermediate || undefined,
 								toolSummary: event.toolSummary || undefined,
+								questionChoices: event.questionChoices || undefined,
 							});
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
@@ -1367,6 +1369,7 @@ export default function App() {
 				role: 'assistant',
 				content: pendingInput.question,
 				timestamp: Date.now(),
+				questionChoices: pendingInput.choices,
 			}]);
 		}
 		setMessages(prev => [...prev, {
@@ -1929,6 +1932,25 @@ export default function App() {
 													<span style={{ flexShrink: 0 }}>{t.completed ? '✓' : '·'}</span>
 													<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
 													{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
+												</div>
+											))}
+										</div>
+									</details>
+								)}
+								{msg.role === 'assistant' && msg.questionChoices && msg.questionChoices.length > 0 && (
+									<details style={{ marginBottom: '8px' }}>
+										<summary style={{
+											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
+											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
+										}}>
+											<span>📋</span>
+											<span>{msg.questionChoices.length} option{msg.questionChoices.length > 1 ? 's' : ''}</span>
+										</summary>
+										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+											{msg.questionChoices.map((choice, i) => (
+												<div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', color: 'var(--text-muted)' }}>
+													<span style={{ flexShrink: 0 }}>○</span>
+													<span>{choice}</span>
 												</div>
 											))}
 										</div>

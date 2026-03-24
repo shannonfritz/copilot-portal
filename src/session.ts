@@ -267,6 +267,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// Filter ask_user from tool summary — it's represented by the prompt UI, not a tool box
 			const tools = roundTools.filter(t => t.toolName !== 'ask_user');
 			const toolSummary = tools.length > 0 ? [...tools] : undefined;
+			this.log(`[History] flushRound: ${roundMsgs.length} msgs, ${pendingAskUserAnswers.length} pending ask_user answers, followingTools: ${JSON.stringify(roundFollowingTools)}`);
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				const isLast = i === roundMsgs.length - 1;
@@ -286,7 +287,10 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					// Emit the question as an assistant message if it's not already in the preceding content
 					if (qa.question && (!content || !content.includes(qa.question))) {
 						result.push({ type: 'delta', content: qa.question, timestamp: qa.timestamp });
-						result.push({ type: 'idle' });
+						result.push({ type: 'idle', questionChoices: qa.choices?.length ? qa.choices : undefined });
+					} else if (content && qa.choices?.length) {
+						// Question was in the preceding message — attach choices to it retroactively
+						// (The idle for the preceding message was already emitted, so add a separate choices marker)
 					}
 					result.push({ type: 'history_user', content: qa.content, timestamp: qa.timestamp, askUserChoices: qa.choices });
 				}
@@ -882,8 +886,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 		// Always commit this message on the client, whether it arrived via deltas or as a blob
 		// Include hasToolRequests so the client can distinguish intermediate vs final messages
-		const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
-		this.broadcast({ type: 'message_end', intermediate: hasToolRequests || undefined });
+		// Messages followed only by ask_user/report_intent are NOT intermediate (user-facing)
+		const toolReqs = Array.isArray(d.toolRequests) ? d.toolRequests as Array<{ name?: string }> : [];
+		const nonUserFacingTools = toolReqs.filter(t => t.name !== 'ask_user' && t.name !== 'report_intent');
+		const isIntermediate = nonUserFacingTools.length > 0;
+		this.broadcast({ type: 'message_end', intermediate: isIntermediate || undefined });
 		this.deltasSent = false;
 	}
 
