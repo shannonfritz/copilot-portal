@@ -295,16 +295,17 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				flushRound();
 				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts });
 			} else if (e.type === 'assistant.message') {
-				const d = raw.data as { content?: string; toolRequests?: unknown[] };
+				const d = raw.data as { content?: string; toolRequests?: Array<{ name?: string; toolCallId?: string }> };
 				roundMsgs.push(d.content ?? '');
 				roundTimestamps.push(ts);
-				// Use toolRequests to determine intermediate status directly
+				// Check toolRequests for intermediate detection and ask_user identification
 				const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
-				roundFollowingTools.push(hasToolRequests ? '_has_tool_requests' : null);
+				const isAskUser = hasToolRequests && d.toolRequests!.some(t => t.name === 'ask_user');
+				roundFollowingTools.push(isAskUser ? 'ask_user' : hasToolRequests ? '_has_tool_requests' : null);
 			} else if (e.type === 'tool.execution_start') {
 				const toolName = (raw.data as { toolName?: string })?.toolName;
-				// Tag the preceding message with the tool that follows it
-				if (roundMsgs.length > 0 && roundFollowingTools[roundFollowingTools.length - 1] === null) {
+				// Tag the preceding message with the tool that follows it (only if not already tagged)
+				if (roundMsgs.length > 0 && (roundFollowingTools[roundFollowingTools.length - 1] === null)) {
 					roundFollowingTools[roundFollowingTools.length - 1] = toolName ?? null;
 				}
 				if (toolName === 'ask_user') {

@@ -64,6 +64,19 @@ Check GitHub releases for new portal versions (deferred until published).
 
 ## Rendering Improvements (lower priority)
 
+### Per-Message Tool Summaries (future enhancement)
+Currently all tools from a turn are summarized on the final message. A better
+approach would attach tools to the message that dispatched them:
+
+- `assistant.message` events include `toolRequests` with `toolCallId` for each tool
+- Empty messages (no text, only `toolRequests`) could render as tool-summary-only rows
+- Each intermediate message would show its own tools below it
+- Would require: forwarding `toolRequests` to client, per-message summary tracking,
+  matching `tool.execution_complete` to parent message via `toolCallId`
+- Currently we filter empty messages — they could instead become the tool summary host
+
+### Other rendering items
+
 1. **`intermediate` flag inconsistency** — live turns auto-detect via buffering;
    history uses backend flag; sync never sets it
 2. **Sync messages lack metadata** — no toolSummary, no reasoning, no bytes
