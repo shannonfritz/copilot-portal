@@ -1,15 +1,21 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+title Copilot Portal
 
-:: ---- Quick checks (skip if already set up) ----
+echo.
+echo ========================================
+echo   Copilot Portal - Setup
+echo ========================================
+echo.
 
-:: Node.js
+:: ---- Step 1: Node.js ----
+echo [1/4] Checking for Node.js...
 node --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
-    echo  Node.js not found. Installing via winget...
+    echo       Node.js not found. Installing via winget...
     winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+    title Copilot Portal
     if %errorlevel% neq 0 (
         echo.
         echo  ERROR: Could not install Node.js automatically.
@@ -22,58 +28,70 @@ if %errorlevel% neq 0 (
     echo  new terminal, and re-run start-portal.cmd.
     goto :done
 )
+for /f "tokens=*" %%v in ('node --version') do echo       Found Node.js %%v
 
-:: Dependencies (only if node_modules is missing)
+:: ---- Step 2: Dependencies ----
+echo.
+echo [2/4] Checking dependencies...
 if not exist node_modules (
-    echo.
-    echo  First-time setup - installing dependencies...
-    echo.
+    echo       Installing npm packages (first-time setup)...
     call npm install --no-fund --no-audit
+    title Copilot Portal
     if %errorlevel% neq 0 (
         echo.
         echo  ERROR: npm install failed. See errors above.
         goto :done
     )
     if exist patch.mjs (
-        echo  Applying compatibility patch...
+        echo       Applying compatibility patch...
         node patch.mjs
     )
-    echo.
+    echo       Done.
+) else (
+    echo       Dependencies already installed.
 )
 
-:: PowerShell 7 (check once, don't block startup)
+:: ---- Step 3: PowerShell 7 ----
+echo.
+echo [3/4] Checking for PowerShell 7...
 pwsh --version >nul 2>&1
 if %errorlevel% neq 0 (
+    echo       PowerShell 7 is not installed.
+    echo       Copilot CLI uses it for running commands - some tools won't work without it.
     echo.
-    echo  NOTE: PowerShell 7 is not installed.
-    echo  Copilot CLI uses it for running commands - some tools won't work without it.
-    echo.
-    set /p INSTALL_PWSH="  Install PowerShell 7 now? (Y/n): "
+    set /p INSTALL_PWSH="       Install PowerShell 7 now? (Y/n): "
     if /i not "%INSTALL_PWSH%"=="n" (
         winget install Microsoft.PowerShell --accept-source-agreements --accept-package-agreements
+        title Copilot Portal
         if %errorlevel% neq 0 (
             echo.
-            echo  Could not install automatically. You can install later with:
-            echo    winget install Microsoft.PowerShell
+            echo       Could not install automatically. You can install later with:
+            echo         winget install Microsoft.PowerShell
+        ) else (
+            echo       PowerShell 7 installed successfully.
         )
     )
-    echo.
+) else (
+    for /f "tokens=*" %%v in ('pwsh --version') do echo       Found %%v
 )
 
-:: GitHub authentication
+:: ---- Step 4: GitHub authentication ----
+echo.
+echo [4/4] Checking GitHub authentication...
 node -e "try{const c=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.copilot','config.json'),'utf8'));process.exit(c.logged_in_users&&c.logged_in_users.length?0:1)}catch{process.exit(1)}" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
-    echo  Not signed in to GitHub. A browser window will open
-    echo  so you can sign in with your GitHub account.
+    echo       Not signed in. A browser window will open so you
+    echo       can sign in with your GitHub account.
     echo.
     call node_modules\.bin\copilot.cmd login
+    title Copilot Portal
     if %errorlevel% neq 0 (
         echo.
         echo  ERROR: GitHub login failed. Please try again.
         goto :done
     )
-    echo.
+) else (
+    echo       Already authenticated.
 )
 
 :: Check if port is already in use
@@ -86,12 +104,13 @@ if %errorlevel% equ 0 (
 )
 
 :: ---- Start the portal ----
-:: Default: shared mode (launches CLI in a new window)
-:: Use --standalone to skip CLI and spawn own subprocess
 echo.
-echo  Starting Copilot Portal...
+echo ========================================
+echo   Starting Copilot Portal...
+echo ========================================
 echo.
 call npm start -- %*
+title Copilot Portal
 
 :done
 echo.
