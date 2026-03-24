@@ -269,18 +269,22 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const toolSummary = tools.length > 0 ? [...tools] : undefined;
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
-				if (!content) continue;
 				const isLast = i === roundMsgs.length - 1;
 				const followedByAskUser = roundFollowingTools[i] === 'ask_user';
 				const hasToolRequests = roundFollowingTools[i] === '_has_tool_requests' || (roundFollowingTools[i] !== null && roundFollowingTools[i] !== 'ask_user');
 				const intermediate = followedByAskUser ? false : (allIntermediate || hasToolRequests);
-				result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
-				result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? toolSummary : undefined });
-				// Emit any buffered ask_user Q&A right after the question message
+
+				// Emit the message content (skip if empty, unless we need to emit ask_user Q&A)
+				if (content) {
+					result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
+					result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? toolSummary : undefined });
+				}
+
+				// Emit any buffered ask_user Q&A
 				if (followedByAskUser && pendingAskUserAnswers.length > 0) {
 					const qa = pendingAskUserAnswers.shift()!;
 					// Emit the question as an assistant message if it's not already in the preceding content
-					if (qa.question && !content.includes(qa.question)) {
+					if (qa.question && (!content || !content.includes(qa.question))) {
 						result.push({ type: 'delta', content: qa.question, timestamp: qa.timestamp });
 						result.push({ type: 'idle' });
 					}

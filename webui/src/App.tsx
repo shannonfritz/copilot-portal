@@ -1360,7 +1360,15 @@ export default function App() {
 	const respondInput = useCallback((answer: string, wasFreeform: boolean) => {
 		if (!pendingInput) return;
 		wsRef.current?.send(JSON.stringify({ type: 'input_response', requestId: pendingInput.requestId, answer, wasFreeform }));
-		// Show the user's answer in the chat
+		// Show the question as an assistant message, then the user's answer
+		if (pendingInput.question) {
+			setMessages(prev => [...prev, {
+				id: `q-${Date.now()}`,
+				role: 'assistant',
+				content: pendingInput.question,
+				timestamp: Date.now(),
+			}]);
+		}
 		setMessages(prev => [...prev, {
 			id: `input-${Date.now()}`,
 			role: 'user',
