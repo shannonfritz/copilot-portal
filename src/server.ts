@@ -507,6 +507,39 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/contexts' && method === 'GET') {
+			try {
+				const contextsDir = path.join(this.dataDir, 'contexts');
+				if (!fs.existsSync(contextsDir)) { this.sendJson(res, 200, []); return; }
+				const files = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
+				const contexts = files.map(f => ({
+					id: f.replace(/\.md$/, ''),
+					name: f.replace(/\.md$/, '').replace(/[-_]/g, ' '),
+					file: f,
+				}));
+				this.sendJson(res, 200, contexts);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		const contextMatch = url.pathname.match(/^\/api\/contexts\/(.+)$/);
+		if (contextMatch && method === 'GET') {
+			try {
+				const contextFile = path.join(this.dataDir, 'contexts', decodeURIComponent(contextMatch[1]) + '.md');
+				const resolved = path.resolve(contextFile);
+				const contextsDir = path.resolve(path.join(this.dataDir, 'contexts'));
+				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
+				const content = fs.readFileSync(resolved, 'utf8');
+				this.sendJson(res, 200, { content });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/' || url.pathname === '/index.html') {
 			if (!this.checkToken(url, req)) {
 				res.writeHead(401, { 'Content-Type': 'text/html' });
