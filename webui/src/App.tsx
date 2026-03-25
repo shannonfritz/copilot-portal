@@ -1082,11 +1082,19 @@ export default function App() {
 				} else if (event.type === 'session_context_updated') {
 					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
 				} else if (event.type === 'error') {
-
 					setError(event.content ?? 'Unknown error');
 					setIsStreaming(false);
 					setIsThinking(false);
 					setIsStopping(false);
+					setThinkingText('');
+					setReasoningText('');
+					setToolEvents([]);
+					streamingRef.current = '';
+					reasoningRef.current = '';
+					pendingMsgRef.current = null;
+					isCliTurnRef.current = false;
+					setCliApprovalInfo(null);
+					setCliInputInfo(null);
 				} else if (event.type === 'warning' || event.type === 'info') {
 					setNotification({ type: event.type, message: event.content ?? '' });
 					setTimeout(() => setNotification(null), 8000);
