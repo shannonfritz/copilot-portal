@@ -51,20 +51,38 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 	return false;
 }
 
-/** Launch the CLI as a headless JSON-RPC server */
-function launchCli(port: number): void {
+/** Launch the CLI as a headless JSON-RPC server. Returns true if launch was attempted. */
+function launchCli(port: number): boolean {
 	if (process.platform === 'win32') {
-		// Use PowerShell Start-Process -WindowStyle Hidden with full exe path
-		exec(`pwsh -NoProfile -Command "Start-Process -FilePath 'copilot.exe' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true });
+		// Check if copilot.exe exists on PATH before trying to launch
+		const which = spawnSync('where', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+		if (which.status !== 0) {
+			console.error(`[Launcher] copilot.exe not found on PATH.`);
+			console.error(`[Launcher] Install GitHub Copilot CLI: winget install GitHub.CopilotCLI`);
+			return false;
+		}
+		exec(`pwsh -NoProfile -Command "Start-Process -FilePath 'copilot.exe' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true },
+			(err) => {
+				if (err) {
+					console.error(`[Launcher] Failed to launch CLI: ${err.message}`);
+					cliLaunched = false;
+				}
+			});
 	} else {
 		const child = spawn('copilot', ['--server', '--port', String(port)], {
 			stdio: 'ignore',
 			detached: true,
 		});
+		child.on('error', (err) => {
+			console.error(`[Launcher] Failed to spawn copilot: ${err.message}`);
+			console.error(`[Launcher] Install GitHub Copilot CLI: https://docs.github.com/copilot/how-tos/copilot-cli`);
+			cliLaunched = false;
+		});
 		child.unref();
 	}
 	cliLaunched = true;
 	console.log(`[Launcher] CLI server started`);
+	return true;
 }
 
 let cliLaunched = false;
@@ -103,10 +121,14 @@ async function start() {
 				console.log(`[Launcher] CLI server detected on port ${CLI_PORT}`);
 			} else {
 				console.log(`[Launcher] Starting CLI server (port ${CLI_PORT})...`);
-				launchCli(CLI_PORT);
-				const ready = await waitForPort(CLI_PORT, 30000);
-				if (!ready) {
-					console.log(`[Launcher] CLI server did not start within 30s — falling back to standalone mode`);
+				const launched = launchCli(CLI_PORT);
+				if (launched) {
+					const ready = await waitForPort(CLI_PORT, 30000);
+					if (!ready) {
+						console.log(`[Launcher] CLI server did not start within 30s — falling back to standalone mode`);
+					}
+				} else {
+					console.log(`[Launcher] Falling back to standalone mode`);
 				}
 			}
 			if (await isPortListening(CLI_PORT)) {
