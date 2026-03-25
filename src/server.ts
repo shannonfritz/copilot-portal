@@ -216,11 +216,27 @@ export class PortalServer {
 			};
 			if (msg.type === 'prompt' && msg.content) {
 				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}`);
-				handle.send(msg.content).catch((e) => {
-					if (handle.listenerCount > 0) {
-						// Use the private broadcast via the event
+				handle.send(msg.content).catch(async (e) => {
+					const errMsg = String(e);
+					this.log(`[${clientId}] Send error: ${errMsg}`);
+					// If the SDK connection dropped (idle timeout), try reconnecting and retrying
+					if (errMsg.includes('Connection is closed') || errMsg.includes('not connected')) {
+						this.log(`[${clientId}] Connection lost — attempting reconnect...`);
+						try {
+							await this.pool.evict(sessionId!);
+							handle = await this.pool.connect(sessionId!);
+							handle.addListener(listener);
+							this.log(`[${clientId}] Reconnected — retrying send`);
+							await handle.send(msg.content!);
+						} catch (retryErr) {
+							this.log(`[${clientId}] Reconnect failed: ${retryErr}`);
+							if (ws.readyState === WebSocket.OPEN) {
+								ws.send(JSON.stringify({ type: 'error', content: 'Session connection lost. Please refresh the page.' }));
+							}
+						}
+					} else if (ws.readyState === WebSocket.OPEN) {
+						ws.send(JSON.stringify({ type: 'error', content: `Send failed: ${errMsg}` }));
 					}
-					this.log(`[${clientId}] Send error: ${e}`);
 				});
 			} else if (msg.type === 'stop') {
 				handle.abort();
