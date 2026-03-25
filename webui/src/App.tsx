@@ -684,11 +684,12 @@ export default function App() {
 		setConnectionState('connecting');
 		const prev = wsRef.current;
 		if (prev) {
+			// Close first, then detach handlers (prevents stale event delivery)
+			if (prev.readyState !== WebSocket.CLOSED) prev.close();
 			prev.onopen = null;
 			prev.onmessage = null;
 			prev.onerror = null;
 			prev.onclose = null;
-			if (prev.readyState !== WebSocket.CLOSED) prev.close();
 		}
 
 		const sessionId = new URLSearchParams(window.location.search).get('session');
