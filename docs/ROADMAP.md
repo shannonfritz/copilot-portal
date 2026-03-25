@@ -2,16 +2,31 @@
 
 ## Planned Features
 
-### 1. Shared CLI Server Mode (high impact)
-Connect to the CLI's built-in JSON-RPC server (`--ui-server`) instead of
-spawning a private subprocess. Gives true bidirectional sync between CLI
-and portal — messages sent from either side are immediately visible to both.
+### 1. ~~Shared CLI Server Mode~~ ✅ (v0.3.0)
+Portal connects to a headless CLI server (`--server` mode) by default.
 
-- **Status:** Validated on CLI v1.0.9 (present since v0.0.407)
-- **Effort:** ~30 lines changed, ~100 lines of sync poller removed
-- **Detail:** See [cli-server-mode.md](cli-server-mode.md)
+### 2. CLI Server Auto-Recovery
+When the CLI server crashes mid-session, the portal should automatically
+relaunch it and reconnect — not just show an error.
 
-### 2. Session Context (custom instructions per session)
+**Current behavior:** Portal detects "Connection closed" on next send,
+attempts reconnect, fails (CLI is dead), shows error to user.
+
+**Proposed behavior:**
+- Portal detects connection failure
+- Checks if CLI server port is alive
+- If dead: relaunch CLI server (same startup logic)
+- Wait for port, reconnect session, retry the send
+- Only show error if relaunch also fails
+
+**Design considerations:**
+- Move CLI launch logic from launcher.ts into a shared utility
+- Retry limit to prevent crash loops
+- Relaunched CLI reads sessions from disk (may need warm-up time)
+- Multiple clients could trigger relaunch simultaneously — need a lock
+- Consider a health-check interval as a complement (detect crash proactively)
+
+### 3. Session Context (custom instructions per session)
 Reusable context bundles that can be applied when creating a new session.
 Avoids re-coaching the model on domain-specific knowledge each time.
 
@@ -33,7 +48,7 @@ Avoids re-coaching the model on domain-specific knowledge each time.
 - Should contexts be visible/editable in the session drawer after creation?
 - Size limits? Large contexts eat into the model's context window
 
-### 3. Admin Controls UI
+### 4. Admin Controls UI
 Expose Update, Restart, and other management actions in the portal UI.
 Currently only accessible via update banner or browser console.
 
@@ -41,7 +56,7 @@ Currently only accessible via update banner or browser console.
 - Restart button, update controls, version info
 - Possibly token management (see multi-token below)
 
-### 4. Multi-Token
+### 5. Multi-Token
 Primary token + scoped tokens with session-level access control.
 
 - Design doc: [multi-token-plan.md](multi-token-plan.md)
@@ -49,14 +64,14 @@ Primary token + scoped tokens with session-level access control.
 - Scoped tokens can be limited to specific sessions
 - UI for token management in the admin panel
 
-### 5. Working Directory Selection
+### 6. Working Directory Selection
 CWD handling for new sessions — currently defaults to where server started.
 
 - Sandbox approach vs user-selected directory
 - Trust prompt handling when changing CWD mid-session
 - Consider default workspace directory separate from portal source
 
-### 6. Portal Self-Update
+### 7. Portal Self-Update
 Check GitHub releases for new portal versions (deferred until published).
 
 - Would complement the existing SDK/CLI update system
