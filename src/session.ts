@@ -177,9 +177,22 @@ export class SessionHandle {
 		this.listeners.delete(fn);
 		if (this.listeners.size === 0) {
 			this.stopPoll();
-			// Only deny pending approvals if no turn is active — if a turn is
-			// running we want it to complete so the user can see the result on reconnect
-			if (!this.isTurnActive) this.denyAllPending();
+			// Always clear pending timeouts to prevent accumulation.
+			// If no turn is active, also resolve/reject the promises.
+			// If a turn IS active, clear timers but let the turn complete —
+			// the next client to connect will see the result.
+			for (const [, p] of this.pendingApprovals) clearTimeout(p.timeout);
+			for (const [, p] of this.pendingInputs) clearTimeout(p.timeout);
+			if (!this.isTurnActive) {
+				this.denyAllPending();
+			} else {
+				// Reject inputs even during active turns — they can't be answered without a client
+				for (const [id, p] of this.pendingInputs) {
+					this.log(`[Session] Auto-cancelling input ${id} (no clients)`);
+					this.pendingInputs.delete(id);
+					p.reject(new Error('No clients connected'));
+				}
+			}
 		}
 	}
 
@@ -355,8 +368,10 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private startPoll(): void {
 		if (this.pollTimer) return;
-		// In shared mode, events flow through the shared connection — no polling needed
-		if (this.sharedMode) return;
+		if (this.sharedMode) {
+			this.log('[Session] Shared mode — polling disabled');
+			return;
+		}
 		this.pollTimer = setInterval(() => { void this.pollForChanges(); }, 2000);
 	}
 

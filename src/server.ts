@@ -130,6 +130,8 @@ export class PortalServer {
 			const listener = (event: PortalEvent) => {
 				if (!cancelled && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
 			};
+			// Mutable ref so reconnect in handleMessage updates the close handler's reference
+			const handleRef = { current: handle };
 			handle.addListener(listener);
 
 			// Notify client of confirmed session ID + session context (cwd, git info)
@@ -185,13 +187,13 @@ export class PortalServer {
 				const str = data.toString();
 				// Application-level heartbeat — browser WS API doesn't expose protocol pings
 				if (str === '{"type":"ping"}') { ws.send('{"type":"pong"}'); return; }
-				this.handleMessage(str, clientId, handle);
+				this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws);
 			});
 			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
-				cancelled = true; // prevent any pending async sends for this connection
+				cancelled = true;
 				clearInterval(pingInterval);
-				handle.removeListener(listener);
+				handleRef.current.removeListener(listener);
 				this.log(`[${clientId}] Disconnected (code: ${code})`);
 			});
 		});
@@ -200,9 +202,13 @@ export class PortalServer {
 	private handleMessage(
 		raw: string,
 		clientId: string,
-		handle: Awaited<ReturnType<SessionPool['connect']>>,
+		handleRef: { current: Awaited<ReturnType<SessionPool['connect']>> },
+		sessionId: string,
+		listener: (e: PortalEvent) => void,
+		ws: WebSocket,
 	) {
 		try {
+			const handle = handleRef.current;
 			const msg = JSON.parse(raw) as {
 				type: string;
 				content?: string;
@@ -219,15 +225,17 @@ export class PortalServer {
 				handle.send(msg.content).catch(async (e) => {
 					const errMsg = String(e);
 					this.log(`[${clientId}] Send error: ${errMsg}`);
-					// If the SDK connection dropped (idle timeout), try reconnecting and retrying
 					if (errMsg.includes('Connection is closed') || errMsg.includes('not connected')) {
 						this.log(`[${clientId}] Connection lost — attempting reconnect...`);
 						try {
-							await this.pool.evict(sessionId!);
-							handle = await this.pool.connect(sessionId!);
-							handle.addListener(listener);
+							const oldHandle = handleRef.current;
+							oldHandle.removeListener(listener);
+							await this.pool.evict(sessionId);
+							const newHandle = await this.pool.connect(sessionId);
+							newHandle.addListener(listener);
+							handleRef.current = newHandle;
 							this.log(`[${clientId}] Reconnected — retrying send`);
-							await handle.send(msg.content!);
+							await newHandle.send(msg.content!);
 						} catch (retryErr) {
 							this.log(`[${clientId}] Reconnect failed: ${retryErr}`);
 							if (ws.readyState === WebSocket.OPEN) {
@@ -472,8 +480,9 @@ export class PortalServer {
 			return;
 		}
 
-		const filePath = path.normalize(path.join(this.webuiPath, url.pathname));
-		if (!filePath.startsWith(this.webuiPath)) {
+		const filePath = path.resolve(path.join(this.webuiPath, url.pathname));
+		const webuiResolved = path.resolve(this.webuiPath);
+		if (!filePath.startsWith(webuiResolved + path.sep) && filePath !== webuiResolved) {
 			res.writeHead(403); res.end('Forbidden'); return;
 		}
 		fs.readFile(filePath, (err, data) => {

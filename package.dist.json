@@ -7,7 +7,7 @@
   "engines": { "node": ">=22.5.0" },
   "scripts": {
     "start": "node dist/launcher.js",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package && node patch.mjs"
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.1.32",

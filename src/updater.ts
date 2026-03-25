@@ -101,13 +101,13 @@ export class UpdateChecker {
 			const results: PackageUpdate[] = [];
 			for (const name of TRACKED_PACKAGES) {
 				const installed = getInstalledVersion(name);
-				const latest = await fetchLatestVersion(name);
+				const latest = await fetchLatestVersion(name, this.log);
 				const hasUpdate = !!(installed && latest && latest !== installed && isNewer(latest, installed));
 				results.push({ name, installed: installed ?? 'unknown', latest: latest ?? 'unknown', hasUpdate });
 			}
 			// Also check the CLI binary version (bundled as @github/copilot via copilot-sdk)
 			const cliInstalled = getInstalledVersion('@github/copilot');
-			const cliLatest = await fetchLatestVersion('@github/copilot');
+			const cliLatest = await fetchLatestVersion('@github/copilot', this.log);
 			const cliHasUpdate = !!(cliInstalled && cliLatest && cliLatest !== cliInstalled && isNewer(cliLatest, cliInstalled));
 			results.push({ name: '@github/copilot', installed: cliInstalled ?? 'unknown', latest: cliLatest ?? 'unknown', hasUpdate: cliHasUpdate });
 
@@ -189,11 +189,11 @@ function getInstalledVersion(name: string): string | null {
 }
 
 /** Fetch the latest published version from the npm registry */
-function fetchLatestVersion(name: string): Promise<string | null> {
+function fetchLatestVersion(name: string, log?: (msg: string) => void): Promise<string | null> {
 	return new Promise((resolve) => {
 		const url = `https://registry.npmjs.org/${name}/latest`;
 		const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: 10_000 }, (res) => {
-			if (res.statusCode !== 200) { resolve(null); res.resume(); return; }
+			if (res.statusCode !== 200) { log?.(`[Update] Registry returned ${res.statusCode} for ${name}`); resolve(null); res.resume(); return; }
 			let body = '';
 			res.on('data', (chunk: Buffer) => { body += chunk; });
 			res.on('end', () => {
@@ -203,8 +203,8 @@ function fetchLatestVersion(name: string): Promise<string | null> {
 				} catch { resolve(null); }
 			});
 		});
-		req.on('error', () => resolve(null));
-		req.on('timeout', () => { req.destroy(); resolve(null); });
+		req.on('error', (e) => { log?.(`[Update] Network error fetching ${name}: ${(e as Error).message}`); resolve(null); });
+		req.on('timeout', () => { log?.(`[Update] Timeout fetching ${name}`); req.destroy(); resolve(null); });
 	});
 }
 
