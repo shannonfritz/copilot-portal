@@ -330,10 +330,35 @@ export class PortalServer {
 	private checkToken(url: URL, req?: http.IncomingMessage): boolean {
 		if (url.searchParams.get('token') === this.token) return true;
 		const auth = req?.headers['authorization'] ?? '';
-		return auth === `Bearer ${this.token}`;
+		if (auth === `Bearer ${this.token}`) return true;
+		// Track failed attempt for rate limiting
+		if (req) {
+			const ip = req.socket.remoteAddress ?? 'unknown';
+			const now = Date.now();
+			const attempt = this.failedAuth.get(ip);
+			const entry = attempt && now < attempt.resetTime
+				? { count: attempt.count + 1, resetTime: attempt.resetTime }
+				: { count: 1, resetTime: now + 60_000 };
+			this.failedAuth.set(ip, entry);
+			this.log(`[Auth] Failed attempt from ${ip} (${entry.count}/15)`);
+		}
+		return false;
+	}
+
+	/** Returns true if the IP is rate-limited. Sets 429 on the response. */
+	private isRateLimited(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+		const ip = req.socket.remoteAddress ?? 'unknown';
+		const attempt = this.failedAuth.get(ip);
+		if (attempt && Date.now() < attempt.resetTime && attempt.count >= 15) {
+			this.log(`[Auth] Blocked ${ip} (rate limited)`);
+			res.writeHead(429); res.end('Too many attempts');
+			return true;
+		}
+		return false;
 	}
 
 	private async handleHttp(req: http.IncomingMessage, res: http.ServerResponse) {
+		if (this.isRateLimited(req, res)) return;
 		const url = new URL(req.url ?? '/', 'http://localhost');
 		const method = req.method ?? 'GET';
 
