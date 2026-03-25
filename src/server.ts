@@ -55,6 +55,7 @@ export class PortalServer {
 				// Rate limit: 15 failed attempts per 60s per IP
 				const attempt = this.failedAuth.get(ip);
 				if (attempt && now < attempt.resetTime && attempt.count >= 15) {
+					this.log(`[Auth] Blocked ${ip} (rate limited)`);
 					callback(false, 429, 'Too many attempts');
 					return;
 				}
@@ -65,6 +66,7 @@ export class PortalServer {
 						? { count: attempt.count + 1, resetTime: attempt.resetTime }
 						: { count: 1, resetTime: now + 60_000 };
 					this.failedAuth.set(ip, entry);
+					this.log(`[Auth] Failed attempt from ${ip} (${entry.count}/15)`);
 					callback(false, 401, 'Unauthorized');
 				} else {
 					this.failedAuth.delete(ip);
