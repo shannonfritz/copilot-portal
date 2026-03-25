@@ -809,6 +809,11 @@ export default function App() {
 					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
+					// Check if the server has a newer build than the client
+					const serverBuild = (event as { serverBuild?: string }).serverBuild;
+					if (serverBuild && serverBuild !== __BUILD__) {
+						setNotification({ type: 'info', message: `Server updated to build ${serverBuild}. Reload the page for the latest UI.` });
+					}
 					if (newId) {
 						const summary = (event as { summary?: string | null }).summary ?? undefined;
 						setSessions(prev => prev.some(s => s.sessionId === newId)

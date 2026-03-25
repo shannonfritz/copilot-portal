@@ -138,7 +138,7 @@ export class PortalServer {
 			if (!cancelled && ws.readyState === WebSocket.OPEN) {
 				const sessions = await this.pool.listSessions().catch(() => []);
 				const meta = sessions.find(s => s.sessionId === sessionId);
-				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, model: handle.currentModel ?? null }));
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, model: handle.currentModel ?? null, serverBuild: __BUILD__ }));
 
 				// For brand-new sessions the CLI subprocess may not have written cwd yet —
 				// retry once after a short delay and push an update if context arrives.
