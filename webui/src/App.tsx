@@ -1222,7 +1222,7 @@ export default function App() {
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-	}, [messages, streamingContent, toolEvents, isThinking, notification]);
+	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
 	const openPicker = useCallback(async () => {
 		try {
