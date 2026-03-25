@@ -25,6 +25,8 @@ export class PortalServer {
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
 	private updater: UpdateChecker;
+	private failedAuth = new Map<string, { count: number; resetTime: number }>();
+
 	constructor(private port: number, dataDir?: string, opts?: { newToken?: boolean; cliUrl?: string }) {
 		this.webuiPath = path.join(__dirname, '..', 'dist', 'webui');
 		this.debugDir = path.join(__dirname, '..', 'debug');
@@ -48,11 +50,24 @@ export class PortalServer {
 			server: this.httpServer,
 			perMessageDeflate: false,
 			verifyClient: ({ req }, callback) => {
+				const ip = req.socket.remoteAddress ?? 'unknown';
+				const now = Date.now();
+				// Rate limit: 15 failed attempts per 60s per IP
+				const attempt = this.failedAuth.get(ip);
+				if (attempt && now < attempt.resetTime && attempt.count >= 15) {
+					callback(false, 429, 'Too many attempts');
+					return;
+				}
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const t = url.searchParams.get('token');
 				if (t !== this.token) {
+					const entry = attempt && now < attempt.resetTime
+						? { count: attempt.count + 1, resetTime: attempt.resetTime }
+						: { count: 1, resetTime: now + 60_000 };
+					this.failedAuth.set(ip, entry);
 					callback(false, 401, 'Unauthorized');
 				} else {
+					this.failedAuth.delete(ip);
 					callback(true);
 				}
 			},
