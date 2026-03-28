@@ -1946,7 +1946,7 @@ export default function App() {
 								if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
 									const prompt = `Read the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
 									wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: `Give Instruction: ${contextId}`, timestamp: Date.now() }]);
+									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
 									setIsStreaming(true);
 									setIsThinking(true);
 									setThinkingText('Applying instruction...');
