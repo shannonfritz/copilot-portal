@@ -2079,10 +2079,11 @@ export default function App() {
 							const msg = item.msg;
 							const isIntermediate = msg.role === 'assistant' && msg.intermediate;
 						return (
-						<div key={msg.id} className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+						<div key={msg.id}>
 							{msg.reasoning && (
 								<ThoughtBubble reasoning={msg.reasoning} />
 							)}
+						<div className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							<div
 								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
 								style={
@@ -2164,6 +2165,7 @@ export default function App() {
 									</>
 								}
 							</div>
+						</div>
 						</div>
 						);
 					});
