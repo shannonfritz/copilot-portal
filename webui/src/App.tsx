@@ -2340,7 +2340,7 @@ export default function App() {
 				)}
 
 				{/* Input */}
-				{!noSession && <>
+				{!noSession && !pendingInput && <>
 				<form
 					className="border-t px-4 py-3"
 					style={{
