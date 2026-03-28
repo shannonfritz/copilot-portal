@@ -1240,8 +1240,12 @@ export default function App() {
 					setPendingApproval(prev => prev?.requestId === event.requestId ? null : prev);
 					setPendingInput(prev => prev?.requestId === event.requestId ? null : prev);
 				} else if (event.type === 'input_request' && event.inputRequest) {
-					setFreeformAnswer('');
-					setPendingInput(event.inputRequest);
+					// Only reset if this is a new request (probe re-broadcasts the same one)
+					setPendingInput(prev => {
+						if (prev?.requestId === event.inputRequest.requestId) return prev;
+						setFreeformAnswer('');
+						return event.inputRequest;
+					});
 				} else if (event.type === 'rules_list') {
 					setRules(event.rules ?? []);
 				} else if (event.type === 'approve_all_changed') {
