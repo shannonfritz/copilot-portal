@@ -127,8 +127,7 @@ if (process.stdin.isTTY) {
 	};
 
 	const launchCliTui = (sessionId?: string) => {
-		const args = ['--ui-server', '--port', '3848'];
-		if (sessionId) args.push('--resume', sessionId);
+		const args = sessionId ? ['--resume', sessionId] : [];
 		const cmd = `copilot ${args.join(' ')}`;
 		if (process.platform === 'win32') {
 			exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
@@ -137,7 +136,7 @@ if (process.stdin.isTTY) {
 		} else {
 			exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" &`);
 		}
-		console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...\n`);
+		console.log(`  CLI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...\n`);
 	};
 
 	let updateInProgress = false;
