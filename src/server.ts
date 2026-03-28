@@ -750,7 +750,7 @@ export class PortalServer {
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
 				this.initDebugFiles();
 				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
-				this.log(`[Mode] ${this.pool.shared ? 'Connected (CLI Server on port 3848)' : 'Standalone (own CLI subprocess)'}`);
+				this.log(`[Mode] ${this.pool.shared ? 'Connected (--server on port 3848)' : 'Standalone (own CLI subprocess)'}`);
 				this.log(`Server started on port ${this.port}`);
 				this.log(`Open: ${this.getURL()}`);
 				resolve();
