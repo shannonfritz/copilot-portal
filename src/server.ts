@@ -699,6 +699,14 @@ export class PortalServer {
 		return `http://${this.getLocalIP()}:${this.port}?token=${this.token}`;
 	}
 
+	/** List sessions (for console CLI launcher) */
+	async listSessions(): Promise<Array<{ sessionId: string; summary?: string }>> {
+		try {
+			const sessions = await this.pool.listSessions();
+			return sessions.map(s => ({ sessionId: s.sessionId, summary: s.summary }));
+		} catch { return []; }
+	}
+
 	async start(): Promise<void> {
 		this.loadShields();
 		await this.pool.start();

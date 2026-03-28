@@ -67,13 +67,91 @@ if (process.stdin.isTTY) {
 	process.stdin.resume();
 	process.stdin.setEncoding('utf8');
 
+	let cliPickerState: { sessions: Array<{ sessionId: string; summary?: string }>; page: number } | null = null;
+
+	const showCliPicker = async () => {
+		const sessions = await server.listSessions();
+		if (sessions.length === 0) {
+			console.log('\n  No sessions found. Press [n] to create a new one.\n');
+		}
+		cliPickerState = { sessions, page: 0 };
+		renderCliPage();
+	};
+
+	const renderCliPage = () => {
+		if (!cliPickerState) return;
+		const { sessions, page } = cliPickerState;
+		const pageSize = 9;
+		const start = page * pageSize;
+		const pageItems = sessions.slice(start, start + pageSize);
+		console.log('\n  Open CLI TUI for session:');
+		pageItems.forEach((s, i) => {
+			const label = s.summary ?? s.sessionId.slice(0, 8);
+			console.log(`    [${i + 1}] ${label}`);
+		});
+		const hasMore = start + pageSize < sessions.length;
+		console.log(`\n    [n] New session${hasMore ? '  [m] More' : ''}  [c] Cancel\n`);
+	};
+
+	const handleCliPick = (key: string) => {
+		if (!cliPickerState) return;
+		if (key === 'c') {
+			cliPickerState = null;
+			console.log('  Cancelled.\n');
+			return;
+		}
+		if (key === 'n') {
+			cliPickerState = null;
+			launchCliTui();
+			return;
+		}
+		if (key === 'm') {
+			const pageSize = 9;
+			const maxPage = Math.floor((cliPickerState.sessions.length - 1) / pageSize);
+			cliPickerState.page = cliPickerState.page >= maxPage ? 0 : cliPickerState.page + 1;
+			renderCliPage();
+			return;
+		}
+		const idx = parseInt(key, 10);
+		if (idx >= 1 && idx <= 9) {
+			const start = cliPickerState.page * 9;
+			const session = cliPickerState.sessions[start + idx - 1];
+			if (session) {
+				cliPickerState = null;
+				launchCliTui(session.sessionId);
+			}
+		}
+	};
+
+	const launchCliTui = (sessionId?: string) => {
+		const args = ['--ui-server', '--port', '3848'];
+		if (sessionId) args.push('--resume', sessionId);
+		const cmd = `copilot ${args.join(' ')}`;
+		if (process.platform === 'win32') {
+			exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
+		} else if (process.platform === 'darwin') {
+			exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
+		} else {
+			exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" &`);
+		}
+		console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...\n`);
+	};
+
 	const showHelp = () => {
-		console.log('\n  Command Keys: [l] Launch Browser  [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
+		console.log('\n  Command Keys: [t] CLI TUI  [l] Launch Browser  [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
 	};
 	showHelp();
 
 	process.stdin.on('data', (key: string) => {
+		// If CLI picker is active, route keys there
+		if (cliPickerState) {
+			handleCliPick(key.toLowerCase());
+			return;
+		}
 		switch (key.toLowerCase()) {
+			case 't':
+				showCliPicker();
+				break;
 			case 'l': {
 				const url = server.getURL();
 				const cmd = process.platform === 'win32' ? `start "" "${url}"`
