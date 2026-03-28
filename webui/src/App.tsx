@@ -371,6 +371,7 @@ function SessionDrawer({
 	onChangeModel,
 	onFetchModels,
 	onSetContext,
+	onSetupTemplate,
 	activeSessionId,
 	sessionSummary,
 }: {
@@ -382,12 +383,14 @@ function SessionDrawer({
 	onChangeModel: (id: string) => void;
 	onFetchModels?: () => Promise<Array<{ id: string; name: string }>>;
 	onSetContext?: (contextId: string) => void;
+	onSetupTemplate?: (templateId: string, templateContent: string) => void;
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [showContextPicker, setShowContextPicker] = useState(false);
 	const [contexts, setContexts] = useState<Array<{ id: string; name: string }>>([]);
+	const [templates, setTemplates] = useState<Array<{ id: string; name: string }>>([]);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
@@ -511,6 +514,7 @@ function SessionDrawer({
 								setShowContextPicker(opening);
 								if (opening) {
 									apiFetch('/api/contexts').then(r => r.json()).then(setContexts).catch(() => {});
+									apiFetch('/api/context-templates').then(r => r.json()).then(setTemplates).catch(() => {});
 								}
 							}}
 						>
@@ -527,9 +531,9 @@ function SessionDrawer({
 								className="chat-scroll absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
 								style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
 							>
-								{contexts.length === 0 && (
+								{contexts.length === 0 && templates.length === 0 && (
 									<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-										No contexts found. Add .md files to data/contexts/
+										No contexts or templates found.
 									</div>
 								)}
 								{contexts.map(c => (
@@ -543,10 +547,37 @@ function SessionDrawer({
 											onSetContext?.(c.id);
 										}}
 									>
-										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>📋</span>
+										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>⦿</span>
 										<span>{c.name}</span>
 									</button>
 								))}
+								{templates.length > 0 && (
+									<>
+										{contexts.length > 0 && <div className="mx-3 my-1" style={{ borderTop: '1px solid var(--border)' }} />}
+										<div className="px-3 py-1 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>New from Template</div>
+										{templates.map(t => (
+											<button
+												key={`tpl-${t.id}`}
+												type="button"
+												className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+												style={{ background: 'transparent' }}
+												onClick={async () => {
+													setShowContextPicker(false);
+													try {
+														const res = await apiFetch(`/api/context-templates/${encodeURIComponent(t.id)}`);
+														const { content } = await res.json() as { content: string };
+														if (content) onSetupTemplate?.(t.id, content);
+													} catch (e) {
+														console.error('Failed to load template:', e);
+													}
+												}}
+											>
+												<span className="w-4 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>＋</span>
+												<span>{t.name}</span>
+											</button>
+										))}
+									</>
+								)}
 							</div>
 						)}
 					</div>
@@ -896,6 +927,12 @@ export default function App() {
 					return;
 				}
 
+				if (event.type === 'session_resuming') {
+					setIsThinking(true);
+					setThinkingText('Resuming session…');
+					return;
+				}
+
 				if (event.type === 'session_deleted') {
 					setSessions(prev => prev.filter(s => s.sessionId !== event.sessionId));
 					if (event.sessionId === activeSessionId) enterNoSession();
@@ -1041,6 +1078,18 @@ export default function App() {
 								setThinkingText(args.intent);
 							}
 						} catch { /* ignore parse errors */ }
+					} else if (event.toolName === 'ask_user') {
+						// ask_user is handled by the pendingInput UI — don't show as a tool box
+						// But still flush any buffered message so the user sees it before the prompt
+						if (pendingMsgRef.current) {
+							const msg = pendingMsgRef.current;
+							pendingMsgRef.current = null;
+							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+						}
+						if (!isStoppingRef.current) {
+							setIsThinking(true);
+							setThinkingText('Awaiting response…');
+						}
 					} else {
 						// Flush any buffered final message before showing tools
 						if (pendingMsgRef.current) {
@@ -1875,6 +1924,17 @@ export default function App() {
 								setError(`Failed to load context: ${e}`);
 							}
 						}}
+						onSetupTemplate={(templateId, templateContent) => {
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								const prompt = `Follow the setup instructions in this context template to create a personalized context file for me. Walk me through each step using ask_user prompts. When done, save the result to data/contexts/${templateId}.md\n\n${templateContent}`;
+								wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
+								setMessages(prev => [...prev, { id: `tpl-${Date.now()}`, role: 'user', content: `Set up context from template: ${templateId.replace(/[-_]/g, ' ')}`, timestamp: Date.now() }]);
+								setIsStreaming(true);
+								setIsThinking(true);
+								setThinkingText('Setting up context...');
+								setDrawerOpen(false);
+							}
+						}}
 					activeSessionId={activeSessionId}
 					sessionSummary={activeSessionSummary}
 					/>
@@ -2029,7 +2089,7 @@ export default function App() {
 											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
 										}}>
-											<span>📋</span>
+											<span>⦿</span>
 											<span>{msg.questionChoices.length} option{msg.questionChoices.length > 1 ? 's' : ''}</span>
 										</summary>
 										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -2199,7 +2259,7 @@ export default function App() {
 						{pendingInput && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'var(--primary-tint)' }}>
 								<div className="mb-2 flex items-center justify-between">
-									<span className="text-sm font-semibold">{pendingInput.question}</span>
+									<div className="text-sm font-semibold"><AssistantMarkdown content={pendingInput.question} /></div>
 									<button
 										className="rounded px-2 py-0.5 text-xs"
 										style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}

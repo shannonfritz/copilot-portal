@@ -193,7 +193,48 @@ export class PortalServer {
 				// Send current approval rules and approveAll state for this session
 				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
 				ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: handle.getApproveAll() }));
-			}).catch((e) => this.log(`[${clientId}] History error: ${e}`));
+			}).catch(async (e) => {
+				const errMsg = String(e);
+				if (errMsg.includes('Session not found') || errMsg.includes('not found')) {
+					this.log(`[${clientId}] Session stale — evicting and re-resuming: ${sessionId.slice(0, 8)}`);
+					if (ws.readyState === WebSocket.OPEN) {
+						ws.send(JSON.stringify({ type: 'session_resuming', sessionId }));
+					}
+					try {
+						await this.pool.evict(sessionId);
+						const newHandle = await this.pool.connect(sessionId);
+						handleRef.current.removeListener(listener);
+						handleRef.current = newHandle;
+						newHandle.addListener(listener);
+						// Retry history with fresh handle
+						const events = await newHandle.getHistory(historyLimit);
+						if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+						ws.send(JSON.stringify({ type: 'history_start', sessionId: historySessionId }));
+						for (const ev of events) {
+							if (cancelled) return;
+							ws.send(JSON.stringify(ev));
+						}
+						if (cancelled) return;
+						ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId }));
+						const activeTurnEvents = newHandle.getActiveTurnEvents();
+						for (const ev of activeTurnEvents) ws.send(JSON.stringify(ev));
+						for (const ev of newHandle.getPendingApprovalEvents()) ws.send(JSON.stringify(ev));
+						for (const ev of newHandle.getPendingInputEvents()) ws.send(JSON.stringify(ev));
+						for (const ev of newHandle.getCliPendingEvents()) ws.send(JSON.stringify(ev));
+						ws.send(JSON.stringify({ type: 'rules_list', rules: newHandle.getRulesList() }));
+						ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: newHandle.getApproveAll() }));
+						this.log(`[${clientId}] Session re-resumed successfully`);
+					} catch (retryErr) {
+						this.log(`[${clientId}] Re-resume failed: ${retryErr}`);
+						if (ws.readyState === WebSocket.OPEN) {
+							ws.send(JSON.stringify({ type: 'session_not_found', sessionId }));
+							ws.close(4404, String(retryErr));
+						}
+					}
+				} else {
+					this.log(`[${clientId}] History error: ${e}`);
+				}
+			});
 
 			// Keep-alive ping every 30s
 			const pingInterval = setInterval(() => {
@@ -532,6 +573,60 @@ export class PortalServer {
 				const contextsDir = path.resolve(path.join(this.dataDir, 'contexts'));
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
+				const content = fs.readFileSync(resolved, 'utf8');
+				this.sendJson(res, 200, { content });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Save a generated context file
+		if (url.pathname === '/api/contexts' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { id, content } = JSON.parse(body) as { id?: string; content?: string };
+				if (!id || !content) { this.sendJson(res, 400, { error: 'id and content required' }); return; }
+				if (!/^[a-zA-Z0-9_-]+$/.test(id)) { this.sendJson(res, 400, { error: 'id must be alphanumeric with dashes/underscores only' }); return; }
+				const contextsDir = path.join(this.dataDir, 'contexts');
+				if (!fs.existsSync(contextsDir)) fs.mkdirSync(contextsDir, { recursive: true });
+				const filePath = path.join(contextsDir, id + '.md');
+				fs.writeFileSync(filePath, content, 'utf8');
+				this.log(`[Context] Saved context: ${id} (${content.length} bytes)`);
+				this.sendJson(res, 200, { ok: true, id });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// List context templates
+		if (url.pathname === '/api/context-templates' && method === 'GET') {
+			try {
+				const templatesDir = path.join(__dirname, '..', 'context-templates');
+				if (!fs.existsSync(templatesDir)) { this.sendJson(res, 200, []); return; }
+				const files = fs.readdirSync(templatesDir).filter(f => f.endsWith('.md'));
+				const templates = files.map(f => ({
+					id: f.replace(/\.md$/, ''),
+					name: f.replace(/\.md$/, '').replace(/[-_]/g, ' '),
+					file: f,
+				}));
+				this.sendJson(res, 200, templates);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Read a specific context template
+		const templateMatch = url.pathname.match(/^\/api\/context-templates\/(.+)$/);
+		if (templateMatch && method === 'GET') {
+			try {
+				const templatesDir = path.resolve(path.join(__dirname, '..', 'context-templates'));
+				const templateFile = path.join(templatesDir, decodeURIComponent(templateMatch[1]) + '.md');
+				const resolved = path.resolve(templateFile);
+				if (!resolved.startsWith(templatesDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Template not found' }); return; }
 				const content = fs.readFileSync(resolved, 'utf8');
 				this.sendJson(res, 200, { content });
 			} catch (e) {

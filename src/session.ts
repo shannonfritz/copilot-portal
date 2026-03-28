@@ -121,7 +121,8 @@ export class SessionHandle {
 	) {
 		this.sessionId = session.sessionId;
 		this.session = session;
-		this.log = log;
+		const tag = session.sessionId.slice(0, 8);
+		this.log = (msg: string) => log(msg.replace('[Session]', `[${tag}]`).replace('[Sync]', `[${tag}:sync]`));
 		this.reconnectFn = reconnectFn ?? null;
 		this.getModTimeFn = getModTimeFn ?? null;
 		this.rulesStore = rulesStore ?? null;
@@ -1441,12 +1442,34 @@ export class SessionPool {
 			this.log(`[Pool] Joining in-flight connect: ${sessionId.slice(0, 8)}`);
 			return this.connecting.get(sessionId)!;
 		}
-		const p = this._doConnect(sessionId);
+		const p = this._doConnectWithRetry(sessionId);
 		this.connecting.set(sessionId, p);
 		try {
 			return await p;
 		} finally {
 			this.connecting.delete(sessionId);
+		}
+	}
+
+	/** Try to connect; if the SDK connection is dead, restart it and retry once. */
+	private async _doConnectWithRetry(sessionId: string): Promise<SessionHandle> {
+		try {
+			return await this._doConnect(sessionId);
+		} catch (e) {
+			const msg = String(e);
+			if (msg.includes('Connection is closed') || msg.includes('not connected')) {
+				this.log(`[Pool] SDK connection lost — restarting client...`);
+				try {
+					await this.client.stop().catch(() => {});
+					await this.client.start();
+					this.log(`[Pool] SDK client restarted`);
+					return await this._doConnect(sessionId);
+				} catch (retryErr) {
+					this.log(`[Pool] Reconnect failed: ${retryErr}`);
+					throw retryErr;
+				}
+			}
+			throw e;
 		}
 	}
 
