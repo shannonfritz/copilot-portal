@@ -159,7 +159,7 @@ if (process.stdin.isTTY) {
 
 			console.log('  Stopping headless CLI server...');
 			// Notify portal clients that the CLI server is switching
-			server.broadcastAll({ type: 'info', content: 'Switching to CLI TUI mode - reloading...' });
+			server.broadcastAll({ type: 'info', content: 'Switching CLI Server to TUI mode - reloading...' });
 			// Kill the process on port 3848
 			if (process.platform === 'win32') {
 				spawnSync('pwsh', ['-NoProfile', '-Command',
