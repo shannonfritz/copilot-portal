@@ -119,8 +119,11 @@ if (process.stdin.isTTY) {
 			if (session) {
 				cliPickerState = null;
 				launchCliTui(session.sessionId);
+				return;
 			}
 		}
+		// Unrecognized key — re-show the menu
+		renderCliPage();
 	};
 
 	const launchCliTui = (sessionId?: string) => {
