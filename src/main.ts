@@ -36,23 +36,22 @@ const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: C
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');
-	// Kill any CLI server on port 3848 (headless or TUI)
+	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
 			`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
 		], { stdio: 'ignore', windowsHide: true });
 	}
-	await server.stop();
 	process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
+	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
 			`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
 		], { stdio: 'ignore', windowsHide: true });
 	}
-	await server.stop();
 	process.exit(0);
 });
 
@@ -197,10 +196,11 @@ if (process.stdin.isTTY) {
 		}
 	};
 
-	const shutdown = () => {
+	const shutdown = async () => {
 		console.log('\nShutting down...');
-		killCliServer();
-		server.stop().then(() => process.exit(0));
+		await server.stop().catch(() => {}); // disconnect SDK first
+		killCliServer(); // then kill CLI process
+		process.exit(0);
 	};
 
 	const showHelp = () => {
