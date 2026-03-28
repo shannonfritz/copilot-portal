@@ -2080,9 +2080,6 @@ export default function App() {
 							const isIntermediate = msg.role === 'assistant' && msg.intermediate;
 						return (
 						<div key={msg.id}>
-							{msg.reasoning && (
-								<ThoughtBubble reasoning={msg.reasoning} />
-							)}
 						<div className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							<div
 								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
@@ -2132,6 +2129,20 @@ export default function App() {
 													<span>{choice}</span>
 												</div>
 											))}
+										</div>
+									</details>
+								)}
+								{msg.role === 'assistant' && msg.reasoning && (
+									<details style={{ marginBottom: '8px' }}>
+										<summary style={{
+											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
+											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
+										}}>
+											<span>💭</span>
+											<span>Thought</span>
+										</summary>
+										<div style={{ marginTop: '5px', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+											{msg.reasoning}
 										</div>
 									</details>
 								)}
