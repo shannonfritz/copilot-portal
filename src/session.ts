@@ -371,7 +371,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private startPoll(): void {
 		if (this.pollTimer) return;
 		if (this.sharedMode) {
-			this.log('[Session] Shared mode — polling disabled');
+			this.log('[Session] Connected mode — polling disabled');
 			return;
 		}
 		this.pollTimer = setInterval(() => { void this.pollForChanges(); }, 2000);
@@ -669,9 +669,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const requestId = `approval-${++this.counter}`;
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
 
-		// Shared mode: don't respond to CLI-initiated approvals — let the CLI TUI handle them
+		// Connected mode: don't respond to CLI-initiated approvals — let the CLI TUI handle them
 		if (this.sharedMode && !this.isPortalTurn) {
-			this.log(`[Session] Shared mode — deferring approval to CLI TUI: ${requestId}`);
+			this.log(`[Session] Connected mode — deferring approval to CLI: ${requestId}`);
 			return new Promise(() => {}); // never resolves — CLI TUI will handle it
 		}
 
@@ -773,9 +773,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const requestId = `input-${++this.counter}`;
 		this.log(`[Session] Input request: "${req.question.slice(0, 80)}"`);
 
-		// Shared mode: don't respond to CLI-initiated input requests — let the CLI TUI handle them
+		// Connected mode: don't respond to CLI-initiated input requests — let the CLI TUI handle them
 		if (this.sharedMode && !this.isPortalTurn) {
-			this.log(`[Session] Shared mode — deferring input to CLI TUI: ${requestId}`);
+			this.log(`[Session] Connected mode — deferring input to CLI: ${requestId}`);
 			return new Promise(() => {}); // never resolves — CLI TUI will handle it
 		}
 

@@ -1,7 +1,7 @@
 /**
  * Launcher with CLI server management and restart support.
  *
- * Default (shared mode):
+ * Default (connected mode):
  *   1. Check if CLI server is already listening on port 3848
  *   2. If not, launch `copilot --server --port 3848` as a background process
  *   3. Wait for port 3848 to accept connections
@@ -138,7 +138,7 @@ async function start() {
 	}
 
 	if (cliUrl) {
-		console.log(`[Launcher] Shared mode — connecting to ${cliUrl}`);
+		console.log(`[Launcher] Connected mode — connecting to ${cliUrl}`);
 	} else {
 		console.log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
 	}
