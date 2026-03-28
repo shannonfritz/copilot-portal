@@ -42,6 +42,26 @@ The portal runs in **shared mode** by default:
 
 Use `--standalone` to run without the CLI server (portal spawns its own subprocess).
 
+### Advanced: Using with CLI TUI
+
+If you want both the full CLI terminal experience AND the portal:
+
+1. Start the CLI with its built-in server:
+   ```
+   copilot --ui-server --port 3848
+   ```
+2. In another terminal, start the portal:
+   ```
+   start-portal.cmd
+   ```
+
+The portal will detect the running CLI server and connect to it. Both the
+CLI TUI and the portal are live on the same sessions — messages sent from
+either side are immediately visible to both.
+
+This is useful when you want to start work in the CLI and monitor or
+continue from your phone via the portal.
+
 ## Port
 
 The default port is `3847`. To use a different port, pass `--port`:
