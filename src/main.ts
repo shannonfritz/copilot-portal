@@ -86,7 +86,7 @@ if (process.stdin.isTTY) {
 		const pageItems = sessions.slice(start, start + pageSize);
 		console.log('\n  Open CLI TUI for session:');
 		pageItems.forEach((s, i) => {
-			const label = s.summary ?? s.sessionId.slice(0, 8);
+			const label = (s.summary ?? s.sessionId.slice(0, 8)).split('\n')[0].slice(0, 60);
 			console.log(`    [${i + 1}] ${label}`);
 		});
 		const hasMore = start + pageSize < sessions.length;
