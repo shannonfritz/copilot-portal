@@ -38,7 +38,7 @@ export class PortalServer {
 		this.token = this.loadOrCreateToken();
 		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
 		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
-		// Seed context examples on first run
+		// Seed instruction examples on first run
 		this.seedContextExamples();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
@@ -335,10 +335,10 @@ export class PortalServer {
 		}
 	}
 
-	/** Copy context examples into data/context-settings/ if the folder is empty or doesn't exist */
+	/** Copy instruction examples into data/instructions/ if the folder is empty or doesn't exist */
 	private seedContextExamples(): void {
-		const contextsDir = path.join(this.dataDir, 'context-settings');
-		const examplesDir = path.join(__dirname, '..', 'context-examples');
+		const contextsDir = path.join(this.dataDir, 'instructions');
+		const examplesDir = path.join(__dirname, '..', 'instruction-examples');
 		try {
 			fs.mkdirSync(contextsDir, { recursive: true });
 			const existing = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
@@ -348,7 +348,7 @@ export class PortalServer {
 			for (const f of examples) {
 				fs.copyFileSync(path.join(examplesDir, f), path.join(contextsDir, f));
 			}
-			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} context example(s) into data/context-settings/`);
+			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} instruction example(s) into data/instructions/`);
 		} catch { /* ignore */ }
 	}
 
@@ -567,9 +567,9 @@ export class PortalServer {
 			return;
 		}
 
-		if (url.pathname === '/api/context-settings' && method === 'GET') {
+		if (url.pathname === '/api/instructions' && method === 'GET') {
 			try {
-				const contextsDir = path.join(this.dataDir, 'context-settings');
+				const contextsDir = path.join(this.dataDir, 'instructions');
 				if (!fs.existsSync(contextsDir)) { this.sendJson(res, 200, []); return; }
 				const files = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
 				const contexts = files.map(f => ({
@@ -584,12 +584,12 @@ export class PortalServer {
 			return;
 		}
 
-		const contextMatch = url.pathname.match(/^\/api\/context-settings\/(.+)$/);
+		const contextMatch = url.pathname.match(/^\/api\/instructions\/(.+)$/);
 		if (contextMatch && method === 'GET') {
 			try {
-				const contextFile = path.join(this.dataDir, 'context-settings', decodeURIComponent(contextMatch[1]) + '.md');
+				const contextFile = path.join(this.dataDir, 'instructions', decodeURIComponent(contextMatch[1]) + '.md');
 				const resolved = path.resolve(contextFile);
-				const contextsDir = path.resolve(path.join(this.dataDir, 'context-settings'));
+				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
 				this.sendJson(res, 200, { filePath: resolved });
@@ -600,13 +600,13 @@ export class PortalServer {
 		}
 
 		// Save a generated context file
-		if (url.pathname === '/api/context-settings' && method === 'POST') {
+		if (url.pathname === '/api/instructions' && method === 'POST') {
 			try {
 				const body = await this.readBody(req);
 				const { id, content } = JSON.parse(body) as { id?: string; content?: string };
 				if (!id || !content) { this.sendJson(res, 400, { error: 'id and content required' }); return; }
 				if (!/^[a-zA-Z0-9_-]+$/.test(id)) { this.sendJson(res, 400, { error: 'id must be alphanumeric with dashes/underscores only' }); return; }
-				const contextsDir = path.join(this.dataDir, 'context-settings');
+				const contextsDir = path.join(this.dataDir, 'instructions');
 				if (!fs.existsSync(contextsDir)) fs.mkdirSync(contextsDir, { recursive: true });
 				const filePath = path.join(contextsDir, id + '.md');
 				fs.writeFileSync(filePath, content, 'utf8');

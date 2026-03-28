@@ -514,7 +514,7 @@ function SessionDrawer({
 								const opening = !showContextPicker;
 								setShowContextPicker(opening);
 								if (opening) {
-									apiFetch('/api/context-settings').then(r => r.json()).then(setContexts).catch(() => {});
+									apiFetch('/api/instructions').then(r => r.json()).then(setContexts).catch(() => {});
 									apiFetch('/api/context-templates').then(r => r.json()).then(setTemplates).catch(() => {});
 								}
 							}}
@@ -523,7 +523,7 @@ function SessionDrawer({
 								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 									<path d="M9 12h6M12 9v6M4 6h16M4 12h16M4 18h16" />
 								</svg>
-								<span>Set Context</span>
+								<span>Give Instruction</span>
 							</div>
 							<span style={{ color: 'var(--text-muted)' }}>{showContextPicker ? '\u25b4' : '\u25be'}</span>
 						</button>
@@ -534,7 +534,7 @@ function SessionDrawer({
 							>
 								{contexts.length === 0 && templates.length === 0 && (
 									<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-										No context settings found. Add .md files to data/context-settings/
+										No instructions found. Add .md files to data/instructions/
 									</div>
 								)}
 								{contexts.map(c => (
@@ -1941,19 +1941,19 @@ export default function App() {
 						onFetchModels={() => apiFetch('/api/models').then(r => r.json())}
 						onSetContext={async (contextId) => {
 							try {
-								const res = await apiFetch(`/api/context-settings/${encodeURIComponent(contextId)}`);
+								const res = await apiFetch(`/api/instructions/${encodeURIComponent(contextId)}`);
 								const { filePath } = await res.json() as { filePath: string };
 								if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
 									const prompt = `Read the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
 									wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: `Set context: ${contextId}`, timestamp: Date.now() }]);
+									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: `Give Instruction: ${contextId}`, timestamp: Date.now() }]);
 									setIsStreaming(true);
 									setIsThinking(true);
-									setThinkingText('Applying context...');
+									setThinkingText('Applying instruction...');
 									setDrawerOpen(false);
 								}
 							} catch (e) {
-								setError(`Failed to load context: ${e}`);
+								setError(`Failed to load instruction: ${e}`);
 							}
 						}}
 						onSetupTemplate={(templateId, templateContent) => {
