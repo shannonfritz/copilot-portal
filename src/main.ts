@@ -36,11 +36,22 @@ const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: C
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');
+	// Kill any CLI server on port 3848 (headless or TUI)
+	if (process.platform === 'win32') {
+		spawnSync('pwsh', ['-NoProfile', '-Command',
+			`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+		], { stdio: 'ignore', windowsHide: true });
+	}
 	await server.stop();
 	process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
+	if (process.platform === 'win32') {
+		spawnSync('pwsh', ['-NoProfile', '-Command',
+			`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+		], { stdio: 'ignore', windowsHide: true });
+	}
 	await server.stop();
 	process.exit(0);
 });
@@ -178,6 +189,20 @@ if (process.stdin.isTTY) {
 
 	let updateInProgress = false;
 
+	const killCliServer = () => {
+		if (process.platform === 'win32') {
+			spawnSync('pwsh', ['-NoProfile', '-Command',
+				`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+			], { stdio: 'ignore', windowsHide: true });
+		}
+	};
+
+	const shutdown = () => {
+		console.log('\nShutting down...');
+		killCliServer();
+		server.stop().then(() => process.exit(0));
+	};
+
 	const showHelp = () => {
 		console.log('\n  Command Keys: [t] CLI TUI  [l] Launch Browser  [q] QR/URL  [u] Update  [r] Restart  [x] Exit\n');
 	};
@@ -236,12 +261,10 @@ if (process.stdin.isTTY) {
 				process.exit(75); // launcher catches this and relaunches
 				break;
 			case 'x':
-				console.log('\nShutting down...');
-				server.stop().then(() => process.exit(0));
+				shutdown();
 				break;
 			case '\u0003': // Ctrl+C
-				console.log('\nShutting down...');
-				server.stop().then(() => process.exit(0));
+				shutdown();
 				break;
 			default:
 				showHelp();
