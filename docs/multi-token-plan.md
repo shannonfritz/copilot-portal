@@ -154,3 +154,30 @@ Steps 1–4 are backend-only and can be tested with curl. Steps 5–7 add the UI
 - Primary token can always revoke any scoped token
 - `--new-token` regenerates primary only; scoped tokens survive
 - Tokens are stored in plaintext in `data/tokens.json` (same trust model as current `token.txt` — local machine access)
+
+## Data Directory Considerations
+
+When multi-token is implemented, `data/` contents need scoping:
+
+| Path | Current | Multi-token |
+|------|---------|-------------|
+| `data/token.txt` | Single token | → `data/tokens.json` (migration) |
+| `data/contexts/*.md` | All users see all | Consider public vs private contexts |
+| `data/rules/<session>.json` | Per-session | Inherits session access control |
+| `data/session-shields.json` | Admin-only | Primary token only |
+| `data/workspaces/default/` | Shared CWD | Per-user CWD (future) |
+
+Key decisions to make:
+- Should contexts be visible to all tokens, or only primary?
+- Should scoped tokens be able to set context on their allowed sessions?
+- Should private contexts (with credentials) be separated from shared ones?
+
+Possible structure:
+```
+data/
+  tokens.json            # all tokens
+  contexts/              # shared contexts (visible to all tokens)
+  contexts-private/      # primary-only contexts (credentials, etc.)
+  rules/                 # per-session (inherits session scoping)
+  workspaces/            # per-user CWDs (future)
+```
