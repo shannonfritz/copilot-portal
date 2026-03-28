@@ -514,7 +514,7 @@ function SessionDrawer({
 								const opening = !showContextPicker;
 								setShowContextPicker(opening);
 								if (opening) {
-									apiFetch('/api/contexts').then(r => r.json()).then(setContexts).catch(() => {});
+									apiFetch('/api/context-settings').then(r => r.json()).then(setContexts).catch(() => {});
 									apiFetch('/api/context-templates').then(r => r.json()).then(setTemplates).catch(() => {});
 								}
 							}}
@@ -534,7 +534,7 @@ function SessionDrawer({
 							>
 								{contexts.length === 0 && templates.length === 0 && (
 									<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-										No contexts or templates found.
+										No context settings found. Add .md files to data/context-settings/
 									</div>
 								)}
 								{contexts.map(c => (
@@ -1941,12 +1941,12 @@ export default function App() {
 						onFetchModels={() => apiFetch('/api/models').then(r => r.json())}
 						onSetContext={async (contextId) => {
 							try {
-								const res = await apiFetch(`/api/contexts/${encodeURIComponent(contextId)}`);
-								const { content } = await res.json() as { content: string };
-								if (content && wsRef.current?.readyState === WebSocket.OPEN) {
-									const prompt = `Use the following context for this session:\n\n${content}`;
+								const res = await apiFetch(`/api/context-settings/${encodeURIComponent(contextId)}`);
+								const { filePath } = await res.json() as { filePath: string };
+								if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
+									const prompt = `Read the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
 									wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
+									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: `Set context: ${contextId}`, timestamp: Date.now() }]);
 									setIsStreaming(true);
 									setIsThinking(true);
 									setThinkingText('Applying context...');

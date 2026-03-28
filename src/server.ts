@@ -1,4 +1,4 @@
-﻿import * as http from 'node:http';
+import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -335,9 +335,9 @@ export class PortalServer {
 		}
 	}
 
-	/** Copy context examples into data/contexts/ if the folder is empty or doesn't exist */
+	/** Copy context examples into data/context-settings/ if the folder is empty or doesn't exist */
 	private seedContextExamples(): void {
-		const contextsDir = path.join(this.dataDir, 'contexts');
+		const contextsDir = path.join(this.dataDir, 'context-settings');
 		const examplesDir = path.join(__dirname, '..', 'context-examples');
 		try {
 			fs.mkdirSync(contextsDir, { recursive: true });
@@ -348,7 +348,7 @@ export class PortalServer {
 			for (const f of examples) {
 				fs.copyFileSync(path.join(examplesDir, f), path.join(contextsDir, f));
 			}
-			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} context example(s) into data/contexts/`);
+			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} context example(s) into data/context-settings/`);
 		} catch { /* ignore */ }
 	}
 
@@ -567,9 +567,9 @@ export class PortalServer {
 			return;
 		}
 
-		if (url.pathname === '/api/contexts' && method === 'GET') {
+		if (url.pathname === '/api/context-settings' && method === 'GET') {
 			try {
-				const contextsDir = path.join(this.dataDir, 'contexts');
+				const contextsDir = path.join(this.dataDir, 'context-settings');
 				if (!fs.existsSync(contextsDir)) { this.sendJson(res, 200, []); return; }
 				const files = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
 				const contexts = files.map(f => ({
@@ -584,16 +584,15 @@ export class PortalServer {
 			return;
 		}
 
-		const contextMatch = url.pathname.match(/^\/api\/contexts\/(.+)$/);
+		const contextMatch = url.pathname.match(/^\/api\/context-settings\/(.+)$/);
 		if (contextMatch && method === 'GET') {
 			try {
-				const contextFile = path.join(this.dataDir, 'contexts', decodeURIComponent(contextMatch[1]) + '.md');
+				const contextFile = path.join(this.dataDir, 'context-settings', decodeURIComponent(contextMatch[1]) + '.md');
 				const resolved = path.resolve(contextFile);
-				const contextsDir = path.resolve(path.join(this.dataDir, 'contexts'));
+				const contextsDir = path.resolve(path.join(this.dataDir, 'context-settings'));
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
-				const content = fs.readFileSync(resolved, 'utf8');
-				this.sendJson(res, 200, { content });
+				this.sendJson(res, 200, { filePath: resolved });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
@@ -601,13 +600,13 @@ export class PortalServer {
 		}
 
 		// Save a generated context file
-		if (url.pathname === '/api/contexts' && method === 'POST') {
+		if (url.pathname === '/api/context-settings' && method === 'POST') {
 			try {
 				const body = await this.readBody(req);
 				const { id, content } = JSON.parse(body) as { id?: string; content?: string };
 				if (!id || !content) { this.sendJson(res, 400, { error: 'id and content required' }); return; }
 				if (!/^[a-zA-Z0-9_-]+$/.test(id)) { this.sendJson(res, 400, { error: 'id must be alphanumeric with dashes/underscores only' }); return; }
-				const contextsDir = path.join(this.dataDir, 'contexts');
+				const contextsDir = path.join(this.dataDir, 'context-settings');
 				if (!fs.existsSync(contextsDir)) fs.mkdirSync(contextsDir, { recursive: true });
 				const filePath = path.join(contextsDir, id + '.md');
 				fs.writeFileSync(filePath, content, 'utf8');
