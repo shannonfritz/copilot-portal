@@ -140,8 +140,10 @@ if (process.stdin.isTTY) {
 		console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...\n`);
 	};
 
+	let updateInProgress = false;
+
 	const showHelp = () => {
-		console.log('\n  Command Keys: [t] CLI TUI  [l] Launch Browser  [q] QR code  [u] URL  [r] Restart  [x] Exit\n');
+		console.log('\n  Command Keys: [t] CLI TUI  [l] Launch Browser  [q] QR/URL  [u] Update  [r] Restart  [x] Exit\n');
 	};
 	showHelp();
 
@@ -165,11 +167,28 @@ if (process.stdin.isTTY) {
 				break;
 			}
 			case 'q':
-				console.log('\nScan to open on your phone:');
+				console.log(`\n  ${server.getURL()}\n`);
+				console.log('Scan to open on your phone:');
 				qrcode.generate(server.getURL(), { small: true });
 				break;
 			case 'u':
-				console.log(`\n  ${server.getURL()}\n`);
+				if (updateInProgress) { console.log('\n  Update already in progress...\n'); break; }
+				console.log('\n  Checking for updates...');
+				server.checkForUpdates().then(async (result) => {
+					if (!result.hasUpdates) {
+						console.log(`  ${result.summary}\n`);
+						return;
+					}
+					console.log(`  Available: ${result.summary}`);
+					console.log('  Applying updates...');
+					updateInProgress = true;
+					const msg = await server.applyUpdates();
+					updateInProgress = false;
+					console.log(`  ${msg}\n`);
+				}).catch((e) => {
+					updateInProgress = false;
+					console.log(`  Update check failed: ${e}\n`);
+				});
 				break;
 			case 'r':
 				console.log('\nRestarting...');

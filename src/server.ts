@@ -707,6 +707,21 @@ export class PortalServer {
 		} catch { return []; }
 	}
 
+	/** Check for updates (for console command) */
+	async checkForUpdates(): Promise<{ hasUpdates: boolean; summary: string }> {
+		const status = await this.updater.check();
+		const updatable = status.packages.filter(p => p.hasUpdate);
+		if (updatable.length === 0) return { hasUpdates: false, summary: 'All packages up to date' };
+		return { hasUpdates: true, summary: updatable.map(p => `${p.name} ${p.installed} -> ${p.latest}`).join(', ') };
+	}
+
+	/** Apply updates (for console command) */
+	async applyUpdates(): Promise<string> {
+		const status = await this.updater.apply();
+		if (status.error) return `Update failed: ${status.error}`;
+		return status.restartNeeded ? 'Updates applied. Press [r] to restart.' : 'Updates applied.';
+	}
+
 	async start(): Promise<void> {
 		this.loadShields();
 		await this.pool.start();
