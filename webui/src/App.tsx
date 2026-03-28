@@ -54,10 +54,11 @@ interface Message {
 	content: string;
 	reasoning?: string;
 	timestamp: number;
-	intermediate?: boolean; // mid-turn "notes to self" — shown as thought bubble, not a chat message
-	toolSummary?: ToolSummaryItem[]; // tools that ran before this message
-	askUserChoices?: string[]; // choices presented when this is an ask_user response (user msg)
-	questionChoices?: string[]; // choices offered when this is an ask_user question (assistant msg)
+	intermediate?: boolean;
+	toolSummary?: ToolSummaryItem[];
+	toolCallIds?: string[]; // tool call IDs dispatched by this message (for tracking completion)
+	askUserChoices?: string[];
+	questionChoices?: string[];
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -1044,21 +1045,27 @@ export default function App() {
 						}
 					}
 				} else if (event.type === 'message_end') {
-					// Commit this message — server tells us if it's intermediate (has toolRequests)
+					// Commit this message — server tells us if it's intermediate and which tools it dispatched
 					const content = streamingRef.current.trim();
-					if (content) {
+					const toolCallIds = (event as { toolCallIds?: string[] }).toolCallIds;
+					const hasTools = toolCallIds && toolCallIds.length > 0;
+
+					// Commit message if it has content OR has tools to track
+					if (content || hasTools) {
 						const msg: Message = {
 							id: `msg-${Date.now()}`,
 							role: 'assistant',
 							content,
 							reasoning: reasoningRef.current || undefined,
 							intermediate: event.intermediate || undefined,
+							toolCallIds: toolCallIds || undefined,
 							timestamp: Date.now(),
 						};
-						// If intermediate, commit immediately. If final, buffer for idle to attach tool summary.
-						if (msg.intermediate) {
-							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+						if (msg.intermediate || hasTools) {
+							// Intermediate or tool-dispatching: commit immediately
+							setMessages(prev => prev.some(m => m.content === msg.content && msg.content) ? prev : [...prev, msg]);
 						} else {
+							// Final message: buffer for idle to attach remaining tool summary
 							lastStreamedRef.current = (lastStreamedRef.current ? lastStreamedRef.current + '\n' : '') + content;
 							pendingMsgRef.current = msg;
 						}
@@ -1106,7 +1113,27 @@ export default function App() {
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
-					// Tool done — model is processing the result; reset to generic thinking text
+					// Check if all tools for any message are now complete → build per-message summary
+					const completedId = event.toolCallId;
+					setMessages(prev => prev.map(m => {
+						if (!m.toolCallIds?.includes(completedId)) return m;
+						// Check if ALL of this message's tools are now complete
+						const allToolEvents = toolEventsRef.current;
+						const allDone = m.toolCallIds.every(tcId => {
+							const te = allToolEvents.find(t => t.toolCallId === tcId);
+							// tool_complete or about to be (current event)
+							return te?.type === 'tool_complete' || tcId === completedId;
+						});
+						if (!allDone) return m;
+						// Build summary from this message's tools only
+						const msgTools = m.toolCallIds
+							.map(tcId => allToolEvents.find(t => t.toolCallId === tcId))
+							.filter((t): t is ToolEvent => !!t);
+						const summary = buildToolSummary(msgTools);
+						// Remove these tool events from the live list
+						setToolEvents(prev2 => prev2.filter(te => !m.toolCallIds?.includes(te.toolCallId ?? '')));
+						return { ...m, toolSummary: summary.length ? summary : undefined, toolCallIds: undefined };
+					}));
 					if (!isStoppingRef.current) setThinkingText('Thinking…');
 				} else if (event.type === 'tool_update') {
 					// Sub-agent name arrived — update the task tool's displayLabel
@@ -1115,12 +1142,12 @@ export default function App() {
 					// tool_output (partial result streaming)
 					setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
 				} else if (event.type === 'idle') {
-					// Snapshot tool events to attach to the final message, then clear them
-					const summary = buildToolSummary(toolEventsRef.current);
+					// Any remaining tool events not yet collapsed into per-message summaries
+					const remainingTools = buildToolSummary(toolEventsRef.current);
 					// Commit any buffered message as the final reply
 					if (pendingMsgRef.current) {
 						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
-						const msg = { ...pendingMsgRef.current, toolSummary: summary.length ? summary : undefined, bytes: pendingBytes };
+						const msg = { ...pendingMsgRef.current, toolSummary: remainingTools.length ? remainingTools : undefined, bytes: pendingBytes };
 						pendingMsgRef.current = null;
 						setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
 					}
@@ -1137,7 +1164,7 @@ export default function App() {
 									role: 'assistant',
 									content: final,
 									reasoning: reasoningRef.current || undefined,
-									toolSummary: summary.length ? summary : undefined,
+									toolSummary: remainingTools.length ? remainingTools : undefined,
 									bytes: finalBytes,
 									timestamp: Date.now(),
 								},
@@ -2041,7 +2068,7 @@ export default function App() {
 					{/* Interleave messages and tool events by timestamp */}
 					{(() => {
 						const items: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
-							...messages.filter(m => m.content.trim()).map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
+							...messages.filter(m => m.content.trim() || m.toolSummary?.length).map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
 							...toolEvents.map(tc => ({ type: 'tool' as const, tc, ts: tc.timestamp })),
 						].sort((a, b) => a.ts - b.ts);
 

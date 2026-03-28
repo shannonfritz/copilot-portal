@@ -901,12 +901,18 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.broadcast({ type: 'delta', content });
 		}
 		// Always commit this message on the client, whether it arrived via deltas or as a blob
-		// Include hasToolRequests so the client can distinguish intermediate vs final messages
+		// Include toolRequests so the client can track which tools belong to this message
 		// Messages followed only by ask_user/report_intent are NOT intermediate (user-facing)
-		const toolReqs = Array.isArray(d.toolRequests) ? d.toolRequests as Array<{ name?: string }> : [];
+		const toolReqs = Array.isArray(d.toolRequests) ? d.toolRequests as Array<{ name?: string; toolCallId?: string }> : [];
 		const nonUserFacingTools = toolReqs.filter(t => t.name !== 'ask_user' && t.name !== 'report_intent');
 		const isIntermediate = nonUserFacingTools.length > 0;
-		this.broadcast({ type: 'message_end', intermediate: isIntermediate || undefined });
+		// Send tool call IDs so client can match tool_complete events to this message
+		const toolCallIds = toolReqs.filter(t => t.toolCallId && t.name !== 'report_intent').map(t => t.toolCallId);
+		this.broadcast({
+			type: 'message_end',
+			intermediate: isIntermediate || undefined,
+			toolCallIds: toolCallIds.length > 0 ? toolCallIds : undefined,
+		});
 		this.deltasSent = false;
 	}
 
