@@ -1457,10 +1457,16 @@ export class SessionPool {
 			return await this._doConnect(sessionId);
 		} catch (e) {
 			const msg = String(e);
-			if (msg.includes('Connection is closed') || msg.includes('not connected')) {
+			if (msg.includes('Connection is closed') || msg.includes('not connected') || msg.includes('Server port not available')) {
 				this.log(`[Pool] SDK connection lost — restarting client...`);
 				try {
 					await this.client.stop().catch(() => {});
+					// If in shared mode, wait for the CLI server port before reconnecting
+					if (this.shared) {
+						this.log(`[Pool] Waiting for CLI server on port 3848...`);
+						const ready = await this.waitForPort(3848, 15000);
+						if (!ready) throw new Error('CLI server not available after 15s');
+					}
 					await this.client.start();
 					this.log(`[Pool] SDK client restarted`);
 					return await this._doConnect(sessionId);
@@ -1471,6 +1477,26 @@ export class SessionPool {
 			}
 			throw e;
 		}
+	}
+
+	/** Wait for a TCP port to accept connections */
+	private waitForPort(port: number, timeoutMs: number): Promise<boolean> {
+		const net = require('net') as typeof import('net');
+		return new Promise((resolve) => {
+			const start = Date.now();
+			const check = () => {
+				const sock = net.createConnection({ port, host: 'localhost' }, () => {
+					sock.destroy();
+					resolve(true);
+				});
+				sock.on('error', () => {
+					if (Date.now() - start > timeoutMs) { resolve(false); return; }
+					setTimeout(check, 500);
+				});
+				sock.setTimeout(1000, () => { sock.destroy(); });
+			};
+			check();
+		});
 	}
 
 	/**
