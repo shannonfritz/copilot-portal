@@ -138,7 +138,7 @@ async function start() {
 	}
 
 	if (cliUrl) {
-		console.log(`[Launcher] Connected mode — connecting to ${cliUrl}`);
+		console.log(`[Launcher] Connecting to CLI server at ${cliUrl}`);
 	} else {
 		console.log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
 	}
