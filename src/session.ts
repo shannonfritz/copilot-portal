@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import * as net from 'node:net';
 import { RulesStore } from './rules.js';
 import type { ApprovalRule } from './rules.js';
 
@@ -1481,7 +1482,6 @@ export class SessionPool {
 
 	/** Wait for a TCP port to accept connections */
 	private waitForPort(port: number, timeoutMs: number): Promise<boolean> {
-		const net = require('net') as typeof import('net');
 		return new Promise((resolve) => {
 			const start = Date.now();
 			const check = () => {
