@@ -1367,10 +1367,12 @@ export class SessionPool {
 	private workspacePath: string;
 	/** True when connected to an external CLI server (--ui-server mode) */
 	readonly shared: boolean;
+	private cliUrl?: string;
 
 	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspacePath: string, cliUrl?: string) {
 		this.log = log;
 		this.shared = !!cliUrl;
+		this.cliUrl = cliUrl;
 		this.client = cliUrl ? new CopilotClient({ cliUrl }) : new CopilotClient();
 		this.rulesStore = rulesStore;
 		this.workspacePath = workspacePath;
@@ -1467,7 +1469,12 @@ export class SessionPool {
 						this.log(`[Pool] Waiting for CLI server on port 3848...`);
 						const ready = await this.waitForPort(3848, 15000);
 						if (!ready) throw new Error('CLI server not available after 15s');
+						this.log(`[Pool] CLI server detected — reconnecting SDK...`);
 					}
+					// Create a fresh client (stop() may leave the old one in a bad state)
+					this.client = this.cliUrl
+						? new CopilotClient({ cliUrl: this.cliUrl })
+						: new CopilotClient();
 					await this.client.start();
 					this.log(`[Pool] SDK client restarted`);
 					return await this._doConnect(sessionId);
