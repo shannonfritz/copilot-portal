@@ -767,7 +767,7 @@ export class PortalServer {
 		}
 	}
 
-	private broadcastAll(msg: object): void {
+	broadcastAll(msg: object): void {
 		const data = JSON.stringify(msg);
 		for (const client of this.wss.clients) {
 			if (client.readyState === WebSocket.OPEN) client.send(data);

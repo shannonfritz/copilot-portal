@@ -1200,6 +1200,9 @@ export default function App() {
 					isCliTurnRef.current = false;
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
+				} else if (event.type === 'reload') {
+					// Server switched CLI mode — reload to reconnect cleanly
+					window.location.reload();
 				} else if (event.type === 'warning' || event.type === 'info') {
 					setNotification({ type: event.type, message: event.content ?? '' });
 					setTimeout(() => setNotification(null), 8000);

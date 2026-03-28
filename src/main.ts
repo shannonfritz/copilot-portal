@@ -158,6 +158,8 @@ if (process.stdin.isTTY) {
 			confirmingCliLaunch = null;
 
 			console.log('  Stopping headless CLI server...');
+			// Notify portal clients that the CLI server is switching
+			server.broadcastAll({ type: 'info', content: 'Switching to CLI TUI mode - reloading...' });
 			// Kill the process on port 3848
 			if (process.platform === 'win32') {
 				spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -179,6 +181,10 @@ if (process.stdin.isTTY) {
 				}
 				console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...`);
 				console.log('  Portal will reconnect automatically.\n');
+				// Tell clients to reload so they reconnect to the new CLI server
+				setTimeout(() => {
+					server.broadcastAll({ type: 'reload' });
+				}, 3000);
 			}, 1500);
 			return;
 		}
