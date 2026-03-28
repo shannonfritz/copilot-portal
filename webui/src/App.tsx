@@ -1232,12 +1232,14 @@ export default function App() {
 			// Detect auth failure: fast close with no messages received suggests a bad token.
 			if (!hadMsg && Date.now() - lastConnectTime.current < 5000) {
 				fastFailCount.current += 1;
-				if (fastFailCount.current >= 5) {
+				if (fastFailCount.current >= 3) {
 					localStorage.removeItem('portal_token');
 					fastFailCount.current = 0;
 					setConnectionState('no_token');
-					return;
+					return; // stop retrying — token is invalid
 				}
+			} else {
+				fastFailCount.current = 0; // reset on non-fast failures
 			}
 			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
 			reconnectTimer.current = setTimeout(() => connect(), 2000);
