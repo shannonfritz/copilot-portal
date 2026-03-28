@@ -37,7 +37,7 @@ if (existsSync(stage)) rmSync(stage, { recursive: true });
 mkdirSync(stage, { recursive: true });
 
 const files = [
-	'dist', 'context-templates', 'package.dist.json', 'README.md', 'CHANGELOG.md', 'BUILD',
+	'dist', 'patches', 'context-templates', 'package.dist.json', 'patch.mjs', 'README.md', 'CHANGELOG.md', 'BUILD',
 	'start-portal.cmd', 'start-portal.sh',
 ];
 for (const f of files) {
