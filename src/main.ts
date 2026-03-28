@@ -1,6 +1,6 @@
 import { PortalServer } from './server.js';
 import qrcode from 'qrcode-terminal';
-import { exec } from 'node:child_process';
+import { exec, spawnSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
 
@@ -126,17 +126,54 @@ if (process.stdin.isTTY) {
 		renderCliPage();
 	};
 
+	let confirmingCliLaunch: { sessionId?: string } | null = null;
+
 	const launchCliTui = (sessionId?: string) => {
-		const args = sessionId ? ['--resume', sessionId] : [];
-		const cmd = `copilot ${args.join(' ')}`;
-		if (process.platform === 'win32') {
-			exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
-		} else if (process.platform === 'darwin') {
-			exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
-		} else {
-			exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" &`);
+		// Show confirmation — switching from headless to TUI requires server restart
+		confirmingCliLaunch = { sessionId };
+		console.log('\n  This will restart the CLI server in TUI mode.');
+		console.log('  The portal will briefly disconnect and reconnect.');
+		console.log('\n  [y] Continue  [n] Cancel\n');
+	};
+
+	const handleConfirm = (key: string) => {
+		if (!confirmingCliLaunch) return;
+		if (key === 'n' || key === 'c') {
+			confirmingCliLaunch = null;
+			console.log('  Cancelled.\n');
+			return;
 		}
-		console.log(`  CLI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...\n`);
+		if (key === 'y') {
+			const sessionId = confirmingCliLaunch.sessionId;
+			confirmingCliLaunch = null;
+
+			console.log('  Stopping headless CLI server...');
+			// Kill the process on port 3848
+			if (process.platform === 'win32') {
+				spawnSync('pwsh', ['-NoProfile', '-Command',
+					`Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+				], { stdio: 'ignore', windowsHide: true });
+			}
+
+			// Wait a moment for port to free, then launch TUI server
+			setTimeout(() => {
+				const args = ['--ui-server', '--port', '3848'];
+				if (sessionId) args.push('--resume', sessionId);
+				const cmd = `copilot ${args.join(' ')}`;
+				if (process.platform === 'win32') {
+					exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
+				} else if (process.platform === 'darwin') {
+					exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
+				} else {
+					exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" &`);
+				}
+				console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...`);
+				console.log('  Portal will reconnect automatically.\n');
+			}, 1500);
+			return;
+		}
+		// Unrecognized — re-show prompt
+		console.log('\n  [y] Continue  [n] Cancel\n');
 	};
 
 	let updateInProgress = false;
@@ -147,6 +184,11 @@ if (process.stdin.isTTY) {
 	showHelp();
 
 	process.stdin.on('data', (key: string) => {
+		// If confirming CLI launch, handle y/n
+		if (confirmingCliLaunch) {
+			handleConfirm(key.toLowerCase());
+			return;
+		}
 		// If CLI picker is active, route keys there
 		if (cliPickerState) {
 			handleCliPick(key.toLowerCase());
