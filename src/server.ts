@@ -38,6 +38,8 @@ export class PortalServer {
 		this.token = this.loadOrCreateToken();
 		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
 		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
+		// Seed context examples on first run
+		this.seedContextExamples();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
@@ -331,6 +333,23 @@ export class PortalServer {
 		} catch (e) {
 			this.log(`[${clientId}] Parse error: ${e}`);
 		}
+	}
+
+	/** Copy context examples into data/contexts/ if the folder is empty or doesn't exist */
+	private seedContextExamples(): void {
+		const contextsDir = path.join(this.dataDir, 'contexts');
+		const examplesDir = path.join(__dirname, '..', 'context-examples');
+		try {
+			fs.mkdirSync(contextsDir, { recursive: true });
+			const existing = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
+			if (existing.length > 0) return; // already has contexts
+			if (!fs.existsSync(examplesDir)) return; // no examples to seed
+			const examples = fs.readdirSync(examplesDir).filter(f => f.endsWith('.md'));
+			for (const f of examples) {
+				fs.copyFileSync(path.join(examplesDir, f), path.join(contextsDir, f));
+			}
+			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} context example(s) into data/contexts/`);
+		} catch { /* ignore */ }
 	}
 
 	private loadShields(): void {
