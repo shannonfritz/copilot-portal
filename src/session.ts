@@ -271,17 +271,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// Exception: messages followed by ask_user are user-facing, not intermediate
 		const roundMsgs: string[] = [];
 		const roundTimestamps: (number | undefined)[] = [];
-		const roundFollowingTools: (string | null)[] = []; // tool name after each message
-		const askUserToolIds = new Set<string>(); // track ask_user tool calls to extract user answers
-		const askUserChoices = new Map<string, string[]>(); // choices presented to the user
-		const askUserQuestions = new Map<string, string>(); // question text from ask_user
-		let pendingAskUserAnswers: Array<{ question: string; content: string; choices?: string[]; timestamp?: number }> = [];// buffered until round flushes
-		let roundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
+		const roundFollowingTools: (string | null)[] = [];
+		const roundPerMsgTools: Array<Array<{ toolName: string; display: string; completed: boolean }>>[] = []; // per-message tools
+		const askUserToolIds = new Set<string>();
+		const askUserChoices = new Map<string, string[]>();
+		const askUserQuestions = new Map<string, string>();
+		let pendingAskUserAnswers: Array<{ question: string; content: string; choices?: string[]; timestamp?: number }> = [];
+		let currentMsgTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
-			// Filter ask_user from tool summary — it's represented by the prompt UI, not a tool box
-			const tools = roundTools.filter(t => t.toolName !== 'ask_user');
-			const toolSummary = tools.length > 0 ? [...tools] : undefined;
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				const isLast = i === roundMsgs.length - 1;
@@ -289,10 +287,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				const hasToolRequests = roundFollowingTools[i] === '_has_tool_requests' || (roundFollowingTools[i] !== null && roundFollowingTools[i] !== 'ask_user');
 				const intermediate = followedByAskUser ? false : (allIntermediate || hasToolRequests);
 
-				// Emit the message content (skip if empty, unless we need to emit ask_user Q&A)
-				if (content) {
-					result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
-					result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary: isLast ? toolSummary : undefined });
+				// Get this message's tools (filter ask_user)
+				const msgToolsRaw = roundPerMsgTools[i] ?? [];
+				const msgTools = msgToolsRaw.filter(t => t.toolName !== 'ask_user');
+				const toolSummary = msgTools.length > 0 ? [...msgTools] : undefined;
+
+				// Emit the message content or tool-only row
+				if (content || toolSummary) {
+					if (content) result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
+					result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary });
 				}
 
 				// Emit any buffered ask_user Q&A
@@ -312,7 +315,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			roundMsgs.length = 0;
 			roundTimestamps.length = 0;
 			roundFollowingTools.length = 0;
-			roundTools = [];
+			roundPerMsgTools.length = 0;
+			currentMsgTools = [];
 		};
 
 		for (const e of slicedEvents) {
@@ -320,26 +324,33 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const tsRaw = raw.createdAt ?? raw.timestamp ?? raw.ts;
 			const ts = typeof tsRaw === 'string' ? new Date(tsRaw).getTime() : tsRaw;
 			if (e.type === 'user.message') {
+				// Save last message's tools before flushing
+				if (roundMsgs.length > 0) {
+					roundPerMsgTools[roundMsgs.length - 1] = currentMsgTools;
+					currentMsgTools = [];
+				}
 				flushRound();
 				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts });
 			} else if (e.type === 'assistant.message') {
+				// Save accumulated tools for the previous message
+				if (roundMsgs.length > 0) {
+					roundPerMsgTools[roundMsgs.length - 1] = currentMsgTools;
+					currentMsgTools = [];
+				}
 				const d = raw.data as { content?: string; toolRequests?: Array<{ name?: string; toolCallId?: string }> };
 				roundMsgs.push(d.content ?? '');
 				roundTimestamps.push(ts);
-				// Check toolRequests for intermediate detection and ask_user identification
 				const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
 				const isAskUser = hasToolRequests && d.toolRequests!.some(t => t.name === 'ask_user');
 				roundFollowingTools.push(isAskUser ? 'ask_user' : hasToolRequests ? '_has_tool_requests' : null);
 			} else if (e.type === 'tool.execution_start') {
 				const toolName = (raw.data as { toolName?: string })?.toolName;
-				// Tag the preceding message with the tool that follows it (only if not already tagged)
 				if (roundMsgs.length > 0 && (roundFollowingTools[roundFollowingTools.length - 1] === null)) {
 					roundFollowingTools[roundFollowingTools.length - 1] = toolName ?? null;
 				}
 				if (toolName === 'ask_user') {
 					const toolCallId = (raw.data as { toolCallId?: string })?.toolCallId ?? '';
 					askUserToolIds.add(toolCallId);
-					// Capture the question and choices from the tool arguments
 					const rawArgs = (raw.data as { arguments?: unknown })?.arguments;
 					try {
 						const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
@@ -348,7 +359,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 						askUserQuestions.set(toolCallId, a.question ?? '');
 					} catch { /* ignore */ }
 				}
-				if (toolName !== 'report_intent' && toolName !== 'ask_user') roundTools.push(SessionHandle.parseToolEvent(raw.data));
+				if (toolName !== 'report_intent') currentMsgTools.push(SessionHandle.parseToolEvent(raw.data));
 			} else if (e.type === 'tool.execution_complete') {
 				const d = raw.data as { toolCallId?: string; result?: { content?: string } };
 				if (d.toolCallId && askUserToolIds.has(d.toolCallId)) {
@@ -364,6 +375,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 		// If the turn is still active, every message in the last round is intermediate
 		// (more tool calls / messages are coming — none of them are the final reply yet)
+		// Save last message's tools before final flush
+		if (roundMsgs.length > 0) {
+			roundPerMsgTools[roundMsgs.length - 1] = currentMsgTools;
+			currentMsgTools = [];
+		}
 		flushRound(this.isTurnActive);
 		return result;
 	}

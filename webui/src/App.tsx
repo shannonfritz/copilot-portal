@@ -2182,10 +2182,6 @@ export default function App() {
 					});
 					})()}
 
-					{reasoningText && isThinking && (
-						<ThoughtBubble reasoning={reasoningText} defaultExpanded />
-					)}
-
 					{isThinking && (
 						<div className="mb-2 flex items-center gap-2 py-1 text-sm" style={{ color: 'var(--text-muted)' }}>
 							<span className="flex shrink-0 gap-1">
