@@ -1872,10 +1872,10 @@ export default function App() {
 							type="button"
 							title="Instructions"
 						>
-							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true">
-								<rect x="2" y="4" width="20" height="16" rx="1" />
-								<line x1="9" y1="4" x2="9" y2="20" strokeDasharray="2 2" />
-								<line x1="15" y1="4" x2="15" y2="20" strokeDasharray="2 2" />
+							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<path d="M2 6l7-2 6 2 7-2v16l-7 2-6-2-7 2V6z" />
+								<line x1="9" y1="4" x2="9" y2="20" />
+								<line x1="15" y1="6" x2="15" y2="22" />
 							</svg>
 						</button>
 						<button
