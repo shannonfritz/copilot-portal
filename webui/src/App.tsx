@@ -1572,7 +1572,11 @@ export default function App() {
 											}
 										}}
 									>
-										<span style={{ color: 'var(--text-muted)' }}>📝</span>
+										<svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" style={{ color: 'var(--text-muted)' }}>
+											<rect x="5" y="2" width="14" height="20" rx="2" />
+											<path d="M9 8c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+											<path d="M9 13c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+										</svg>
 										<span>{inst.name}</span>
 									</button>
 								))}
@@ -1869,9 +1873,9 @@ export default function App() {
 							title="Instructions"
 						>
 							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true">
-								<rect x="5" y="2" width="14" height="20" rx="2" />
-								<path d="M9 8c1-1.2 2 1.2 3 0s2 1.2 3 0" />
-								<path d="M9 13c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+								<rect x="2" y="4" width="20" height="16" rx="1" />
+								<line x1="9" y1="4" x2="9" y2="20" strokeDasharray="2 2" />
+								<line x1="15" y1="4" x2="15" y2="20" strokeDasharray="2 2" />
 							</svg>
 						</button>
 						<button
