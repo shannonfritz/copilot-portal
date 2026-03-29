@@ -1574,8 +1574,8 @@ export default function App() {
 									>
 										<svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" style={{ color: 'var(--text-muted)' }}>
 											<rect x="5" y="2" width="14" height="20" rx="2" />
-											<path d="M9 8c1-1.2 2 1.2 3 0s2 1.2 3 0" />
-											<path d="M9 13c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+											<path d="M8 8c1-2 2.5 2 3.5 0s2.5 2 3.5 0" />
+											<path d="M8 13c1-2 2.5 2 3.5 0s2.5 2 3.5 0" />
 										</svg>
 										<span>{inst.name}</span>
 									</button>
