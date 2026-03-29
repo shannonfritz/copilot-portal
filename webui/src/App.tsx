@@ -371,8 +371,6 @@ function SessionDrawer({
 	activeModel,
 	onChangeModel,
 	onFetchModels,
-	onSetContext,
-	onSetupTemplate,
 	activeSessionId,
 	sessionSummary,
 }: {
@@ -383,15 +381,10 @@ function SessionDrawer({
 	activeModel: string | null;
 	onChangeModel: (id: string) => void;
 	onFetchModels?: () => Promise<Array<{ id: string; name: string }>>;
-	onSetContext?: (contextId: string) => void;
-	onSetupTemplate?: (templateId: string, templateContent: string) => void;
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
-	const [showContextPicker, setShowContextPicker] = useState(false);
-	const [contexts, setContexts] = useState<Array<{ id: string; name: string }>>([]);
-	const [templates, setTemplates] = useState<Array<{ id: string; name: string }>>([]);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
@@ -503,85 +496,6 @@ function SessionDrawer({
 							</div>
 						)}
 					</div>
-
-					{/* Context selector */}
-					<div className="relative">
-						<button
-							type="button"
-							className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-							onClick={() => {
-								const opening = !showContextPicker;
-								setShowContextPicker(opening);
-								if (opening) {
-									apiFetch('/api/instructions').then(r => r.json()).then(setContexts).catch(() => {});
-									apiFetch('/api/context-templates').then(r => r.json()).then(setTemplates).catch(() => {});
-								}
-							}}
-						>
-							<div className="flex items-center gap-2">
-								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<path d="M9 12h6M12 9v6M4 6h16M4 12h16M4 18h16" />
-								</svg>
-								<span>Give Instruction</span>
-							</div>
-							<span style={{ color: 'var(--text-muted)' }}>{showContextPicker ? '\u25b4' : '\u25be'}</span>
-						</button>
-						{showContextPicker && (
-							<div
-								className="chat-scroll absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
-								style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-							>
-								{contexts.length === 0 && templates.length === 0 && (
-									<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-										No instructions found. Add .md files to data/instructions/
-									</div>
-								)}
-								{contexts.map(c => (
-									<button
-										key={c.id}
-										type="button"
-										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-										style={{ background: 'transparent' }}
-										onClick={() => {
-											setShowContextPicker(false);
-											onSetContext?.(c.id);
-										}}
-									>
-										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>⦿</span>
-										<span>{c.name}</span>
-									</button>
-								))}
-								{templates.length > 0 && (
-									<>
-										{contexts.length > 0 && <div className="mx-3 my-1" style={{ borderTop: '1px solid var(--border)' }} />}
-										<div className="px-3 py-1 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>New from Template</div>
-										{templates.map(t => (
-											<button
-												key={`tpl-${t.id}`}
-												type="button"
-												className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-												style={{ background: 'transparent' }}
-												onClick={async () => {
-													setShowContextPicker(false);
-													try {
-														const res = await apiFetch(`/api/context-templates/${encodeURIComponent(t.id)}`);
-														const { content } = await res.json() as { content: string };
-														if (content) onSetupTemplate?.(t.id, content);
-													} catch (e) {
-														console.error('Failed to load template:', e);
-													}
-												}}
-											>
-												<span className="w-4 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>＋</span>
-												<span>{t.name}</span>
-											</button>
-										))}
-									</>
-								)}
-							</div>
-						)}
-					</div>
 				</div>
 			)}
 		</div>
@@ -627,6 +541,8 @@ export default function App() {
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
 	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
+	const [showInstructions, setShowInstructions] = useState(false);
+	const [instructions, setInstructions] = useState<Array<{ id: string; name: string }>>([]);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
@@ -1610,6 +1526,62 @@ export default function App() {
 				</div>
 			)}
 
+			{/* Instructions Picker */}
+			{showInstructions && (
+				<div
+					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
+					style={{ background: 'var(--overlay)' }}
+					onClick={() => setShowInstructions(false)}
+				>
+					<div
+						className="w-full max-w-md rounded-2xl p-4"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="mb-3 flex items-center justify-between">
+							<h2 className="font-semibold">Give Instruction</h2>
+							<button className="rounded px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }} onClick={() => setShowInstructions(false)} type="button">✕</button>
+						</div>
+						{instructions.length === 0 ? (
+							<div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+								No instructions found. Add .md files to data/instructions/
+							</div>
+						) : (
+							<div className="chat-scroll flex max-h-80 flex-col gap-1 overflow-y-auto">
+								{instructions.map(inst => (
+									<button
+										key={inst.id}
+										type="button"
+										className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm"
+										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+										onClick={async () => {
+											setShowInstructions(false);
+											try {
+												const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
+												const { filePath, title } = await res.json() as { filePath: string; title: string };
+												if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
+													const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
+													wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
+													setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
+													setIsStreaming(true);
+													setIsThinking(true);
+													setThinkingText('Applying instruction...');
+												}
+											} catch (e) {
+												setError(`Failed to load instruction: ${e}`);
+											}
+										}}
+									>
+										<span style={{ color: 'var(--text-muted)' }}>📝</span>
+										<span>{inst.name}</span>
+									</button>
+								))}
+							</div>
+						)}
+					</div>
+				</div>
+			)}
+
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
@@ -1887,7 +1859,22 @@ export default function App() {
 						</button>
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: approveAll ? 'var(--success-tint)' : rules.length > 0 ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined }}
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+							onClick={() => {
+								const opening = !showInstructions;
+								setShowInstructions(opening);
+								if (opening) apiFetch('/api/instructions').then(r => r.json()).then(setInstructions).catch(() => {});
+							}}
+							type="button"
+							title="Instructions"
+						>
+							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true">
+								<rect x="5" y="2" width="14" height="20" rx="2" />
+								<path d="M9 8c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+								<path d="M9 13c1-1.2 2 1.2 3 0s2 1.2 3 0" />
+							</svg>
+						</button>
+						<button
 							onClick={() => setShowRules(v => !v)}
 							type="button"
 							title={approveAll ? 'Auto-approve all (yolo) enabled' : `Always-allow rules (${rules.length})`}
@@ -1943,34 +1930,6 @@ export default function App() {
 						activeModel={activeModel}
 						onChangeModel={changeModel}
 						onFetchModels={() => apiFetch('/api/models').then(r => r.json())}
-						onSetContext={async (contextId) => {
-							try {
-								const res = await apiFetch(`/api/instructions/${encodeURIComponent(contextId)}`);
-								const { filePath, title } = await res.json() as { filePath: string; title: string };
-								if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
-									const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
-									wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
-									setIsStreaming(true);
-									setIsThinking(true);
-									setThinkingText('Applying instruction...');
-									setDrawerOpen(false);
-								}
-							} catch (e) {
-								setError(`Failed to load instruction: ${e}`);
-							}
-						}}
-						onSetupTemplate={(templateId, templateContent) => {
-							if (wsRef.current?.readyState === WebSocket.OPEN) {
-								const prompt = `Follow the setup instructions in this context template to create a personalized context file for me. Walk me through each step using ask_user prompts. When done, save the result to data/contexts/${templateId}.md\n\n${templateContent}`;
-								wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-								setMessages(prev => [...prev, { id: `tpl-${Date.now()}`, role: 'user', content: `Set up context from template: ${templateId.replace(/[-_]/g, ' ')}`, timestamp: Date.now() }]);
-								setIsStreaming(true);
-								setIsThinking(true);
-								setThinkingText('Setting up context...');
-								setDrawerOpen(false);
-							}
-						}}
 					activeSessionId={activeSessionId}
 					sessionSummary={activeSessionSummary}
 					/>
