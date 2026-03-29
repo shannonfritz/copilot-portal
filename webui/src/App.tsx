@@ -542,6 +542,7 @@ export default function App() {
 	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
 	const [showInstructions, setShowInstructions] = useState(false);
+	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
 	const [instructions, setInstructions] = useState<Array<{ id: string; name: string }>>([]);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
@@ -1576,7 +1577,20 @@ export default function App() {
 											<path d="M8 8c1-2 2.5 2 3.5 0s2.5 2 3.5 0" />
 											<path d="M8 13c1-2 2.5 2 3.5 0s2.5 2 3.5 0" />
 										</svg>
-										<span>{inst.name}</span>
+										<span className="flex-1">{inst.name}</span>
+										{confirmDeleteInstruction === inst.id ? (
+											<span className="flex gap-1" onClick={e => e.stopPropagation()}>
+												<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={async (e) => {
+													e.stopPropagation();
+													await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`, { method: 'DELETE' });
+													setInstructions(prev => prev.filter(i => i.id !== inst.id));
+													setConfirmDeleteInstruction(null);
+												}} type="button">Delete</button>
+												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(null); }} type="button">Cancel</button>
+											</span>
+										) : (
+											<button className="rounded px-1 py-0.5 text-xs opacity-40 hover:opacity-100" style={{ color: 'var(--error)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button">✕</button>
+										)}
 									</button>
 								))}
 							</div>

@@ -592,9 +592,23 @@ export class PortalServer {
 				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
-				// Read first line as title (strip # prefix)
 				const firstLine = fs.readFileSync(resolved, 'utf8').split('\n')[0].replace(/^#\s*/, '').trim();
 				this.sendJson(res, 200, { filePath: resolved, title: firstLine });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		if (contextMatch && method === 'DELETE') {
+			try {
+				const contextFile = path.join(this.dataDir, 'instructions', decodeURIComponent(contextMatch[1]) + '.md');
+				const resolved = path.resolve(contextFile);
+				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
+				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Not found' }); return; }
+				fs.unlinkSync(resolved);
+				this.sendJson(res, 200, { ok: true });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
