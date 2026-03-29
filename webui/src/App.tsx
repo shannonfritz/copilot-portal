@@ -1552,7 +1552,7 @@ export default function App() {
 									<button
 										key={inst.id}
 										type="button"
-										className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm"
+										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm"
 										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
 										onClick={async () => {
 											setShowInstructions(false);
@@ -1589,7 +1589,7 @@ export default function App() {
 												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(null); }} type="button">Cancel</button>
 											</span>
 										) : (
-											<button className="rounded p-1 opacity-40 hover:opacity-100" style={{ color: 'var(--error)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button">
+											<button className="rounded p-1 opacity-40 hover:opacity-100" style={{ color: 'var(--text-muted)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button">
 												<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 													<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
 												</svg>
