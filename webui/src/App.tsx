@@ -1547,7 +1547,7 @@ export default function App() {
 								No instructions found. Add .md files to data/instructions/
 							</div>
 						) : (
-							<div className="chat-scroll flex max-h-80 flex-col gap-1 overflow-y-auto">
+							<div className="chat-scroll" style={{ maxHeight: 'calc(100vh - 12rem)', overflowY: 'auto' }}>
 								{instructions.map(inst => (
 									<button
 										key={inst.id}
