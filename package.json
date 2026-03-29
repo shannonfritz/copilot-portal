@@ -1,7 +1,7 @@
 {
 	"name": "copilot-portal",
 	"description": "Mobile-friendly web portal for GitHub Copilot CLI — share a session across any device",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"type": "module",
 	"engines": {
 		"node": ">=22.5.0"

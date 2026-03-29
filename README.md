@@ -28,14 +28,30 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 ## Console Commands
 
 While running, press a key:
-- `q` — Show QR code
-- `u` — Show portal URL
+- `t` — Open CLI TUI (session picker)
+- `l` — Launch browser
+- `q` — Show QR code and URL
+- `u` — Check for updates
 - `r` — Restart server
 - `x` — Exit
 
+## Instructions
+
+Drop `.md` files into `data/instructions/` to create reusable instruction guides.
+Example files are seeded on first run from `instruction-examples/`.
+
+Click the 📋 button in the top bar to:
+- **Apply** an instruction to the current session (click the name)
+- **View** the instruction content (eye icon)
+- **Delete** an instruction (trash icon)
+
+Instructions tell Copilot how to behave — API access patterns, coding conventions,
+game rules, or anything you'd normally explain at the start of a session. They can
+even update themselves (see `my-preferences.md` example).
+
 ## Architecture
 
-The portal runs in **shared mode** by default:
+The portal runs in **connected mode** by default:
 - A headless Copilot CLI server runs in the background (port 3848)
 - The portal server connects to it via the SDK (port 3847)
 - Messages sent from the portal are visible in any CLI session, and vice versa

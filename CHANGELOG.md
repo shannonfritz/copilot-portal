@@ -2,6 +2,67 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.4.0
+
+### Instructions
+- Reusable instruction guides: drop `.md` files into `data/instructions/`
+- Top bar button with picker modal (tri-fold map icon)
+- View instruction content (eye icon), delete with confirmation (trash icon)
+- Instructions applied via file-read prompt — Copilot reads the file natively
+- Title from first line of `.md` used as session opener for better auto-naming
+- Self-updating instructions: files can prompt user and write back answers
+- Example instructions included:
+  - Test Context, 20 Questions, Choose Your Own Adventure
+  - My Preferences (self-updating), My Dev Environment (discover + ask)
+  - Copilot Portal Dev (project briefing), System Explorer, CRM & ADO
+
+### Per-Message Tool Summaries
+- Tools collapse into summaries on the message that dispatched them
+- Progressive collapse: each message's tools collapse when all complete
+- Empty messages (tool-dispatch-only) render as summary-only rows
+- Consistent rendering between live streaming and history replay
+
+### Message Rendering
+- Reasoning shown as collapsed "Thought" section inside message bubble
+- Messages and tool events interleaved by timestamp (single timeline)
+- ask_user questions show in chat with collapsed options summary
+- ask_user excluded from tool summaries
+- Freeform input preserved during probe re-broadcasts
+- Message input hidden when ask_user prompt is active
+- Skip button on ask_user prompts
+- Error events clear all turn state (no stuck thinking indicator)
+
+### CLI TUI Integration
+- Console command `[t]` to open CLI TUI with session picker
+- Switches from headless to --ui-server mode with confirmation
+- Portal auto-reloads when CLI server mode changes
+- Full bidirectional sync when in --ui-server mode
+
+### Connection Reliability
+- Auto-restart SDK client on idle connection drop
+- Wait for CLI server port before reconnecting
+- Create fresh CopilotClient on reconnect (preserves cliUrl config)
+- Reduced auth failure retries (3 vs 5) to prevent self-blocking
+
+### Security
+- Rate limiting on failed auth: 15 attempts per 60s per IP
+- Applied to both HTTP and WebSocket endpoints
+- Failed attempts and blocks logged to console
+
+### Code Quality
+- 8 code review items fixed (CR-1 through CR-16)
+- Path traversal hardened (resolve instead of normalize)
+- Approval/input cleanup on disconnect
+- Stale handle fix after reconnect
+- Noisy delta events suppressed from console log
+- Stale UI banner when server build changes
+
+### Console & Startup
+- `[u]` Update command, `[t]` CLI TUI launcher, `[l]` Launch browser
+- Session labels truncated with ID prefix in CLI picker
+- Improved start-portal.cmd with step numbers and descriptions
+- Console title set to "Copilot Portal"
+
 ## v0.3.0
 
 ### Shared CLI Server Mode
