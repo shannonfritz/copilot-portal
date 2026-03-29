@@ -1538,9 +1538,8 @@ export default function App() {
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="mb-3 flex items-center justify-between">
+						<div className="mb-3">
 							<h2 className="font-semibold">Give Instruction</h2>
-							<button className="rounded px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }} onClick={() => setShowInstructions(false)} type="button">✕</button>
 						</div>
 						{instructions.length === 0 ? (
 							<div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
