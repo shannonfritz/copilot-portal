@@ -543,6 +543,7 @@ export default function App() {
 	const [showRules, setShowRules] = useState(false);
 	const [showInstructions, setShowInstructions] = useState(false);
 	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
+	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string } | null>(null);
 	const [instructions, setInstructions] = useState<Array<{ id: string; name: string }>>([]);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
@@ -1532,7 +1533,7 @@ export default function App() {
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
-					onClick={() => setShowInstructions(false)}
+					onClick={() => { setShowInstructions(false); setViewingInstruction(null); setConfirmDeleteInstruction(null); }}
 				>
 					<div
 						className="w-full max-w-md rounded-2xl p-4"
@@ -1542,7 +1543,17 @@ export default function App() {
 						<div className="mb-3">
 							<h2 className="font-semibold">Give Instruction</h2>
 						</div>
-						{instructions.length === 0 ? (
+						{viewingInstruction ? (
+							<div>
+								<div className="mb-2 flex items-center justify-between">
+									<h3 className="font-semibold text-sm">{viewingInstruction.title}</h3>
+									<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setViewingInstruction(null)} type="button">Back</button>
+								</div>
+								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingInstruction.content}</pre>
+								</div>
+							</div>
+						) : instructions.length === 0 ? (
 							<div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
 								No instructions found. Add .md files to data/instructions/
 							</div>
@@ -1589,11 +1600,26 @@ export default function App() {
 												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(null); }} type="button">Cancel</button>
 											</span>
 										) : (
-											<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button">
-												<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-													<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
-												</svg>
-											</button>
+											<span className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={async (e) => {
+													e.stopPropagation();
+													try {
+														const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
+														const data = await res.json() as { title: string; content: string };
+														setViewingInstruction({ id: inst.id, title: data.title, content: data.content });
+													} catch {}
+												}} type="button" title="View">
+													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+														<circle cx="12" cy="12" r="3" />
+													</svg>
+												</button>
+												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button" title="Delete">
+													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
+													</svg>
+												</button>
+											</span>
 										)}
 									</button>
 								))}
@@ -1675,7 +1701,7 @@ export default function App() {
 											type="button"
 										>
 											<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-												<path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+												<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
 											</svg>
 										</button>
 									</div>

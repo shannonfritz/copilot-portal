@@ -574,7 +574,7 @@ export class PortalServer {
 				const files = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
 				const contexts = files.map(f => ({
 					id: f.replace(/\.md$/, ''),
-					name: f.replace(/\.md$/, '').replace(/[-_]/g, ' '),
+					name: f,
 					file: f,
 				}));
 				this.sendJson(res, 200, contexts);
@@ -592,8 +592,9 @@ export class PortalServer {
 				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Context not found' }); return; }
-				const firstLine = fs.readFileSync(resolved, 'utf8').split('\n')[0].replace(/^#\s*/, '').trim();
-				this.sendJson(res, 200, { filePath: resolved, title: firstLine });
+				const fileContent = fs.readFileSync(resolved, 'utf8');
+				const firstLine = fileContent.split('\n')[0].replace(/^#\s*/, '').trim();
+				this.sendJson(res, 200, { filePath: resolved, title: firstLine, content: fileContent });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
