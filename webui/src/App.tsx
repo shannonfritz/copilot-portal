@@ -1946,9 +1946,9 @@ export default function App() {
 						onSetContext={async (contextId) => {
 							try {
 								const res = await apiFetch(`/api/instructions/${encodeURIComponent(contextId)}`);
-								const { filePath } = await res.json() as { filePath: string };
+								const { filePath, title } = await res.json() as { filePath: string; title: string };
 								if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
-									const prompt = `Read the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
+									const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
 									wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
 									setMessages(prev => [...prev, { id: `ctx-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
 									setIsStreaming(true);
