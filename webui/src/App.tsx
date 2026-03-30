@@ -1031,32 +1031,35 @@ export default function App() {
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
-					// Check if all tools for any message are now complete → delay then collapse
 					const completedId = event.toolCallId;
-					// Find the message this tool belongs to
-					const parentMsg = messages.find(m => m.toolCallIds?.includes(completedId));
-					if (parentMsg?.toolCallIds) {
+					// Check if all tools for any message are now complete → delay then collapse
+					setMessages(prev => {
+						const parentMsg = prev.find(m => m.toolCallIds?.includes(completedId));
+						if (!parentMsg?.toolCallIds) return prev;
 						const allToolEvents = toolEventsRef.current;
 						const allDone = parentMsg.toolCallIds.every(tcId => {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
 							return te?.type === 'tool_complete' || tcId === completedId;
 						});
 						if (allDone) {
-							// Show green for 2s before collapsing into summary
+							const msgId = parentMsg.id;
+							const toolCallIds = parentMsg.toolCallIds;
+							// Show green for 2s before collapsing
 							setTimeout(() => {
-								setMessages(prev => prev.map(m => {
-									if (m.id !== parentMsg.id || !m.toolCallIds) return m;
+								setMessages(prev2 => prev2.map(m => {
+									if (m.id !== msgId || !m.toolCallIds) return m;
 									const currentTools = toolEventsRef.current;
-									const msgTools = m.toolCallIds
+									const msgTools = toolCallIds
 										.map(tcId => currentTools.find(t => t.toolCallId === tcId))
 										.filter((t): t is ToolEvent => !!t);
 									const summary = buildToolSummary(msgTools);
-									setToolEvents(prev2 => prev2.filter(te => !m.toolCallIds?.includes(te.toolCallId ?? '')));
+									setToolEvents(prev3 => prev3.filter(te => !toolCallIds.includes(te.toolCallId ?? '')));
 									return { ...m, toolSummary: summary.length ? summary : undefined, toolCallIds: undefined };
 								}));
 							}, 2000);
 						}
-					}
+						return prev; // don't modify messages yet
+					});
 					if (!isStoppingRef.current) setThinkingText('Thinking…');
 				} else if (event.type === 'tool_update') {
 					// Sub-agent name arrived — update the task tool's displayLabel
