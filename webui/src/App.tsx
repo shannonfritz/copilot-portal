@@ -1031,27 +1031,32 @@ export default function App() {
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
-					// Check if all tools for any message are now complete → build per-message summary
+					// Check if all tools for any message are now complete → delay then collapse
 					const completedId = event.toolCallId;
-					setMessages(prev => prev.map(m => {
-						if (!m.toolCallIds?.includes(completedId)) return m;
-						// Check if ALL of this message's tools are now complete
+					// Find the message this tool belongs to
+					const parentMsg = messages.find(m => m.toolCallIds?.includes(completedId));
+					if (parentMsg?.toolCallIds) {
 						const allToolEvents = toolEventsRef.current;
-						const allDone = m.toolCallIds.every(tcId => {
+						const allDone = parentMsg.toolCallIds.every(tcId => {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
-							// tool_complete or about to be (current event)
 							return te?.type === 'tool_complete' || tcId === completedId;
 						});
-						if (!allDone) return m;
-						// Build summary from this message's tools only
-						const msgTools = m.toolCallIds
-							.map(tcId => allToolEvents.find(t => t.toolCallId === tcId))
-							.filter((t): t is ToolEvent => !!t);
-						const summary = buildToolSummary(msgTools);
-						// Remove these tool events from the live list
-						setToolEvents(prev2 => prev2.filter(te => !m.toolCallIds?.includes(te.toolCallId ?? '')));
-						return { ...m, toolSummary: summary.length ? summary : undefined, toolCallIds: undefined };
-					}));
+						if (allDone) {
+							// Show green for 2s before collapsing into summary
+							setTimeout(() => {
+								setMessages(prev => prev.map(m => {
+									if (m.id !== parentMsg.id || !m.toolCallIds) return m;
+									const currentTools = toolEventsRef.current;
+									const msgTools = m.toolCallIds
+										.map(tcId => currentTools.find(t => t.toolCallId === tcId))
+										.filter((t): t is ToolEvent => !!t);
+									const summary = buildToolSummary(msgTools);
+									setToolEvents(prev2 => prev2.filter(te => !m.toolCallIds?.includes(te.toolCallId ?? '')));
+									return { ...m, toolSummary: summary.length ? summary : undefined, toolCallIds: undefined };
+								}));
+							}, 2000);
+						}
+					}
 					if (!isStoppingRef.current) setThinkingText('Thinking…');
 				} else if (event.type === 'tool_update') {
 					// Sub-agent name arrived — update the task tool's displayLabel
@@ -2079,8 +2084,25 @@ export default function App() {
 					})()}
 					{/* Interleave messages and tool events by timestamp */}
 					{(() => {
+						// Consolidate consecutive tool-only messages (no text, just toolSummary)
+						const visibleMessages = messages.filter(m => m.content.trim() || m.toolSummary?.length);
+						const consolidated: Message[] = [];
+						for (const msg of visibleMessages) {
+							const isToolOnly = !msg.content.trim() && msg.toolSummary?.length;
+							const prev = consolidated[consolidated.length - 1];
+							const prevIsToolOnly = prev && !prev.content.trim() && prev.toolSummary?.length;
+							if (isToolOnly && prevIsToolOnly && prev.toolSummary) {
+								// Merge into previous tool-only message
+								consolidated[consolidated.length - 1] = {
+									...prev,
+									toolSummary: [...prev.toolSummary, ...(msg.toolSummary ?? [])],
+								};
+							} else {
+								consolidated.push(msg);
+							}
+						}
 						const items: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
-							...messages.filter(m => m.content.trim() || m.toolSummary?.length).map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
+							...consolidated.map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
 							...toolEvents.map(tc => ({ type: 'tool' as const, tc, ts: tc.timestamp })),
 						].sort((a, b) => a.ts - b.ts);
 
