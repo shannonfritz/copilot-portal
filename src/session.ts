@@ -97,7 +97,6 @@ export class SessionHandle {
 	private activeDeltaBuffer = '';
 	private activeReasoningBuffer = '';
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
-	private queuedPrompt: string | null = null; // message queued while a turn is in progress
 	private cliApprovalSummary: string | null = null;// set when CLI turn is waiting for tool approval
 	private cliInputPending: string | null = null; // set when CLI turn is waiting for user input
 	private turnProbeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -556,13 +555,6 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	async send(prompt: string): Promise<void> {
-		// If a turn is already in progress, queue this message for after it completes
-		if (this.isTurnActive) {
-			this.log(`[Session] Turn in progress — queuing prompt (${prompt.length} chars)`);
-			this.queuedPrompt = prompt;
-			this.broadcast({ type: 'info', content: 'Message queued — will send when the current turn completes.' });
-			return;
-		}
 		// Mark turn active immediately so pollForChanges() won't reconnect when
 		// user.message fires and changes modifiedTime.
 		this.isTurnActive = true;
@@ -1180,13 +1172,6 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// Re-seed modTime so the turn's messages don't trigger a spurious CLI reconnect
 		if (this.getModTimeFn) {
 			this.getModTimeFn().then(t => { if (t) this.lastKnownModTime = t; }).catch(() => {});
-		}
-		// If a message was queued during this turn, send it now
-		if (this.queuedPrompt) {
-			const queued = this.queuedPrompt;
-			this.queuedPrompt = null;
-			this.log(`[Session] Sending queued prompt (${queued.length} chars)`);
-			void this.send(queued);
 		}
 	}
 
