@@ -2367,8 +2367,8 @@ export default function App() {
 								ref={textareaRef}
 								className="chat-scroll w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
 								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-								placeholder={isAgentActive ? 'Copilot is working…' : connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
-								disabled={connectionState !== 'connected' || isAgentActive}
+								placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
+								disabled={connectionState !== 'connected'}
 								rows={1}
 								value={input}
 								onChange={(e) => setInput(e.target.value)}
