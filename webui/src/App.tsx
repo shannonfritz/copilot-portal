@@ -1517,6 +1517,37 @@ export default function App() {
 		}
 	};
 
+	const loadPromptsForInstruction = async (instId: string) => {
+		try {
+			const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(instId)}/prompts`);
+			const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
+			if (newPrompts.length > 0) {
+				let updated = 0;
+				setSessionPrompts(prev => {
+					const merged = [...prev];
+					for (const p of newPrompts) {
+						const idx = merged.findIndex(m => m.label === p.label);
+						if (idx >= 0) { merged[idx] = p; updated++; } else merged.push(p);
+					}
+					const sid = activeSessionIdRef.current;
+					if (sid) {
+						sessionPromptsRef.current.set(sid, merged);
+						apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+							method: 'POST', headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ prompts: merged }),
+						}).catch(() => {});
+					}
+					return merged;
+				});
+				const msg = updated > 0
+					? `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''} (${updated} replaced)`
+					: `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''}`;
+				setNotification({ type: 'info', message: msg });
+				setTimeout(() => setNotification(null), 4000);
+			}
+		} catch { /* prompts are optional */ }
+	};
+
 	const sendPrompt = () => {
 		const prompt = input.trim();
 		if (!prompt || connectionState !== 'connected') return;
@@ -1633,30 +1664,7 @@ export default function App() {
 											setViewingInstruction(null);
 											setShowInstructions(false);
 											if (vi.isPrompts) {
-												// Load prompts only
-												try {
-													const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}/prompts`);
-													const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
-													if (newPrompts.length > 0) {
-														setSessionPrompts(prev => {
-															const merged = [...prev];
-															for (const p of newPrompts) {
-																const idx = merged.findIndex(m => m.label === p.label);
-																if (idx >= 0) merged[idx] = p; else merged.push(p);
-															}
-															const sid = activeSessionIdRef.current;
-															if (sid) {
-																sessionPromptsRef.current.set(sid, merged);
-																apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
-																	method: 'POST',
-																	headers: { 'Content-Type': 'application/json' },
-																	body: JSON.stringify({ prompts: merged }),
-																}).catch(() => {});
-															}
-															return merged;
-														});
-													}
-												} catch {}
+												await loadPromptsForInstruction(vi.id);
 											} else {
 												// Apply instruction
 												try {
@@ -1670,33 +1678,8 @@ export default function App() {
 														setIsThinking(true);
 														setThinkingText('Applying instruction...');
 													}
-													// Also load prompts if available
 													const inst = instructions.find(i => i.id === vi.id);
-													if (inst?.hasPrompts) {
-														try {
-															const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}/prompts`);
-															const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
-															if (newPrompts.length > 0) {
-																setSessionPrompts(prev => {
-																	const merged = [...prev];
-																	for (const p of newPrompts) {
-																		const idx = merged.findIndex(m => m.label === p.label);
-																		if (idx >= 0) merged[idx] = p; else merged.push(p);
-																	}
-																	const sid = activeSessionIdRef.current;
-																	if (sid) {
-																		sessionPromptsRef.current.set(sid, merged);
-																		apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
-																			method: 'POST',
-																			headers: { 'Content-Type': 'application/json' },
-																			body: JSON.stringify({ prompts: merged }),
-																		}).catch(() => {});
-																	}
-																	return merged;
-																});
-															}
-														} catch {}
-													}
+													if (inst?.hasPrompts) await loadPromptsForInstruction(vi.id);
 												} catch (e) {
 													setError(`Failed to load instruction: ${e}`);
 												}
@@ -1738,31 +1721,7 @@ export default function App() {
 													}
 												}
 												// Load prompts if available
-												if (inst.hasPrompts) {
-													try {
-														const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}/prompts`);
-														const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
-														if (newPrompts.length > 0) {
-															setSessionPrompts(prev => {
-																const merged = [...prev];
-																for (const p of newPrompts) {
-																	const idx = merged.findIndex(m => m.label === p.label);
-																	if (idx >= 0) merged[idx] = p; else merged.push(p);
-																}
-																const sid = activeSessionIdRef.current;
-																if (sid) {
-																	sessionPromptsRef.current.set(sid, merged);
-																	apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
-																		method: 'POST',
-																		headers: { 'Content-Type': 'application/json' },
-																		body: JSON.stringify({ prompts: merged }),
-																	}).catch(() => {});
-																}
-																return merged;
-															});
-														}
-													} catch { /* prompts are optional */ }
-												}
+												if (inst.hasPrompts) await loadPromptsForInstruction(inst.id);
 											} catch (e) {
 												setError(`Failed to load instruction: ${e}`);
 											}
