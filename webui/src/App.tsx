@@ -322,8 +322,8 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		</div>
 	);
 	if (tc.type === 'intent') return (
-		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5" style={{ color: 'var(--purple)' }}>
-			<span>●</span><span>{tc.content}</span>
+		<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5">
+			<span style={{ color: 'var(--purple)' }}>●</span><span style={{ color: 'var(--text-muted)' }}>{tc.content}</span>
 		</div>
 	);
 	const isComplete = tc.type === 'tool_complete';
