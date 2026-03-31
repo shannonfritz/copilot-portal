@@ -594,8 +594,8 @@ export class PortalServer {
 				const promptsDir = path.join(this.dataDir, 'prompts');
 				const instrFiles = fs.existsSync(instrDir) ? fs.readdirSync(instrDir).filter(f => f.endsWith('.md')) : [];
 				const promptFiles = fs.existsSync(promptsDir) ? fs.readdirSync(promptsDir).filter(f => f.endsWith('.md')) : [];
-				const allIds = new Set([...instrFiles.map(f => f.replace(/\.md$/, '')), ...promptFiles.map(f => f.replace(/\.md$/, ''))]);
-				const items = [...allIds].map(id => ({
+				const allIds = [...new Set([...instrFiles.map(f => f.replace(/\.md$/, '')), ...promptFiles.map(f => f.replace(/\.md$/, ''))])].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+				const items = allIds.map(id => ({
 					id,
 					name: id + '.md',
 					file: id + '.md',
