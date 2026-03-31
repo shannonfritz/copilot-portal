@@ -1518,6 +1518,11 @@ export default function App() {
 		return () => document.removeEventListener('mousedown', handler);
 	}, [showPromptsTray]);
 
+	// Scroll chat to bottom when prompts tray opens
+	useEffect(() => {
+		if (showPromptsTray) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+	}, [showPromptsTray]);
+
 	if (connectionState === 'no_token') {
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
@@ -2441,7 +2446,7 @@ export default function App() {
 					}}
 				>
 					<div className="flex items-center gap-2">
-						<div ref={inputContainerRef} className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+						<div ref={inputContainerRef} className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto', borderColor: 'var(--border)' }}>
 									{sessionPrompts.map((p, i) => (
