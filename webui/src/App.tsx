@@ -571,6 +571,7 @@ export default function App() {
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const inputContainerRef = useRef<HTMLDivElement>(null);
 	const isStoppingRef = useRef(false);
 	const stopClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const heartbeatRef = useRef<{ interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> | null } | null>(null);
@@ -1505,6 +1506,18 @@ export default function App() {
 		ta.style.height = `${ta.scrollHeight}px`;
 	}, [input]);
 
+	// Dismiss prompts tray on click outside
+	useEffect(() => {
+		if (!showPromptsTray) return;
+		const handler = (e: MouseEvent) => {
+			if (inputContainerRef.current && !inputContainerRef.current.contains(e.target as Node)) {
+				setShowPromptsTray(false);
+			}
+		};
+		document.addEventListener('mousedown', handler);
+		return () => document.removeEventListener('mousedown', handler);
+	}, [showPromptsTray]);
+
 	if (connectionState === 'no_token') {
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
@@ -2421,7 +2434,7 @@ export default function App() {
 					}}
 				>
 					<div className="flex items-center gap-2">
-						<div className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+						<div ref={inputContainerRef} className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto', borderColor: 'var(--border)' }}>
 									{sessionPrompts.map((p, i) => (
