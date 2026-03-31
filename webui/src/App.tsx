@@ -543,7 +543,7 @@ export default function App() {
 	const [showRules, setShowRules] = useState(false);
 	const [showInstructions, setShowInstructions] = useState(false);
 	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
-	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string } | null>(null);
+	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string; isPrompts?: boolean } | null>(null);
 	const [instructions, setInstructions] = useState<Array<{ id: string; name: string; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
@@ -1597,7 +1597,83 @@ export default function App() {
 							<div>
 								<div className="mb-2 flex items-center justify-between">
 									<h3 className="font-semibold text-sm">{viewingInstruction.title}</h3>
-									<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setViewingInstruction(null)} type="button">Back</button>
+									<div className="flex gap-1">
+										<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
+											const vi = viewingInstruction;
+											setViewingInstruction(null);
+											setShowInstructions(false);
+											if (vi.isPrompts) {
+												// Load prompts only
+												try {
+													const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}/prompts`);
+													const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
+													if (newPrompts.length > 0) {
+														setSessionPrompts(prev => {
+															const merged = [...prev];
+															for (const p of newPrompts) {
+																const idx = merged.findIndex(m => m.label === p.label);
+																if (idx >= 0) merged[idx] = p; else merged.push(p);
+															}
+															const sid = activeSessionIdRef.current;
+															if (sid) {
+																sessionPromptsRef.current.set(sid, merged);
+																apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+																	method: 'POST',
+																	headers: { 'Content-Type': 'application/json' },
+																	body: JSON.stringify({ prompts: merged }),
+																}).catch(() => {});
+															}
+															return merged;
+														});
+													}
+												} catch {}
+											} else {
+												// Apply instruction
+												try {
+													const res = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}`);
+													const { filePath, title } = await res.json() as { filePath: string; title: string };
+													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
+														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
+														wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
+														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
+														setIsStreaming(true);
+														setIsThinking(true);
+														setThinkingText('Applying instruction...');
+													}
+													// Also load prompts if available
+													const inst = instructions.find(i => i.id === vi.id);
+													if (inst?.hasPrompts) {
+														try {
+															const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}/prompts`);
+															const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
+															if (newPrompts.length > 0) {
+																setSessionPrompts(prev => {
+																	const merged = [...prev];
+																	for (const p of newPrompts) {
+																		const idx = merged.findIndex(m => m.label === p.label);
+																		if (idx >= 0) merged[idx] = p; else merged.push(p);
+																	}
+																	const sid = activeSessionIdRef.current;
+																	if (sid) {
+																		sessionPromptsRef.current.set(sid, merged);
+																		apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+																			method: 'POST',
+																			headers: { 'Content-Type': 'application/json' },
+																			body: JSON.stringify({ prompts: merged }),
+																		}).catch(() => {});
+																	}
+																	return merged;
+																});
+															}
+														} catch {}
+													}
+												} catch (e) {
+													setError(`Failed to load instruction: ${e}`);
+												}
+											}
+										}} type="button">{viewingInstruction.isPrompts ? 'Load Prompts' : 'Apply'}</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setViewingInstruction(null)} type="button">Back</button>
+									</div>
 								</div>
 								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
 									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingInstruction.content}</pre>
@@ -1697,7 +1773,7 @@ export default function App() {
 														const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}/prompts`);
 														const { prompts } = await res.json() as { prompts: Array<{ label: string; text: string }> };
 														const content = prompts.map(p => `## ${p.label}\n${p.text}`).join('\n\n');
-														setViewingInstruction({ id: inst.id, title: `Prompts: ${inst.name}`, content });
+														setViewingInstruction({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true });
 													} catch {}
 												}} type="button" title={inst.hasPrompts ? 'View prompts' : 'No prompts'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
