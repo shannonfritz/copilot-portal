@@ -206,4 +206,6 @@ body,
 .prose table td, .prose table th {
 	border: 1px solid var(--border);
 	padding: 0.4em 0.75em;
+	vertical-align: top;
+	text-align: left;
 }
