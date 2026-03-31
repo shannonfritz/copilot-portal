@@ -2573,8 +2573,8 @@ export default function App() {
 						sendPrompt();
 					}}
 				>
-					<div className="flex gap-2">
-						<div ref={inputContainerRef} className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+					<div ref={inputContainerRef} className="flex gap-2">
+						<div className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="relative border-b" style={{ borderColor: 'var(--border)' }}>
 									<div className="chat-scroll flex flex-col gap-1 px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto' }}>
