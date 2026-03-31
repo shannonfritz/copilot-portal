@@ -1692,7 +1692,7 @@ export default function App() {
 								</div>
 								{viewingGuide.filePath && (
 									<div className="mb-2 flex items-center gap-1 rounded px-2 py-1" style={{ background: 'var(--bg)' }}>
-										<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+										<div className="chat-scroll flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
 											{viewingGuide.filePath}
 										</div>
 										<CopyButton text={viewingGuide.filePath} />
