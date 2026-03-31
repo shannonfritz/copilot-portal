@@ -543,7 +543,7 @@ export default function App() {
 	const [showRules, setShowRules] = useState(false);
 	const [showGuides, setshowGuides] = useState(false);
 	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
-	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean } | null>(null);
+	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean; filePath?: string } | null>(null);
 	const [guides, setGuides] = useState<Array<{ id: string; name: string; hasGuide?: boolean; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
@@ -1661,6 +1661,11 @@ export default function App() {
 								<div className="mb-2 flex items-center justify-between">
 									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
 									<div className="flex gap-1">
+										{viewingGuide.filePath && (
+											<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
+												if (navigator.clipboard) navigator.clipboard.writeText(viewingGuide.filePath!);
+											}} type="button" title="Copy file path">📋 Path</button>
+										)}
 										<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
 											const vi = viewingGuide;
 											setviewingGuide(null);
@@ -1752,8 +1757,8 @@ export default function App() {
 													if (!inst.hasGuide) return;
 													try {
 														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`);
-														const data = await res.json() as { title: string; content: string };
-														setviewingGuide({ id: inst.id, title: data.title, content: data.content });
+														const data = await res.json() as { title: string; content: string; filePath: string };
+														setviewingGuide({ id: inst.id, title: data.title, content: data.content, filePath: data.filePath });
 													} catch {}
 												}} type="button" title={inst.hasGuide ? 'View guide' : 'No guide'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1766,9 +1771,9 @@ export default function App() {
 													if (!inst.hasPrompts) return;
 													try {
 														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`);
-														const { prompts } = await res.json() as { prompts: Array<{ label: string; text: string }> };
+														const { prompts, filePath } = await res.json() as { prompts: Array<{ label: string; text: string }>; filePath?: string };
 														const content = prompts.map(p => `## ${p.label}\n${p.text}`).join('\n\n');
-														setviewingGuide({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true });
+														setviewingGuide({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true, filePath });
 													} catch {}
 												}} type="button" title={inst.hasPrompts ? 'View prompts' : 'No prompts'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

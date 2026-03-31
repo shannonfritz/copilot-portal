@@ -635,7 +635,7 @@ export class PortalServer {
 				if (currentLabel && currentLines.length) {
 					prompts.push({ label: currentLabel, text: currentLines.join('\n').trim() });
 				}
-				this.sendJson(res, 200, { prompts });
+				this.sendJson(res, 200, { prompts, filePath: resolved });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
