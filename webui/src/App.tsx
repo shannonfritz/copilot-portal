@@ -1661,11 +1661,6 @@ export default function App() {
 								<div className="mb-2 flex items-center justify-between">
 									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
 									<div className="flex gap-1">
-										{viewingGuide.filePath && (
-											<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
-												if (navigator.clipboard) navigator.clipboard.writeText(viewingGuide.filePath!);
-											}} type="button" title="Copy file path">📋 Path</button>
-										)}
 										<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
 											const vi = viewingGuide;
 											setviewingGuide(null);
@@ -1695,6 +1690,15 @@ export default function App() {
 										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setviewingGuide(null)} type="button">Back</button>
 									</div>
 								</div>
+								{viewingGuide.filePath && (
+									<button
+										type="button"
+										className="mb-2 w-full truncate rounded px-2 py-1 text-left font-mono text-xs hover:underline"
+										style={{ color: 'var(--text-muted)', background: 'var(--bg)' }}
+										onClick={() => { if (navigator.clipboard) navigator.clipboard.writeText(viewingGuide.filePath!); }}
+										title="Click to copy path"
+									>{viewingGuide.filePath}</button>
+								)}
 								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
 									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
 								</div>
