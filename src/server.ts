@@ -481,6 +481,9 @@ export class PortalServer {
 			try {
 				await this.pool.deleteSession(sessionId);
 				this.broadcastAll({ type: 'session_deleted', sessionId });
+				// Clean up persisted data for this session
+				delete this.sessionPrompts[sessionId];
+				this.saveSessionPrompts();
 				this.sendJson(res, 200, { ok: true });
 				this.log(`[API] Deleted session: ${sessionId.slice(0, 8)}`);
 			} catch (e) {
