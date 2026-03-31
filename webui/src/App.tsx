@@ -1522,12 +1522,12 @@ export default function App() {
 			const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(instId)}/prompts`);
 			const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
 			if (newPrompts.length > 0) {
-				let updated = 0;
 				setSessionPrompts(prev => {
 					const merged = [...prev];
+					let replaced = 0;
 					for (const p of newPrompts) {
 						const idx = merged.findIndex(m => m.label === p.label);
-						if (idx >= 0) { merged[idx] = p; updated++; } else merged.push(p);
+						if (idx >= 0) { merged[idx] = p; replaced++; } else merged.push(p);
 					}
 					const sid = activeSessionIdRef.current;
 					if (sid) {
@@ -1537,13 +1537,15 @@ export default function App() {
 							body: JSON.stringify({ prompts: merged }),
 						}).catch(() => {});
 					}
+					const msg = replaced > 0
+						? `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''} (${replaced} replaced)`
+						: `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''}`;
+					setTimeout(() => {
+						setNotification({ type: 'info', message: msg });
+						setTimeout(() => setNotification(null), 4000);
+					}, 0);
 					return merged;
 				});
-				const msg = updated > 0
-					? `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''} (${updated} replaced)`
-					: `Loaded ${newPrompts.length} prompt${newPrompts.length !== 1 ? 's' : ''}`;
-				setNotification({ type: 'info', message: msg });
-				setTimeout(() => setNotification(null), 4000);
 			}
 		} catch { /* prompts are optional */ }
 	};
