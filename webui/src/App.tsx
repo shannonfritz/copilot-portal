@@ -2573,7 +2573,7 @@ export default function App() {
 						sendPrompt();
 					}}
 				>
-					<div className="flex items-center gap-2">
+					<div className="flex gap-2">
 						<div ref={inputContainerRef} className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="relative border-b" style={{ borderColor: 'var(--border)' }}>
@@ -2664,34 +2664,39 @@ export default function App() {
 								)}
 							</div>
 						</div>
-						<div className="relative shrink-0 self-end">
+						<div className="flex shrink-0 flex-col items-center">
 							{showPromptsTray && sessionPrompts.length > 0 && (
+								<div className="flex items-center" style={{ height: 200, maxHeight: 200 }}>
+									<button
+										className="flex size-8 items-center justify-center rounded-full border-none"
+										style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
+										onClick={clearSessionPrompts}
+										type="button"
+										title="Remove all prompts"
+									>
+										<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+										</svg>
+									</button>
+								</div>
+							)}
+							<div className="flex items-center" style={{ minHeight: 44 }}>
 								<button
-									className="absolute -top-10 left-1/2 -translate-x-1/2 flex size-8 items-center justify-center rounded-full border-none"
-									style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
-									onClick={clearSessionPrompts}
-									type="button"
-									title="Remove all prompts"
+									className="flex size-11 items-center justify-center rounded-full border-none"
+									style={{
+										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
+										color: 'white',
+										cursor: input.trim() && connectionState === 'connected' ? 'pointer' : 'default',
+									}}
+									disabled={!input.trim() || connectionState !== 'connected'}
+									type="submit"
+									title="Send"
 								>
-									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-										<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+									<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
 									</svg>
 								</button>
-							)}
-							<button
-								className="flex size-11 items-center justify-center rounded-full border-none"
-								style={{
-									background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
-									color: 'white',
-									cursor: input.trim() && connectionState === 'connected' ? 'pointer' : 'default',
-								}}
-								disabled={!input.trim() || connectionState !== 'connected'}
-								type="submit"
-							>
-								<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-								</svg>
-							</button>
+							</div>
 						</div>
 					</div>
 				</form>
