@@ -2576,8 +2576,8 @@ export default function App() {
 					<div ref={inputContainerRef} className="flex gap-2">
 						<div className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
-								<div className="relative border-b" style={{ borderColor: 'var(--border)' }}>
-									<div className="chat-scroll flex flex-col gap-1 px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto' }}>
+								<div className="relative overflow-hidden border-b" style={{ borderColor: 'var(--border)' }}>
+									<div className="chat-scroll flex flex-col gap-1 px-3 pt-2 pb-3" style={{ maxHeight: 200, overflowY: 'auto' }}>
 										{sessionPrompts.map((p, i) => (
 										<div key={i} className="flex items-center gap-1">
 											<button
@@ -2609,7 +2609,7 @@ export default function App() {
 									))}
 								</div>
 								{sessionPrompts.length > 5 && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 32, background: 'linear-gradient(transparent, var(--bg))', marginBottom: 1 }} />
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 32, background: 'linear-gradient(transparent, var(--bg))' }} />
 								)}
 								</div>
 							)}
