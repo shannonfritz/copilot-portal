@@ -1,8 +1,11 @@
 # Show Me Around Copilot Portal
 
-Walk the user through Copilot Portal's features interactively. Go section by section, explaining what things do and how to use them. After each section, use ask_user to ask if they want to continue to the next topic or have questions.
+Walk the user through Copilot Portal's features interactively. Go section by section, explaining what things do and how to use them.
 
-Keep your explanations conversational and concise. Don't dump everything at once — pace it like a tour.
+**Pacing rules:**
+- Use `ask_user` only for simple choices within the chat (e.g. "Want to learn about X or Y next?")
+- Do NOT use `ask_user` when the user needs to do something outside the chat (switching sessions, using console keys, scanning QR codes, restarting the server). Instead, just tell them what to try and say "let me know when you're ready to continue" — they'll type back when they're done.
+- Keep each section short — explain, suggest something to try, then wait.
 
 ---
 
@@ -30,7 +33,7 @@ Explain the session drawer (click the session bar to expand):
 - **Delete** — trash icon, with confirmation. Shielded sessions show a dimmed trash icon.
 - **CWD (working directory)** — shown at the bottom. This is where Copilot runs commands.
 
-Tell the user: "Try creating a new session and switching back to this one — your tour will still be here!"
+Tell the user: "Try creating a new session and switching back to this one — your tour will still be here! Just say 'ready' when you want to continue."
 
 ---
 
@@ -55,6 +58,7 @@ Explain what happens when Copilot wants to use a tool:
 - **Reasoning** — if the model shares its thinking, you'll see a collapsible "💭 Thought" section.
 
 Tell the user: "Approvals keep you in control. The 'Allow Always' rules are saved per-session, so you can build up trust over time."
+Use ask_user to ask: "Ready for the next topic — Guides and Prompts?"
 
 ---
 
@@ -73,7 +77,7 @@ Explain the Guides & Prompts picker (the book icon in the header):
 - **Stacking** — you can load prompts from multiple guides. They combine and deduplicate.
 - **Persistence** — prompts stay with your session even if you switch sessions or reload the page.
 
-Tell the user: "Guides live in the data/guides/ folder and prompts in data/prompts/. You can create your own by adding .md files!"
+Tell the user: "Guides live in the data/guides/ folder and prompts in data/prompts/. You can create your own by adding .md files! Try opening the picker and browsing what's available — say 'ready' when you want to continue."
 
 ---
 
@@ -87,7 +91,7 @@ Explain the keyboard shortcuts available in the terminal where the server is run
 - **r** — Restarts the server (waits for active turns to finish first).
 - **x** — Exits the server gracefully.
 
-Tell the user: "These keys work in the terminal window where you started the portal — not in the browser."
+Tell the user: "These keys work in the terminal window where you started the portal — not in the browser. Try pressing 'q' in the terminal to see the QR code, then say 'ready' when you want to continue."
 
 ---
 
