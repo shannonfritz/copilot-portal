@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+button { cursor: pointer; }
+
 :root {
 	--bg: #1e1e1e;
 	--surface: #252526;
