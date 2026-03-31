@@ -2408,28 +2408,6 @@ export default function App() {
 
 				{/* Input */}
 				{!noSession && !pendingInput && <>
-				{/* Prompts tray */}
-				{showPromptsTray && sessionPrompts.length > 0 && (
-					<div className="border-t px-4 py-2" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-						<div className="chat-scroll flex flex-col gap-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
-							{sessionPrompts.map((p, i) => (
-								<button
-									key={i}
-									type="button"
-									className="w-full rounded-lg px-3 py-2 text-left text-sm hover:brightness-95"
-									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
-									onClick={() => {
-										setInput(p.text);
-										setShowPromptsTray(false);
-										textareaRef.current?.focus();
-									}}
-								>
-									{p.label}
-								</button>
-							))}
-						</div>
-					</div>
-				)}
 				<form
 					className="border-t px-4 py-3"
 					style={{
@@ -2444,6 +2422,27 @@ export default function App() {
 				>
 					<div className="flex items-center gap-2">
 						<div className="relative flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+							{showPromptsTray && sessionPrompts.length > 0 && (
+								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto', borderColor: 'var(--border)' }}>
+									{sessionPrompts.map((p, i) => (
+										<button
+											key={i}
+											type="button"
+											className="w-full rounded-lg px-3 py-2 text-left text-sm"
+											style={{ color: 'var(--text)' }}
+											onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
+											onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+											onClick={() => {
+												setInput(p.text);
+												setShowPromptsTray(false);
+												textareaRef.current?.focus();
+											}}
+										>
+											{p.label}
+										</button>
+									))}
+								</div>
+							)}
 							<textarea
 								ref={textareaRef}
 								className="chat-scroll w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
