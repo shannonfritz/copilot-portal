@@ -371,8 +371,10 @@ function SessionDrawer({
 	activeModel,
 	onChangeModel,
 	onFetchModels,
+	onFetchQuota,
 	activeSessionId,
 	sessionSummary,
+	sessionStartTime,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -381,17 +383,30 @@ function SessionDrawer({
 	activeModel: string | null;
 	onChangeModel: (id: string) => void;
 	onFetchModels?: () => Promise<Array<{ id: string; name: string }>>;
+	onFetchQuota?: () => Promise<{ quotaSnapshots: Record<string, { entitlementRequests: number; usedRequests: number; remainingPercentage: number; resetDate?: string }> }>;
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
+	sessionStartTime?: string;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
+	const [quota, setQuota] = useState<{ used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
 	const cwd = context?.cwd ?? null;
 	const branch = context?.branch ?? null;
 	const shortCwd = cwd ? cwd.split(/[\\/]/).pop() || cwd : null;
+
+	// Fetch quota when drawer opens
+	useEffect(() => {
+		if (open && onFetchQuota && !quota) {
+			onFetchQuota().then(data => {
+				const chat = data.quotaSnapshots?.['chat'] ?? data.quotaSnapshots?.['premium_interactions'];
+				if (chat) setQuota({ used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
+			}).catch(() => {});
+		}
+	}, [open]);
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
@@ -494,6 +509,16 @@ function SessionDrawer({
 									</button>
 								))}
 							</div>
+						)}
+					</div>
+
+					{/* Session info & Quota */}
+					<div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+						{sessionStartTime && (
+							<span>Started {new Date(sessionStartTime).toLocaleString()}</span>
+						)}
+						{quota && (
+							<span>Quota: {quota.used}/{quota.total} ({quota.remaining}% left){quota.resetDate ? ` · resets ${new Date(quota.resetDate).toLocaleDateString()}` : ''}</span>
 						)}
 					</div>
 				</div>
@@ -2149,8 +2174,10 @@ export default function App() {
 						activeModel={activeModel}
 						onChangeModel={changeModel}
 						onFetchModels={() => apiFetch('/api/models').then(r => r.json())}
+						onFetchQuota={() => apiFetch('/api/quota').then(r => r.json())}
 					activeSessionId={activeSessionId}
 					sessionSummary={activeSessionSummary}
+					sessionStartTime={sessions.find(s => s.sessionId === activeSessionId)?.startTime}
 					/>
 				)}
 

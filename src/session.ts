@@ -1473,6 +1473,7 @@ export class SessionPool {
 	async getStatus() { return this.client.getStatus(); }
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
+	async getQuota() { return this.client.rpc.account.getQuota(); }
 
 	async getLastSessionId(): Promise<string | null> {
 		// In shared mode, prefer the CLI's foreground session

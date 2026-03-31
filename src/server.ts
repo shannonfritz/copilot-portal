@@ -558,6 +558,16 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/quota' && method === 'GET') {
+			try {
+				const quota = await this.pool.getQuota();
+				this.sendJson(res, 200, quota);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/restart' && method === 'POST') {
 			// Check for active turns across all sessions
 			const activeSessions = this.pool.getActiveTurnSessions();
