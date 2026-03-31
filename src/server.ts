@@ -662,6 +662,9 @@ export class PortalServer {
 				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Not found' }); return; }
 				fs.unlinkSync(resolved);
+				// Also delete companion .prompts.md if it exists
+				const promptsFile = resolved.replace(/\.md$/, '.prompts.md');
+				if (fs.existsSync(promptsFile)) fs.unlinkSync(promptsFile);
 				this.sendJson(res, 200, { ok: true });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
