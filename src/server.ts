@@ -336,21 +336,24 @@ export class PortalServer {
 		}
 	}
 
-	/** Copy instruction examples into data/instructions/ if the folder is empty or doesn't exist */
+	/** Copy examples into data/instructions/ and data/prompts/ if the folders are empty */
 	private seedContextExamples(): void {
-		const contextsDir = path.join(this.dataDir, 'instructions');
-		const examplesDir = path.join(__dirname, '..', 'instruction-examples');
-		try {
-			fs.mkdirSync(contextsDir, { recursive: true });
-			const existing = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md') && !f.endsWith('.prompts.md'));
-			if (existing.length > 0) return; // already has contexts
-			if (!fs.existsSync(examplesDir)) return; // no examples to seed
-			const examples = fs.readdirSync(examplesDir).filter(f => f.endsWith('.md'));
-			for (const f of examples) {
-				fs.copyFileSync(path.join(examplesDir, f), path.join(contextsDir, f));
-			}
-			if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} instruction example(s) into data/instructions/`);
-		} catch { /* ignore */ }
+		const examplesBase = path.join(__dirname, '..', 'examples');
+		for (const sub of ['instructions', 'prompts']) {
+			const dataDir = path.join(this.dataDir, sub);
+			const exDir = path.join(examplesBase, sub);
+			try {
+				fs.mkdirSync(dataDir, { recursive: true });
+				const existing = fs.readdirSync(dataDir).filter(f => f.endsWith('.md'));
+				if (existing.length > 0) continue;
+				if (!fs.existsSync(exDir)) continue;
+				const examples = fs.readdirSync(exDir).filter(f => f.endsWith('.md'));
+				for (const f of examples) {
+					fs.copyFileSync(path.join(exDir, f), path.join(dataDir, f));
+				}
+				if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} ${sub} example(s) into data/${sub}/`);
+			} catch { /* ignore */ }
+		}
 	}
 
 	private loadShields(): void {
@@ -587,17 +590,19 @@ export class PortalServer {
 
 		if (url.pathname === '/api/instructions' && method === 'GET') {
 			try {
-				const contextsDir = path.join(this.dataDir, 'instructions');
-				if (!fs.existsSync(contextsDir)) { this.sendJson(res, 200, []); return; }
-				const allFiles = fs.readdirSync(contextsDir);
-				const files = allFiles.filter(f => f.endsWith('.md') && !f.endsWith('.prompts.md'));
-				const contexts = files.map(f => ({
-					id: f.replace(/\.md$/, ''),
-					name: f,
-					file: f,
-					hasPrompts: allFiles.includes(f.replace(/\.md$/, '.prompts.md')),
+				const instrDir = path.join(this.dataDir, 'instructions');
+				const promptsDir = path.join(this.dataDir, 'prompts');
+				const instrFiles = fs.existsSync(instrDir) ? fs.readdirSync(instrDir).filter(f => f.endsWith('.md')) : [];
+				const promptFiles = fs.existsSync(promptsDir) ? fs.readdirSync(promptsDir).filter(f => f.endsWith('.md')) : [];
+				const allIds = new Set([...instrFiles.map(f => f.replace(/\.md$/, '')), ...promptFiles.map(f => f.replace(/\.md$/, ''))]);
+				const items = [...allIds].map(id => ({
+					id,
+					name: id + '.md',
+					file: id + '.md',
+					hasInstruction: instrFiles.includes(id + '.md'),
+					hasPrompts: promptFiles.includes(id + '.md'),
 				}));
-				this.sendJson(res, 200, contexts);
+				this.sendJson(res, 200, items);
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
@@ -607,10 +612,10 @@ export class PortalServer {
 		const promptsMatch = url.pathname.match(/^\/api\/instructions\/(.+)\/prompts$/);
 		if (promptsMatch && method === 'GET') {
 			try {
-				const promptsFile = path.join(this.dataDir, 'instructions', decodeURIComponent(promptsMatch[1]) + '.prompts.md');
+				const promptsFile = path.join(this.dataDir, 'prompts', decodeURIComponent(promptsMatch[1]) + '.md');
 				const resolved = path.resolve(promptsFile);
-				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
-				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				const promptsDir = path.resolve(path.join(this.dataDir, 'prompts'));
+				if (!resolved.startsWith(promptsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
 				if (!fs.existsSync(resolved)) { this.sendJson(res, 200, { prompts: [] }); return; }
 				const content = fs.readFileSync(resolved, 'utf8');
 				const prompts: Array<{ label: string; text: string }> = [];
@@ -656,15 +661,19 @@ export class PortalServer {
 
 		if (contextMatch && method === 'DELETE') {
 			try {
-				const contextFile = path.join(this.dataDir, 'instructions', decodeURIComponent(contextMatch[1]) + '.md');
-				const resolved = path.resolve(contextFile);
-				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
-				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
-				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Not found' }); return; }
-				fs.unlinkSync(resolved);
-				// Also delete companion .prompts.md if it exists
-				const promptsFile = resolved.replace(/\.md$/, '.prompts.md');
-				if (fs.existsSync(promptsFile)) fs.unlinkSync(promptsFile);
+				const id = decodeURIComponent(contextMatch[1]);
+				const instrFile = path.resolve(path.join(this.dataDir, 'instructions', id + '.md'));
+				const promptFile = path.resolve(path.join(this.dataDir, 'prompts', id + '.md'));
+				const instrDir = path.resolve(path.join(this.dataDir, 'instructions'));
+				const promptsDir = path.resolve(path.join(this.dataDir, 'prompts'));
+				// Path traversal check
+				if (!instrFile.startsWith(instrDir + path.sep) || !promptFile.startsWith(promptsDir + path.sep)) {
+					this.sendJson(res, 403, { error: 'Forbidden' }); return;
+				}
+				let deleted = false;
+				if (fs.existsSync(instrFile)) { fs.unlinkSync(instrFile); deleted = true; }
+				if (fs.existsSync(promptFile)) { fs.unlinkSync(promptFile); deleted = true; }
+				if (!deleted) { this.sendJson(res, 404, { error: 'Not found' }); return; }
 				this.sendJson(res, 200, { ok: true });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });

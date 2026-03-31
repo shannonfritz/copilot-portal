@@ -544,7 +544,7 @@ export default function App() {
 	const [showInstructions, setShowInstructions] = useState(false);
 	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
 	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string; isPrompts?: boolean } | null>(null);
-	const [instructions, setInstructions] = useState<Array<{ id: string; name: string; hasPrompts?: boolean }>>([]);
+	const [instructions, setInstructions] = useState<Array<{ id: string; name: string; hasInstruction?: boolean; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
 	const [showPromptsTray, setShowPromptsTray] = useState(false);
@@ -1724,15 +1724,18 @@ export default function App() {
 										onClick={async () => {
 											setShowInstructions(false);
 											try {
-												const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
-												const { filePath, title } = await res.json() as { filePath: string; title: string };
-												if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
-													const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
-													wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-													setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
-													setIsStreaming(true);
-													setIsThinking(true);
-													setThinkingText('Applying instruction...');
+												// Apply instruction if it exists
+												if (inst.hasInstruction) {
+													const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
+													const { filePath, title } = await res.json() as { filePath: string; title: string };
+													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
+														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
+														wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
+														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
+														setIsStreaming(true);
+														setIsThinking(true);
+														setThinkingText('Applying instruction...');
+													}
 												}
 												// Load prompts if available
 												if (inst.hasPrompts) {
@@ -1783,14 +1786,15 @@ export default function App() {
 											</span>
 										) : (
 											<span className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
-												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={async (e) => {
+												<button className="rounded p-1.5" style={{ opacity: inst.hasInstruction ? 0.7 : 0.2 }} onClick={async (e) => {
 													e.stopPropagation();
+													if (!inst.hasInstruction) return;
 													try {
 														const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
 														const data = await res.json() as { title: string; content: string };
 														setViewingInstruction({ id: inst.id, title: data.title, content: data.content });
 													} catch {}
-												}} type="button" title="View">
+												}} type="button" title={inst.hasInstruction ? 'View instruction' : 'No instruction'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 														<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
 														<circle cx="12" cy="12" r="3" />
