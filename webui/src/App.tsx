@@ -2680,7 +2680,7 @@ export default function App() {
 									</button>
 								</div>
 							)}
-							<div className="flex items-center" style={{ marginTop: 'auto' }}>
+							<div className="flex items-center" style={{ marginTop: 'auto', marginBottom: 2 }}>
 								<button
 									className="flex size-11 items-center justify-center rounded-full border-none"
 									style={{
