@@ -549,6 +549,7 @@ export default function App() {
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
 	const [showPromptsTray, setShowPromptsTray] = useState(false);
 	const [promptsAtBottom, setPromptsAtBottom] = useState(false);
+	const [confirmDeletePrompt, setConfirmDeletePrompt] = useState<string | null>(null);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
@@ -2598,17 +2599,24 @@ export default function App() {
 											>
 												{p.label}
 											</button>
-											<button
-												type="button"
-												className="shrink-0 rounded p-1 opacity-30 hover:opacity-70"
-												style={{ color: 'var(--text-muted)' }}
-												onClick={() => removeSessionPrompt(p.label)}
-												title="Remove prompt"
-											>
-												<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-													<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-												</svg>
-											</button>
+											{confirmDeletePrompt === p.label ? (
+												<span className="flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
+													<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={() => { removeSessionPrompt(p.label); setConfirmDeletePrompt(null); }} type="button">Delete</button>
+													<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmDeletePrompt(null)} type="button">Cancel</button>
+												</span>
+											) : (
+												<button
+													type="button"
+													className="shrink-0 rounded p-1 opacity-30 hover:opacity-70"
+													style={{ color: 'var(--text-muted)' }}
+													onClick={() => setConfirmDeletePrompt(p.label)}
+													title="Remove prompt"
+												>
+													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+													</svg>
+												</button>
+											)}
 										</div>
 									))}
 								</div>
@@ -2684,17 +2692,24 @@ export default function App() {
 						<div className="flex shrink-0 flex-col items-center">
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="flex flex-1 items-center">
-									<button
-										className="flex size-8 items-center justify-center rounded-full border-none"
-										style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
-										onClick={clearSessionPrompts}
-										type="button"
-										title="Remove all prompts"
-									>
-										<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-										</svg>
-									</button>
+									{confirmDeletePrompt === '__all__' ? (
+										<div className="flex flex-col gap-1 items-center">
+											<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={() => { clearSessionPrompts(); setConfirmDeletePrompt(null); }} type="button">Delete All</button>
+											<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmDeletePrompt(null)} type="button">Cancel</button>
+										</div>
+									) : (
+										<button
+											className="flex size-8 items-center justify-center rounded-full border-none"
+											style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
+											onClick={() => setConfirmDeletePrompt('__all__')}
+											type="button"
+											title="Remove all prompts"
+										>
+											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+												<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+											</svg>
+										</button>
+									)}
 								</div>
 							)}
 							<div className="flex items-center" style={{ marginTop: 'auto', marginBottom: 4 }}>
