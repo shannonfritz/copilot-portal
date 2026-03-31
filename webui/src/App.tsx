@@ -1487,6 +1487,34 @@ export default function App() {
 		setFreeformAnswer('');
 	}, [pendingInput]);
 
+	const removeSessionPrompt = (label: string) => {
+		setSessionPrompts(prev => {
+			const updated = prev.filter(p => p.label !== label);
+			const sid = activeSessionIdRef.current;
+			if (sid) {
+				sessionPromptsRef.current.set(sid, updated);
+				apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+					method: 'POST', headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ prompts: updated }),
+				}).catch(() => {});
+			}
+			return updated;
+		});
+	};
+
+	const clearSessionPrompts = () => {
+		setSessionPrompts([]);
+		setShowPromptsTray(false);
+		const sid = activeSessionIdRef.current;
+		if (sid) {
+			sessionPromptsRef.current.set(sid, []);
+			apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+				method: 'POST', headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ prompts: [] }),
+			}).catch(() => {});
+		}
+	};
+
 	const sendPrompt = () => {
 		const prompt = input.trim();
 		if (!prompt || connectionState !== 'connected') return;
@@ -2551,21 +2579,33 @@ export default function App() {
 								<div className="relative border-b" style={{ borderColor: 'var(--border)' }}>
 									<div className="chat-scroll flex flex-col gap-1 px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto' }}>
 										{sessionPrompts.map((p, i) => (
-										<button
-											key={i}
-											type="button"
-											className="w-full rounded-lg px-3 py-2 text-left text-sm"
-											style={{ color: 'var(--text)' }}
-											onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
-											onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-											onClick={() => {
-												setInput(p.text);
-												setShowPromptsTray(false);
-												textareaRef.current?.focus();
-											}}
-										>
-											{p.label}
-										</button>
+										<div key={i} className="flex items-center gap-1">
+											<button
+												type="button"
+												className="flex-1 rounded-lg px-3 py-2 text-left text-sm"
+												style={{ color: 'var(--text)' }}
+												onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
+												onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+												onClick={() => {
+													setInput(p.text);
+													setShowPromptsTray(false);
+													textareaRef.current?.focus();
+												}}
+											>
+												{p.label}
+											</button>
+											<button
+												type="button"
+												className="shrink-0 rounded p-1 opacity-30 hover:opacity-70"
+												style={{ color: 'var(--text-muted)' }}
+												onClick={() => removeSessionPrompt(p.label)}
+												title="Remove prompt"
+											>
+												<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+												</svg>
+											</button>
+										</div>
 									))}
 								</div>
 								{sessionPrompts.length > 5 && (
@@ -2624,6 +2664,19 @@ export default function App() {
 								)}
 							</div>
 						</div>
+						{showPromptsTray && sessionPrompts.length > 0 && (
+							<button
+								className="flex size-11 shrink-0 items-center justify-center self-end rounded-full border-none"
+								style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
+								onClick={clearSessionPrompts}
+								type="button"
+								title="Remove all prompts"
+							>
+								<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+								</svg>
+							</button>
+						)}
 						<button
 							className="flex size-11 shrink-0 items-center justify-center self-end rounded-full border-none"
 							style={{
