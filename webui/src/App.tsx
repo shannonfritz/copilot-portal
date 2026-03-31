@@ -432,7 +432,7 @@ function SessionDrawer({
 			{/* Expandable panel */}
 			{open && (
 				<div className="px-4 pb-4 pt-1">
-					{/* Version + user */}
+					{/* Version + user + session info */}
 					<div className="mb-3 flex items-center gap-2.5">
 						<div className="shrink-0">
 							<svg className="size-8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -445,6 +445,15 @@ function SessionDrawer({
 							<div className="text-xs" style={{ color: 'var(--text-muted)' }}>
 								{info ? `v${info.version} · ${info.login}` : 'Loading…'}
 							</div>
+						</div>
+						<div className="flex-1" />
+						<div className="text-right text-xs" style={{ color: 'var(--text-muted)' }}>
+							{sessionStartTime && (
+								<div>Started {new Date(sessionStartTime).toLocaleString()}</div>
+							)}
+							{quota && (
+								<div>Quota: {quota.used}/{quota.total} ({quota.remaining}% left)</div>
+							)}
 						</div>
 					</div>
 
@@ -509,16 +518,6 @@ function SessionDrawer({
 									</button>
 								))}
 							</div>
-						)}
-					</div>
-
-					{/* Session info & Quota */}
-					<div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-						{sessionStartTime && (
-							<span>Started {new Date(sessionStartTime).toLocaleString()}</span>
-						)}
-						{quota && (
-							<span>Quota: {quota.used}/{quota.total} ({quota.remaining}% left){quota.resetDate ? ` · resets ${new Date(quota.resetDate).toLocaleDateString()}` : ''}</span>
 						)}
 					</div>
 				</div>
