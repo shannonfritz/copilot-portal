@@ -544,7 +544,10 @@ export default function App() {
 	const [showInstructions, setShowInstructions] = useState(false);
 	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
 	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string } | null>(null);
-	const [instructions, setInstructions] = useState<Array<{ id: string; name: string }>>([]);
+	const [instructions, setInstructions] = useState<Array<{ id: string; name: string; hasPrompts?: boolean }>>([]);
+	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
+	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
+	const [showPromptsTray, setShowPromptsTray] = useState(false);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
@@ -815,6 +818,9 @@ export default function App() {
 					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
+					// Restore prompts for this session
+					setSessionPrompts(newId ? sessionPromptsRef.current.get(newId) ?? [] : []);
+					setShowPromptsTray(false);
 					// Check if the server has a newer build than the client
 					const serverBuild = (event as { serverBuild?: string }).serverBuild;
 					if (serverBuild && serverBuild !== __BUILD__) {
@@ -1473,6 +1479,7 @@ export default function App() {
 		setToolEvents([]);
 		setError(null);
 		setInput('');
+		setShowPromptsTray(false);
 		setIsThinking(true);
 		setThinkingText('');
 		setReasoningText('');
@@ -1586,6 +1593,25 @@ export default function App() {
 													setIsThinking(true);
 													setThinkingText('Applying instruction...');
 												}
+												// Load prompts if available
+												if (inst.hasPrompts) {
+													try {
+														const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}/prompts`);
+														const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
+														if (newPrompts.length > 0) {
+															setSessionPrompts(prev => {
+																const merged = [...prev];
+																for (const p of newPrompts) {
+																	const idx = merged.findIndex(m => m.label === p.label);
+																	if (idx >= 0) merged[idx] = p; else merged.push(p);
+																}
+																const sid = activeSessionIdRef.current;
+																if (sid) sessionPromptsRef.current.set(sid, merged);
+																return merged;
+															});
+														}
+													} catch { /* prompts are optional */ }
+												}
 											} catch (e) {
 												setError(`Failed to load instruction: ${e}`);
 											}
@@ -1622,6 +1648,14 @@ export default function App() {
 														<circle cx="12" cy="12" r="3" />
 													</svg>
 												</button>
+												{inst.hasPrompts && (
+													<span className="flex items-center rounded p-1.5" style={{ opacity: 0.7 }} title="Has prompts">
+														<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+															<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+															<path d="M8 9h8M8 13h5" />
+														</svg>
+													</span>
+												)}
 												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button" title="Delete">
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
@@ -2374,6 +2408,28 @@ export default function App() {
 
 				{/* Input */}
 				{!noSession && !pendingInput && <>
+				{/* Prompts tray */}
+				{showPromptsTray && sessionPrompts.length > 0 && (
+					<div className="border-t px-4 py-2" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+						<div className="chat-scroll flex flex-col gap-1" style={{ maxHeight: 200, overflowY: 'auto' }}>
+							{sessionPrompts.map((p, i) => (
+								<button
+									key={i}
+									type="button"
+									className="w-full rounded-lg px-3 py-2 text-left text-sm hover:brightness-95"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+									onClick={() => {
+										setInput(p.text);
+										setShowPromptsTray(false);
+										textareaRef.current?.focus();
+									}}
+								>
+									{p.label}
+								</button>
+							))}
+						</div>
+					</div>
+				)}
 				<form
 					className="border-t px-4 py-3"
 					style={{
@@ -2419,6 +2475,20 @@ export default function App() {
 									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
 										<polyline points="9 10 4 15 9 20"/>
 										<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
+									</svg>
+								</button>
+							)}
+							{sessionPrompts.length > 0 && (
+								<button
+									type="button"
+									title="Canned prompts"
+									onClick={() => setShowPromptsTray(prev => !prev)}
+									className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
+									style={{ color: showPromptsTray ? 'var(--primary)' : 'var(--text-muted)', right: !input && messages.filter(m => m.role === 'user').length > 0 ? 28 : 8 }}
+								>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+										<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+										<path d="M8 9h8M8 13h5" />
 									</svg>
 								</button>
 							)}

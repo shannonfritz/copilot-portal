@@ -341,7 +341,7 @@ export class PortalServer {
 		const examplesDir = path.join(__dirname, '..', 'instruction-examples');
 		try {
 			fs.mkdirSync(contextsDir, { recursive: true });
-			const existing = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
+			const existing = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md') && !f.endsWith('.prompts.md'));
 			if (existing.length > 0) return; // already has contexts
 			if (!fs.existsSync(examplesDir)) return; // no examples to seed
 			const examples = fs.readdirSync(examplesDir).filter(f => f.endsWith('.md'));
@@ -571,13 +571,48 @@ export class PortalServer {
 			try {
 				const contextsDir = path.join(this.dataDir, 'instructions');
 				if (!fs.existsSync(contextsDir)) { this.sendJson(res, 200, []); return; }
-				const files = fs.readdirSync(contextsDir).filter(f => f.endsWith('.md'));
+				const allFiles = fs.readdirSync(contextsDir);
+				const files = allFiles.filter(f => f.endsWith('.md') && !f.endsWith('.prompts.md'));
 				const contexts = files.map(f => ({
 					id: f.replace(/\.md$/, ''),
 					name: f,
 					file: f,
+					hasPrompts: allFiles.includes(f.replace(/\.md$/, '.prompts.md')),
 				}));
 				this.sendJson(res, 200, contexts);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		const promptsMatch = url.pathname.match(/^\/api\/instructions\/(.+)\/prompts$/);
+		if (promptsMatch && method === 'GET') {
+			try {
+				const promptsFile = path.join(this.dataDir, 'instructions', decodeURIComponent(promptsMatch[1]) + '.prompts.md');
+				const resolved = path.resolve(promptsFile);
+				const contextsDir = path.resolve(path.join(this.dataDir, 'instructions'));
+				if (!resolved.startsWith(contextsDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 200, { prompts: [] }); return; }
+				const content = fs.readFileSync(resolved, 'utf8');
+				const prompts: Array<{ label: string; text: string }> = [];
+				let currentLabel = '';
+				let currentLines: string[] = [];
+				for (const line of content.split('\n')) {
+					if (line.startsWith('## ')) {
+						if (currentLabel && currentLines.length) {
+							prompts.push({ label: currentLabel, text: currentLines.join('\n').trim() });
+						}
+						currentLabel = line.replace(/^##\s*/, '').trim();
+						currentLines = [];
+					} else if (currentLabel && !line.startsWith('# ')) {
+						currentLines.push(line);
+					}
+				}
+				if (currentLabel && currentLines.length) {
+					prompts.push({ label: currentLabel, text: currentLines.join('\n').trim() });
+				}
+				this.sendJson(res, 200, { prompts });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
