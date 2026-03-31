@@ -548,6 +548,7 @@ export default function App() {
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
 	const [showPromptsTray, setShowPromptsTray] = useState(false);
+	const [promptsAtBottom, setPromptsAtBottom] = useState(false);
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
@@ -2577,7 +2578,10 @@ export default function App() {
 						<div className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="relative overflow-hidden border-b" style={{ borderColor: 'var(--border)' }}>
-									<div className="chat-scroll flex flex-col gap-1 px-3 pt-2 pb-3" style={{ maxHeight: 200, overflowY: 'auto' }}>
+									<div className="chat-scroll flex flex-col gap-1 px-3 pt-2 pb-3" style={{ maxHeight: 200, overflowY: 'auto' }} onScroll={e => {
+										const el = e.currentTarget;
+										setPromptsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+									}}>
 										{sessionPrompts.map((p, i) => (
 										<div key={i} className="flex items-center gap-1">
 											<button
@@ -2608,7 +2612,7 @@ export default function App() {
 										</div>
 									))}
 								</div>
-								{sessionPrompts.length > 5 && (
+								{sessionPrompts.length > 5 && !promptsAtBottom && (
 									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 36, background: 'linear-gradient(transparent 0%, var(--bg) 60%)' }} />
 								)}
 								</div>
