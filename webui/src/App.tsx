@@ -1116,8 +1116,13 @@ export default function App() {
 					// Sub-agent name arrived — update the task tool's displayLabel
 					if (event.displayLabel) setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, displayLabel: event.displayLabel } : te));
 				} else if (event.type === 'tool_call') {
-					// tool_output (partial result streaming)
-					setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
+					// Show intention summary as a purple intent line if present
+					if (event.intentionSummary) {
+						setToolEvents((prev) => [...prev, { id: `intent-${Date.now()}-${event.toolCallId}`, type: 'intent', content: event.intentionSummary, timestamp: Date.now() }]);
+					} else {
+						// tool_output (partial result streaming)
+						setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
+					}
 				} else if (event.type === 'idle') {
 					// Any remaining tool events not yet collapsed into per-message summaries
 					const remainingTools = buildToolSummary(toolEventsRef.current);

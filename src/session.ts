@@ -45,6 +45,7 @@ export interface PortalEvent {
 	toolName?: string;
 	mcpServerName?: string;
 	displayLabel?: string;
+	intentionSummary?: string;
 	rules?: ApprovalRule[];
 	approveAll?: boolean;
 	summary?: string;
@@ -946,7 +947,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// Always commit this message on the client, whether it arrived via deltas or as a blob
 		// Include toolRequests so the client can track which tools belong to this message
 		// Messages followed only by ask_user/report_intent are NOT intermediate (user-facing)
-		const toolReqs = Array.isArray(d.toolRequests) ? d.toolRequests as Array<{ name?: string; toolCallId?: string }> : [];
+		const toolReqs = Array.isArray(d.toolRequests) ? d.toolRequests as Array<{ name?: string; toolCallId?: string; intentionSummary?: string | null }> : [];
+		// Broadcast intention summaries as tool_call events so the UI can show them
+		for (const t of toolReqs) {
+			if (t.intentionSummary && t.toolCallId) {
+				this.broadcast({ type: 'tool_call', toolCallId: t.toolCallId, toolName: t.name, intentionSummary: t.intentionSummary });
+			}
+		}
 		const nonUserFacingTools = toolReqs.filter(t => t.name !== 'ask_user' && t.name !== 'report_intent');
 		const isIntermediate = nonUserFacingTools.length > 0;
 		// Send tool call IDs so client can match tool_complete events to this message
