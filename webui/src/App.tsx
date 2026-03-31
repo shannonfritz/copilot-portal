@@ -2469,7 +2469,7 @@ export default function App() {
 									))}
 								</div>
 								{sessionPrompts.length > 5 && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6" style={{ background: 'linear-gradient(transparent, var(--bg))' }} />
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 32, background: 'linear-gradient(transparent, var(--bg))', marginBottom: 1 }} />
 								)}
 								</div>
 							)}
