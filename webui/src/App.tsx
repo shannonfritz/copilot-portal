@@ -1691,13 +1691,12 @@ export default function App() {
 									</div>
 								</div>
 								{viewingGuide.filePath && (
-									<button
-										type="button"
-										className="mb-2 w-full truncate rounded px-2 py-1 text-left font-mono text-xs hover:underline"
-										style={{ color: 'var(--text-muted)', background: 'var(--bg)' }}
-										onClick={() => { if (navigator.clipboard) navigator.clipboard.writeText(viewingGuide.filePath!); }}
-										title="Click to copy path"
-									>{viewingGuide.filePath}</button>
+									<div className="mb-2 flex items-center gap-1 rounded px-2 py-1" style={{ background: 'var(--bg)' }}>
+										<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+											{viewingGuide.filePath}
+										</div>
+										<CopyButton text={viewingGuide.filePath} />
+									</div>
 								)}
 								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
 									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
