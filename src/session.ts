@@ -580,6 +580,27 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			await this.session.send({ prompt });
 		} catch (e) {
 			const statusCode = (e as { statusCode?: number })?.statusCode;
+			const errMsg = String(e);
+			// Session evicted by CLI server after idle timeout — reconnect and retry
+			if (errMsg.includes('Session not found') && this.reconnectFn) {
+				this.log('[Session] Session not found on send — reconnecting...');
+				this.broadcast({ type: 'thinking', content: 'Reconnecting session…' });
+				try {
+					this.isReconnecting = true;
+					const gen = ++this.sessionGeneration;
+					const newSession = await this.reconnectFn(this.sessionId, this.currentModel ?? undefined);
+					if (gen !== this.sessionGeneration) return;
+					this.session = newSession;
+					this.isReconnecting = false;
+					this.attachListeners();
+					this.log('[Session] Reconnected — retrying send');
+					await this.session.send({ prompt });
+					return;
+				} catch (reconnectErr) {
+					this.isReconnecting = false;
+					this.log(`[Session] Reconnect or retry failed: ${reconnectErr}`);
+				}
+			}
 			// Retry once on transient errors (429 rate-limit, 5xx server errors, network glitches)
 			if (statusCode === 429 || (statusCode !== undefined && statusCode >= 500)) {
 				this.log(`[Session] ${statusCode} on send — retrying after 2s...`);
