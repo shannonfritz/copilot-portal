@@ -2662,6 +2662,19 @@ export default function App() {
 										</svg>
 									</button>
 								)}
+								{input && (
+									<button
+										type="button"
+										title="Clear"
+										onClick={() => { setInput(''); textareaRef.current?.focus(); }}
+										className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)', right: sessionPrompts.length > 0 ? 28 : 8 }}
+									>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
+											<path d="M18 6L6 18M6 6l12 12"/>
+										</svg>
+									</button>
+								)}
 							</div>
 						</div>
 						<div className="flex shrink-0 flex-col items-center">
