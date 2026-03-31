@@ -1591,7 +1591,7 @@ export default function App() {
 						onClick={(e) => e.stopPropagation()}
 					>
 						<div className="mb-3">
-							<h2 className="font-semibold">Give Instruction</h2>
+							<h2 className="font-semibold">Instructions and Prompts</h2>
 						</div>
 						{viewingInstruction ? (
 							<div>
