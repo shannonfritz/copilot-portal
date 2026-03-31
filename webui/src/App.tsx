@@ -46,6 +46,7 @@ interface ToolSummaryItem {
 	toolName: string;
 	display: string;
 	completed: boolean;
+	intentionSummary?: string;
 }
 
 interface Message {
@@ -78,7 +79,7 @@ function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
 				display = String(val).replace(/\s+/g, ' ').trim().slice(0, 200);
 			} catch { display = (te.content ?? '').slice(0, 100); }
 		}
-		return { toolName: te.toolName ?? 'tool', display, completed: te.type === 'tool_complete' };
+		return { toolName: te.toolName ?? 'tool', display, completed: te.type === 'tool_complete', intentionSummary: te.intentionSummary };
 	});
 }
 
@@ -89,6 +90,7 @@ interface ToolEvent {
 	toolCallId?: string;
 	mcpServerName?: string;
 	displayLabel?: string;
+	intentionSummary?: string;
 	content?: string;
 	timestamp: number;
 }
@@ -334,7 +336,13 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 	const textColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
 	const hasDetail = !!(tc.displayLabel || tc.content);
 	return (
-		<div className="mb-2 rounded-lg border text-xs" style={{ borderColor, background: bgColor }}>
+		<div className="mb-2">
+			{tc.intentionSummary && (
+				<div className="mb-1 flex items-center gap-1.5 text-xs italic py-0.5">
+					<span style={{ color: 'var(--purple)' }}>●</span><span style={{ color: 'var(--text-muted)' }}>{tc.intentionSummary}</span>
+				</div>
+			)}
+			<div className="rounded-lg border text-xs" style={{ borderColor, background: bgColor }}>
 			<div
 				className="flex items-center gap-1.5 p-3 font-medium"
 				style={{ color: textColor, cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
@@ -359,6 +367,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 					})()}
 				</div>
 			)}
+			</div>
 		</div>
 	);
 }
@@ -533,6 +542,7 @@ export default function App() {
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [toolEvents, setToolEventsState] = useState<ToolEvent[]>([]);
 	const toolEventsRef = useRef<ToolEvent[]>([]);
+	const intentionMapRef = useRef<Map<string, string>>(new Map());
 	const setToolEvents = useCallback((arg: ToolEvent[] | ((prev: ToolEvent[]) => ToolEvent[])) => {
 		// Update the ref synchronously so idle handler can read latest value before React flushes
 		const next = typeof arg === 'function' ? arg(toolEventsRef.current) : arg;
@@ -1078,7 +1088,8 @@ export default function App() {
 							setIsThinking(true);
 							setThinkingText(`Running ${event.toolName ?? 'tool'}…`);
 						}
-						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, content: event.content, timestamp: Date.now() }]);
+						const intention = event.toolCallId ? intentionMapRef.current.get(event.toolCallId) : undefined;
+						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, intentionSummary: intention, content: event.content, timestamp: Date.now() }]);
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
@@ -1116,10 +1127,10 @@ export default function App() {
 					// Sub-agent name arrived — update the task tool's displayLabel
 					if (event.displayLabel) setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, displayLabel: event.displayLabel } : te));
 				} else if (event.type === 'tool_call') {
-					// Show intention summary as a purple intent line if present
-					if (event.intentionSummary) {
-						setToolEvents((prev) => [...prev, { id: `intent-${Date.now()}-${event.toolCallId}`, type: 'intent', content: event.intentionSummary, timestamp: Date.now() }]);
-					} else {
+					// Store intention summary for matching with tool_start
+					if (event.intentionSummary && event.toolCallId) {
+						intentionMapRef.current.set(event.toolCallId, event.intentionSummary);
+					} else if (!event.intentionSummary) {
 						// tool_output (partial result streaming)
 						setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
 					}
@@ -1588,6 +1599,7 @@ export default function App() {
 			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() },
 		]);
 		setToolEvents([]);
+		intentionMapRef.current.clear();
 		setError(null);
 		setInput('');
 		setShowPromptsTray(false);
@@ -2335,10 +2347,18 @@ export default function App() {
 										</summary>
 										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
 											{msg.toolSummary.map((t, i) => (
-												<div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-													<span style={{ flexShrink: 0 }}>{t.completed ? '✓' : '·'}</span>
-													<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
-													{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
+												<div key={i}>
+													{t.intentionSummary && (
+														<div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+															<span style={{ flexShrink: 0, color: 'var(--purple)' }}>●</span>
+															<span>{t.intentionSummary}</span>
+														</div>
+													)}
+													<div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', paddingLeft: t.intentionSummary ? '12px' : undefined }}>
+														<span style={{ flexShrink: 0 }}>{t.completed ? '✓' : '·'}</span>
+														<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
+														{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
+													</div>
 												</div>
 											))}
 										</div>
