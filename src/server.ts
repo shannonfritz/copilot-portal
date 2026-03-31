@@ -24,6 +24,7 @@ export class PortalServer {
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
+	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
 	private updater: UpdateChecker;
 	private failedAuth = new Map<string, { count: number; resetTime: number }>();
 
@@ -366,6 +367,20 @@ export class PortalServer {
 		} catch {}
 	}
 
+	private loadSessionPrompts(): void {
+		try {
+			const f = path.join(this.dataDir, 'session-prompts.json');
+			if (fs.existsSync(f)) this.sessionPrompts = JSON.parse(fs.readFileSync(f, 'utf8'));
+		} catch {}
+	}
+
+	private saveSessionPrompts(): void {
+		try {
+			fs.mkdirSync(this.dataDir, { recursive: true });
+			fs.writeFileSync(path.join(this.dataDir, 'session-prompts.json'), JSON.stringify(this.sessionPrompts, null, 2));
+		} catch {}
+	}
+
 
 	private log(msg: string) {
 		const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -670,6 +685,27 @@ export class PortalServer {
 			return;
 		}
 
+		// Session prompts — per-session persistent storage
+		const sessionPromptsMatch = url.pathname.match(/^\/api\/session-prompts\/(.+)$/);
+		if (sessionPromptsMatch && method === 'GET') {
+			const sid = decodeURIComponent(sessionPromptsMatch[1]);
+			this.sendJson(res, 200, { prompts: this.sessionPrompts[sid] ?? [] });
+			return;
+		}
+		if (sessionPromptsMatch && method === 'POST') {
+			try {
+				const sid = decodeURIComponent(sessionPromptsMatch[1]);
+				const body = await this.readBody(req);
+				const { prompts } = JSON.parse(body) as { prompts: Array<{ label: string; text: string }> };
+				this.sessionPrompts[sid] = prompts;
+				this.saveSessionPrompts();
+				this.sendJson(res, 200, { ok: true });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		// List context templates
 		if (url.pathname === '/api/context-templates' && method === 'GET') {
 			try {
@@ -794,6 +830,7 @@ export class PortalServer {
 
 	async start(): Promise<void> {
 		this.loadShields();
+		this.loadSessionPrompts();
 		await this.pool.start();
 		// Cache portal info (version, user, models) once at startup
 		try {

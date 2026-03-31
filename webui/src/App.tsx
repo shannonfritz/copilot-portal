@@ -820,8 +820,25 @@ export default function App() {
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
 					// Restore prompts for this session
-					setSessionPrompts(newId ? sessionPromptsRef.current.get(newId) ?? [] : []);
 					setShowPromptsTray(false);
+					if (newId) {
+						const cached = sessionPromptsRef.current.get(newId);
+						if (cached) {
+							setSessionPrompts(cached);
+						} else {
+							apiFetch(`/api/session-prompts/${encodeURIComponent(newId)}`)
+								.then(r => r.json())
+								.then(({ prompts }: { prompts: Array<{ label: string; text: string }> }) => {
+									if (prompts.length > 0) {
+										sessionPromptsRef.current.set(newId, prompts);
+										setSessionPrompts(prompts);
+									}
+								}).catch(() => {});
+							setSessionPrompts([]);
+						}
+					} else {
+						setSessionPrompts([]);
+					}
 					// Check if the server has a newer build than the client
 					const serverBuild = (event as { serverBuild?: string }).serverBuild;
 					if (serverBuild && serverBuild !== __BUILD__) {
@@ -1624,7 +1641,14 @@ export default function App() {
 																	if (idx >= 0) merged[idx] = p; else merged.push(p);
 																}
 																const sid = activeSessionIdRef.current;
-																if (sid) sessionPromptsRef.current.set(sid, merged);
+																if (sid) {
+																	sessionPromptsRef.current.set(sid, merged);
+																	apiFetch(`/api/session-prompts/${encodeURIComponent(sid)}`, {
+																		method: 'POST',
+																		headers: { 'Content-Type': 'application/json' },
+																		body: JSON.stringify({ prompts: merged }),
+																	}).catch(() => {});
+																}
 																return merged;
 															});
 														}
