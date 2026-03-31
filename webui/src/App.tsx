@@ -2421,7 +2421,7 @@ export default function App() {
 					}}
 				>
 					<div className="flex items-center gap-2">
-						<div className="relative flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+						<div className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto', borderColor: 'var(--border)' }}>
 									{sessionPrompts.map((p, i) => (
@@ -2443,57 +2443,59 @@ export default function App() {
 									))}
 								</div>
 							)}
-							<textarea
-								ref={textareaRef}
-								className="chat-scroll w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
-								style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-								placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
-								disabled={connectionState !== 'connected'}
-								rows={1}
-								value={input}
-								onChange={(e) => setInput(e.target.value)}
-								enterKeyHint="enter"
-								onKeyDown={(e) => {
-									// Touch devices (iOS): Enter adds newlines — send via button only.
-									// Desktop: Enter sends, Shift+Enter adds newline.
-									const isTouch = window.matchMedia('(hover: none)').matches;
-									if (e.key === 'Enter' && !e.shiftKey && !isTouch) {
-										e.preventDefault();
-										sendPrompt();
-									}
-								}}
-							/>
-							{!input && messages.filter(m => m.role === 'user').length > 0 && (
-								<button
-									type="button"
-									title="Recall last message"
-									onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
-									className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
-									style={{ color: 'var(--text-muted)' }}
-								>
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
-										<polyline points="9 10 4 15 9 20"/>
-										<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
-									</svg>
-								</button>
-							)}
-							{sessionPrompts.length > 0 && (
-								<button
-									type="button"
-									title="Canned prompts"
-									onClick={() => setShowPromptsTray(prev => !prev)}
-									className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
-									style={{ color: showPromptsTray ? 'var(--primary)' : 'var(--text-muted)', right: !input && messages.filter(m => m.role === 'user').length > 0 ? 28 : 8 }}
-								>
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
-										<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-										<path d="M8 9h8M8 13h5" />
-									</svg>
-								</button>
-							)}
+							<div className="relative">
+								<textarea
+									ref={textareaRef}
+									className="chat-scroll w-full resize-none bg-transparent px-4 py-3 text-sm outline-none"
+									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
+									placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
+									disabled={connectionState !== 'connected'}
+									rows={1}
+									value={input}
+									onChange={(e) => setInput(e.target.value)}
+									enterKeyHint="enter"
+									onKeyDown={(e) => {
+										// Touch devices (iOS): Enter adds newlines — send via button only.
+										// Desktop: Enter sends, Shift+Enter adds newline.
+										const isTouch = window.matchMedia('(hover: none)').matches;
+										if (e.key === 'Enter' && !e.shiftKey && !isTouch) {
+											e.preventDefault();
+											sendPrompt();
+										}
+									}}
+								/>
+								{!input && messages.filter(m => m.role === 'user').length > 0 && (
+									<button
+										type="button"
+										title="Recall last message"
+										onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
+										className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)' }}
+									>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+											<polyline points="9 10 4 15 9 20"/>
+											<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
+										</svg>
+									</button>
+								)}
+								{sessionPrompts.length > 0 && (
+									<button
+										type="button"
+										title="Canned prompts"
+										onClick={() => setShowPromptsTray(prev => !prev)}
+										className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: showPromptsTray ? 'var(--primary)' : 'var(--text-muted)', right: !input && messages.filter(m => m.role === 'user').length > 0 ? 28 : 8 }}
+									>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+											<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+											<path d="M8 9h8M8 13h5" />
+										</svg>
+									</button>
+								)}
+							</div>
 						</div>
 						<button
-							className="flex size-11 shrink-0 items-center justify-center rounded-full border-none"
+							className="flex size-11 shrink-0 items-center justify-center self-end rounded-full border-none"
 							style={{
 								background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
 								color: 'white',
