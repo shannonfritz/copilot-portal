@@ -71,7 +71,7 @@ type PendingInput = {
 export class SessionHandle {
 	readonly sessionId: string;
 	private session: CopilotSession;
-	titleChangedCallback?: () => Promise<void>;
+	titleChangedCallback?: (title?: string) => void;
 	private listeners = new Set<(e: PortalEvent) => void>();
 	/** True until the first portal client ever connects — prevents evict-on-connect for brand-new sessions. */
 	isNew = true;
@@ -538,6 +538,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// Check for pending CLI approvals missed during reconnect
 			this.detectPendingCliApproval(msgs);
 			// Check if title changed (e.g. /rename from CLI — doesn't fire session.title_changed)
+			// No title data available here, so callback without title triggers a fallback check
 			void this.titleChangedCallback?.();
 			// Re-broadcast any pending approvals/inputs in case reconnect disrupted the UI state
 			for (const p of this.pendingApprovals.values()) this.broadcast(p.event);
@@ -884,9 +885,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (intent) this.broadcast({ type: 'intent', content: intent });
 	}
 
-	private onSessionTitleChanged(): void {
+	private onSessionTitleChanged(data: unknown): void {
+		const title = (data as { title?: string }).title;
+		if (title && title !== this.lastKnownSummary) {
+			this.lastKnownSummary = title;
+			void this.titleChangedCallback?.(title);
+		}
 		void this.syncMessages();
-		void this.titleChangedCallback?.();
 	}
 
 	private onAssistantReasoningDelta(data: unknown): void {
@@ -1336,7 +1341,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'assistant.turn_start':             (d, gen) => this.onAssistantTurnStart(d, gen),
 		'user.message':                     (d) => this.onUserMessage(d),
 		'assistant.intent':                 (d) => this.onAssistantIntent(d),
-		'session.title_changed':            () => this.onSessionTitleChanged(),
+		'session.title_changed':            (d) => this.onSessionTitleChanged(d),
 		'assistant.reasoning_delta':        (d) => this.onAssistantReasoningDelta(d),
 		'assistant.message_delta':          (d) => this.onAssistantMessageDelta(d),
 		'assistant.message':                (d) => this.onAssistantMessage(d),
@@ -1642,17 +1647,11 @@ export class SessionPool {
 				this.log(`[Pool] Session ${sessionId.slice(0, 8)} model: ${r.modelId}`);
 			}
 		}).catch(() => {});
-		handle.titleChangedCallback = async () => {
-			try {
-				const sessions = await this.client.listSessions();
-				const meta = sessions.find(s => s.sessionId === sessionId);
-				const summary = meta?.summary;
-				if (summary !== handle.lastKnownSummary) {
-					handle.lastKnownSummary = summary;
-					this.log(`[TitleChanged] session=${sessionId.slice(0,8)} summary=${summary ?? '(none)'}`);
-					this.onTitleChanged?.(sessionId, summary);
-				}
-			} catch {}
+		handle.titleChangedCallback = (title) => {
+			if (title) {
+				this.log(`[TitleChanged] session=${sessionId.slice(0,8)} summary=${title}`);
+				this.onTitleChanged?.(sessionId, title);
+			}
 		};
 		// Check for pending CLI approvals before the first client receives getActiveTurnEvents()
 		await handle.checkInitialState();
@@ -1671,16 +1670,10 @@ export class SessionPool {
 		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
 		handle.sharedMode = this.shared;
 		this.pool.set(session.sessionId, handle);
-		handle.titleChangedCallback = async () => {
-			try {
-				const sessions = await this.client.listSessions();
-				const meta = sessions.find(s => s.sessionId === session.sessionId);
-				const summary = meta?.summary;
-				if (summary !== handle.lastKnownSummary) {
-					handle.lastKnownSummary = summary;
-					this.onTitleChanged?.(session.sessionId, summary);
-				}
-			} catch {}
+		handle.titleChangedCallback = (title) => {
+			if (title) {
+				this.onTitleChanged?.(session.sessionId, title);
+			}
 		};
 		this.log(`[Pool] Created: ${session.sessionId.slice(0, 8)}`);
 		return handle;
