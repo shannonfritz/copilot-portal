@@ -71,7 +71,7 @@ type PendingInput = {
 export class SessionHandle {
 	readonly sessionId: string;
 	private session: CopilotSession;
-	titleChangedCallback?: (title?: string) => void;
+	titleChangedCallback?: (title?: string) => void | Promise<void>;
 	private listeners = new Set<(e: PortalEvent) => void>();
 	/** True until the first portal client ever connects — prevents evict-on-connect for brand-new sessions. */
 	isNew = true;
@@ -887,6 +887,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onSessionTitleChanged(data: unknown): void {
 		const title = (data as { title?: string }).title;
+		this.log(`[TitleChanged] event data=${JSON.stringify(data)} extracted title=${title} lastKnown=${this.lastKnownSummary}`);
 		if (title && title !== this.lastKnownSummary) {
 			this.lastKnownSummary = title;
 			void this.titleChangedCallback?.(title);
@@ -1178,6 +1179,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (this.getModTimeFn) {
 			this.getModTimeFn().then(t => { if (t) this.lastKnownModTime = t; }).catch(() => {});
 		}
+		// Check if title changed after the turn completed
+		void this.titleChangedCallback?.();
 	}
 
 	/** Extract a CLI approval description from permission event data. */
@@ -1647,10 +1650,22 @@ export class SessionPool {
 				this.log(`[Pool] Session ${sessionId.slice(0, 8)} model: ${r.modelId}`);
 			}
 		}).catch(() => {});
-		handle.titleChangedCallback = (title) => {
+		handle.titleChangedCallback = async (title) => {
 			if (title) {
 				this.log(`[TitleChanged] session=${sessionId.slice(0,8)} summary=${title}`);
+				handle.lastKnownSummary = title;
 				this.onTitleChanged?.(sessionId, title);
+			} else {
+				// No title from event (e.g. session.idle check) — fetch from SDK
+				try {
+					const sessions = await this.client.listSessions();
+					const meta = sessions.find(s => s.sessionId === sessionId);
+					if (meta?.summary && meta.summary !== handle.lastKnownSummary) {
+						handle.lastKnownSummary = meta.summary;
+						this.log(`[TitleChanged] session=${sessionId.slice(0,8)} summary=${meta.summary} (fetched)`);
+						this.onTitleChanged?.(sessionId, meta.summary);
+					}
+				} catch {}
 			}
 		};
 		// Check for pending CLI approvals before the first client receives getActiveTurnEvents()
@@ -1670,9 +1685,19 @@ export class SessionPool {
 		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
 		handle.sharedMode = this.shared;
 		this.pool.set(session.sessionId, handle);
-		handle.titleChangedCallback = (title) => {
+		handle.titleChangedCallback = async (title) => {
 			if (title) {
+				handle.lastKnownSummary = title;
 				this.onTitleChanged?.(session.sessionId, title);
+			} else {
+				try {
+					const sessions = await this.client.listSessions();
+					const meta = sessions.find(s => s.sessionId === session.sessionId);
+					if (meta?.summary && meta.summary !== handle.lastKnownSummary) {
+						handle.lastKnownSummary = meta.summary;
+						this.onTitleChanged?.(session.sessionId, meta.summary);
+					}
+				} catch {}
 			}
 		};
 		this.log(`[Pool] Created: ${session.sessionId.slice(0, 8)}`);
