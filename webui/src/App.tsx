@@ -396,7 +396,7 @@ function SessionDrawer({
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
 			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
-			<div className="flex w-full items-center gap-2 px-4 py-2 text-xs" style={{ color: 'var(--text-muted)' }} onClick={onToggle}>
+			<button className="flex w-full items-center gap-2 border-none bg-transparent px-4 py-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }} onClick={onToggle} type="button">
 				{/* Session summary — read-only */}
 				<span className="whitespace-nowrap shrink-0" style={{ color: sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
 					{sessionSummary || <em>untitled session</em>}
@@ -412,7 +412,7 @@ function SessionDrawer({
 					)}
 					<span>{open ? '▴' : '▾'}</span>
 				</div>
-			</div>
+			</button>
 
 			{/* Expandable panel */}
 			{open && (
@@ -1850,7 +1850,7 @@ export default function App() {
 											</div>
 											<div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
 												{s.modifiedTime ? timeAgo(s.modifiedTime) : ''}
-												{' · '}<span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline">{s.sessionId.slice(0, 8)}</span>
+												{' · '}<button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline border-none bg-transparent p-0 text-xs" style={{ color: 'inherit' }}>{s.sessionId.slice(0, 8)}</button>
 											</div>
 										</button>
 
