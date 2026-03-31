@@ -2664,10 +2664,10 @@ export default function App() {
 								)}
 							</div>
 						</div>
-						<div className="flex shrink-0 flex-col items-center justify-end gap-1">
+						<div className="relative shrink-0 self-end">
 							{showPromptsTray && sessionPrompts.length > 0 && (
 								<button
-									className="flex size-8 items-center justify-center rounded-full border-none"
+									className="absolute -top-10 left-1/2 -translate-x-1/2 flex size-8 items-center justify-center rounded-full border-none"
 									style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
 									onClick={clearSessionPrompts}
 									type="button"
