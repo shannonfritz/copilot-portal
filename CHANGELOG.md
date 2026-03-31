@@ -5,9 +5,9 @@ All notable changes to Copilot Portal are documented here.
 ## v0.4.0
 
 ### Instructions
-- Reusable instruction guides: drop `.md` files into `data/instructions/`
+- Reusable reusable guides: drop `.md` files into `data/guides/`
 - Top bar button with picker modal (tri-fold map icon)
-- View instruction content (eye icon), delete with confirmation (trash icon)
+- View guide content (eye icon), delete with confirmation (trash icon)
 - Instructions applied via file-read prompt — Copilot reads the file natively
 - Title from first line of `.md` used as session opener for better auto-naming
 - Self-updating instructions: files can prompt user and write back answers

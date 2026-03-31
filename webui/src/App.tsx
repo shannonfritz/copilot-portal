@@ -541,10 +541,10 @@ export default function App() {
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
 	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
-	const [showInstructions, setShowInstructions] = useState(false);
-	const [confirmDeleteInstruction, setConfirmDeleteInstruction] = useState<string | null>(null);
-	const [viewingInstruction, setViewingInstruction] = useState<{ id: string; title: string; content: string; isPrompts?: boolean } | null>(null);
-	const [instructions, setInstructions] = useState<Array<{ id: string; name: string; hasInstruction?: boolean; hasPrompts?: boolean }>>([]);
+	const [showGuides, setshowGuides] = useState(false);
+	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
+	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean } | null>(null);
+	const [guides, setGuides] = useState<Array<{ id: string; name: string; hasGuide?: boolean; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
 	const [showPromptsTray, setShowPromptsTray] = useState(false);
@@ -1517,9 +1517,9 @@ export default function App() {
 		}
 	};
 
-	const loadPromptsForInstruction = async (instId: string) => {
+	const loadPromptsForGuide = async (instId: string) => {
 		try {
-			const pRes = await apiFetch(`/api/instructions/${encodeURIComponent(instId)}/prompts`);
+			const pRes = await apiFetch(`/api/guides/${encodeURIComponent(instId)}/prompts`);
 			const { prompts: newPrompts } = await pRes.json() as { prompts: Array<{ label: string; text: string }> };
 			if (newPrompts.length > 0) {
 				setSessionPrompts(prev => {
@@ -1641,12 +1641,12 @@ export default function App() {
 				</div>
 			)}
 
-			{/* Instructions Picker */}
-			{showInstructions && (
+			{/* Guides Picker */}
+			{showGuides && (
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
-					onClick={() => { setShowInstructions(false); setViewingInstruction(null); setConfirmDeleteInstruction(null); }}
+					onClick={() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); }}
 				>
 					<div
 						className="w-full max-w-md rounded-2xl p-4"
@@ -1654,23 +1654,23 @@ export default function App() {
 						onClick={(e) => e.stopPropagation()}
 					>
 						<div className="mb-3">
-							<h2 className="font-semibold">Instructions and Prompts</h2>
+							<h2 className="font-semibold">Guides and Prompts</h2>
 						</div>
-						{viewingInstruction ? (
+						{viewingGuide ? (
 							<div>
 								<div className="mb-2 flex items-center justify-between">
-									<h3 className="font-semibold text-sm">{viewingInstruction.title}</h3>
+									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
 									<div className="flex gap-1">
 										<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
-											const vi = viewingInstruction;
-											setViewingInstruction(null);
-											setShowInstructions(false);
+											const vi = viewingGuide;
+											setviewingGuide(null);
+											setshowGuides(false);
 											if (vi.isPrompts) {
-												await loadPromptsForInstruction(vi.id);
+												await loadPromptsForGuide(vi.id);
 											} else {
-												// Apply instruction
+												// Apply guide
 												try {
-													const res = await apiFetch(`/api/instructions/${encodeURIComponent(vi.id)}`);
+													const res = await apiFetch(`/api/guides/${encodeURIComponent(vi.id)}`);
 													const { filePath, title } = await res.json() as { filePath: string; title: string };
 													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
 														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
@@ -1678,40 +1678,40 @@ export default function App() {
 														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
 														setIsStreaming(true);
 														setIsThinking(true);
-														setThinkingText('Applying instruction...');
+														setThinkingText('Applying guide...');
 													}
-													const inst = instructions.find(i => i.id === vi.id);
-													if (inst?.hasPrompts) await loadPromptsForInstruction(vi.id);
+													const inst = guides.find(i => i.id === vi.id);
+													if (inst?.hasPrompts) await loadPromptsForGuide(vi.id);
 												} catch (e) {
-													setError(`Failed to load instruction: ${e}`);
+													setError(`Failed to load guide: ${e}`);
 												}
 											}
-										}} type="button">{viewingInstruction.isPrompts ? 'Load Prompts' : 'Apply'}</button>
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setViewingInstruction(null)} type="button">Back</button>
+										}} type="button">{viewingGuide.isPrompts ? 'Load Prompts' : 'Apply'}</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setviewingGuide(null)} type="button">Back</button>
 									</div>
 								</div>
 								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
-									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingInstruction.content}</pre>
+									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
 								</div>
 							</div>
-						) : instructions.length === 0 ? (
+						) : guides.length === 0 ? (
 							<div className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-								No instructions found. Add .md files to data/instructions/
+								No guides found. Add .md files to data/guides/
 							</div>
 						) : (
 							<div className="chat-scroll" style={{ maxHeight: 'calc(100vh - 12rem)', overflowY: 'auto' }}>
-								{instructions.map(inst => (
+								{guides.map(inst => (
 									<button
 										key={inst.id}
 										type="button"
 										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm"
 										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
 										onClick={async () => {
-											setShowInstructions(false);
+											setshowGuides(false);
 											try {
-												// Apply instruction if it exists
-												if (inst.hasInstruction) {
-													const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
+												// Apply guide if it exists
+												if (inst.hasGuide) {
+													const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`);
 													const { filePath, title } = await res.json() as { filePath: string; title: string };
 													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
 														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
@@ -1719,13 +1719,13 @@ export default function App() {
 														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
 														setIsStreaming(true);
 														setIsThinking(true);
-														setThinkingText('Applying instruction...');
+														setThinkingText('Applying guide...');
 													}
 												}
 												// Load prompts if available
-												if (inst.hasPrompts) await loadPromptsForInstruction(inst.id);
+												if (inst.hasPrompts) await loadPromptsForGuide(inst.id);
 											} catch (e) {
-												setError(`Failed to load instruction: ${e}`);
+												setError(`Failed to load guide: ${e}`);
 											}
 										}}
 									>
@@ -1735,27 +1735,27 @@ export default function App() {
 											<path d="M8 13c1-2 2.5 2 3.5 0s2.5 2 3.5 0" />
 										</svg>
 										<span className="flex-1">{inst.name}</span>
-										{confirmDeleteInstruction === inst.id ? (
+										{confirmDeleteGuide === inst.id ? (
 											<span className="flex gap-1" onClick={e => e.stopPropagation()}>
 												<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={async (e) => {
 													e.stopPropagation();
-													await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`, { method: 'DELETE' });
-													setInstructions(prev => prev.filter(i => i.id !== inst.id));
-													setConfirmDeleteInstruction(null);
+													await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`, { method: 'DELETE' });
+													setGuides(prev => prev.filter(i => i.id !== inst.id));
+													setconfirmDeleteGuide(null);
 												}} type="button">Delete</button>
-												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(null); }} type="button">Cancel</button>
+												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(null); }} type="button">Cancel</button>
 											</span>
 										) : (
 											<span className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
-												<button className="rounded p-1.5" style={{ opacity: inst.hasInstruction ? 0.7 : 0.2 }} onClick={async (e) => {
+												<button className="rounded p-1.5" style={{ opacity: inst.hasGuide ? 0.7 : 0.2 }} onClick={async (e) => {
 													e.stopPropagation();
-													if (!inst.hasInstruction) return;
+													if (!inst.hasGuide) return;
 													try {
-														const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}`);
+														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`);
 														const data = await res.json() as { title: string; content: string };
-														setViewingInstruction({ id: inst.id, title: data.title, content: data.content });
+														setviewingGuide({ id: inst.id, title: data.title, content: data.content });
 													} catch {}
-												}} type="button" title={inst.hasInstruction ? 'View instruction' : 'No instruction'}>
+												}} type="button" title={inst.hasGuide ? 'View guide' : 'No guide'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 														<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
 														<circle cx="12" cy="12" r="3" />
@@ -1765,10 +1765,10 @@ export default function App() {
 													e.stopPropagation();
 													if (!inst.hasPrompts) return;
 													try {
-														const res = await apiFetch(`/api/instructions/${encodeURIComponent(inst.id)}/prompts`);
+														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`);
 														const { prompts } = await res.json() as { prompts: Array<{ label: string; text: string }> };
 														const content = prompts.map(p => `## ${p.label}\n${p.text}`).join('\n\n');
-														setViewingInstruction({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true });
+														setviewingGuide({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true });
 													} catch {}
 												}} type="button" title={inst.hasPrompts ? 'View prompts' : 'No prompts'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1776,7 +1776,7 @@ export default function App() {
 														<path d="M8 9h8M8 13h5" />
 													</svg>
 												</button>
-												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteInstruction(inst.id); }} type="button" title="Delete">
+												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(inst.id); }} type="button" title="Delete">
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
 													</svg>
@@ -2070,12 +2070,12 @@ export default function App() {
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
 							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
 							onClick={() => {
-								const opening = !showInstructions;
-								setShowInstructions(opening);
-								if (opening) apiFetch('/api/instructions').then(r => r.json()).then(setInstructions).catch(() => {});
+								const opening = !showGuides;
+								setshowGuides(opening);
+								if (opening) apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 							}}
 							type="button"
-							title="Instructions"
+							title="Guides and Prompts"
 						>
 							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
 								<path d="M2 6l7-2 6 2 7-2v16l-7 2-6-2-7 2V6z" />

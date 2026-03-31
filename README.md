@@ -35,17 +35,17 @@ While running, press a key:
 - `r` — Restart server
 - `x` — Exit
 
-## Instructions and Prompts
+## Guides and Prompts
 
-Drop `.md` files into `data/instructions/` for reusable instruction guides, and
+Drop `.md` files into `data/guides/` for reusable reusable guides, and
 `data/prompts/` for canned prompt collections. Files with the same name are paired.
 Examples are seeded on first run from `examples/`.
 
 Click the 📋 button in the top bar to:
-- **Apply** an instruction to the current session (click the name)
-- **View** the instruction or prompts content (eye / speech bubble icon)
-- **Load Prompts** without applying the instruction (from the prompts viewer)
-- **Delete** an instruction and/or its prompts (trash icon)
+- **Apply** a guide to the current session (click the name)
+- **View** the guide or prompts content (eye / speech bubble icon)
+- **Load Prompts** without applying the guide (from the prompts viewer)
+- **Delete** a guide and/or its prompts (trash icon)
 
 Instructions tell Copilot how to behave — API access patterns, coding conventions,
 game rules, or anything you'd normally explain at the start of a session. They can
