@@ -2448,7 +2448,7 @@ export default function App() {
 					<div className="flex items-center gap-2">
 						<div ref={inputContainerRef} className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
 							{showPromptsTray && sessionPrompts.length > 0 && (
-								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 200, overflowY: 'auto', borderColor: 'var(--border)' }}>
+								<div className="chat-scroll flex flex-col gap-1 border-b px-3 py-2" style={{ maxHeight: 170, overflowY: 'auto', borderColor: 'var(--border)' }}>
 									{sessionPrompts.map((p, i) => (
 										<button
 											key={i}
