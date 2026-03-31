@@ -872,9 +872,10 @@ export default function App() {
 					}
 					if (newId) {
 						const summary = (event as { summary?: string | null }).summary ?? undefined;
+						const startTime = (event as { startTime?: string | null }).startTime ?? undefined;
 						setSessions(prev => prev.some(s => s.sessionId === newId)
-							? prev.map(s => s.sessionId === newId ? { ...s, summary: summary ?? s.summary } : s)
-							: [{ sessionId: newId, summary }, ...prev]);					}
+							? prev.map(s => s.sessionId === newId ? { ...s, summary: summary ?? s.summary, startTime: startTime ?? s.startTime } : s)
+							: [{ sessionId: newId, summary, startTime }, ...prev]);					}
 					// Keep URL in sync — update ?session= without reloading
 					if (newId) {
 						const params = new URLSearchParams(window.location.search);
