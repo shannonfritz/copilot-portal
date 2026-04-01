@@ -54,14 +54,15 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 /** Launch the CLI as a headless JSON-RPC server. Returns true if launch was attempted. */
 function launchCli(port: number): boolean {
 	if (process.platform === 'win32') {
-		// Check if copilot.exe exists on PATH before trying to launch
+		// Resolve full path to copilot.exe so Start-Process can find it
 		const which = spawnSync('where', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 		if (which.status !== 0) {
 			console.error(`[Launcher] copilot.exe not found on PATH.`);
 			console.error(`[Launcher] Install GitHub Copilot CLI: winget install GitHub.CopilotCLI`);
 			return false;
 		}
-		exec(`pwsh -NoProfile -Command "Start-Process -FilePath 'copilot.exe' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true },
+		const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
+		exec(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true },
 			(err) => {
 				if (err) {
 					console.error(`[Launcher] Failed to launch CLI: ${err.message}`);

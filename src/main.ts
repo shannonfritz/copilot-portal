@@ -169,14 +169,19 @@ if (process.stdin.isTTY) {
 
 			// Wait a moment for port to free, then launch TUI server
 			setTimeout(() => {
-				const args = ['--ui-server', '--port', '3848'];
-				if (sessionId) args.push('--resume', sessionId);
-				const cmd = `copilot ${args.join(' ')}`;
+				const tuiArgs = ['--ui-server', '--port', '3848'];
+				if (sessionId) tuiArgs.push('--resume', sessionId);
 				if (process.platform === 'win32') {
+					// Resolve full path to copilot.exe so wt/Start-Process can find it
+					const which = spawnSync('where', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+					const copilotPath = which.status === 0 ? which.stdout.toString().trim().split(/\r?\n/)[0] : 'copilot';
+					const cmd = `"${copilotPath}" ${tuiArgs.join(' ')}`;
 					exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
 				} else if (process.platform === 'darwin') {
+					const cmd = `copilot ${tuiArgs.join(' ')}`;
 					exec(`osascript -e 'tell app "Terminal" to do script "${cmd}"'`);
 				} else {
+					const cmd = `copilot ${tuiArgs.join(' ')}`;
 					exec(`x-terminal-emulator -e "${cmd}" 2>/dev/null || xterm -e "${cmd}" &`);
 				}
 				console.log(`  CLI TUI opening${sessionId ? ` (session ${sessionId.slice(0, 8)})` : ' (new session)'}...`);
