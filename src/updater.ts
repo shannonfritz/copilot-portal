@@ -224,8 +224,11 @@ function isNewer(a: string, b: string): boolean {
 /** Run a shell command and return stdout. Rejects on non-zero exit. */
 function runCommand(cmd: string, cwd: string): Promise<string> {
 	return new Promise((resolve, reject) => {
-		exec(cmd, { cwd, timeout: 5 * 60 * 1000 }, (err, stdout, stderr) => {
-			if (err) reject(new Error(`${cmd} failed: ${stderr || err.message}`));
+		exec(cmd, { cwd, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
+			if (err) {
+				const details = [stderr, stdout, err.message].filter(s => s?.trim()).join('\n');
+				reject(new Error(`${cmd} failed: ${details}`));
+			}
 			else resolve(stdout);
 		});
 	});
