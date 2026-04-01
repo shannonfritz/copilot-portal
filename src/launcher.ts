@@ -55,7 +55,7 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
 function launchCli(port: number): boolean {
 	if (process.platform === 'win32') {
 		// Resolve full path to copilot.exe so Start-Process can find it
-		const which = spawnSync('where', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+		const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 		if (which.status !== 0) {
 			console.error(`[Launcher] copilot.exe not found on PATH.`);
 			console.error(`[Launcher] Install GitHub Copilot CLI: winget install GitHub.CopilotCLI`);

@@ -173,7 +173,7 @@ if (process.stdin.isTTY) {
 				if (sessionId) tuiArgs.push('--resume', sessionId);
 				if (process.platform === 'win32') {
 					// Resolve full path to copilot.exe so wt/Start-Process can find it
-					const which = spawnSync('where', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+					const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 					const copilotPath = which.status === 0 ? which.stdout.toString().trim().split(/\r?\n/)[0] : 'copilot';
 					const cmd = `"${copilotPath}" ${tuiArgs.join(' ')}`;
 					exec(`wt -w 0 new-tab --title "Copilot CLI" ${cmd}`);
