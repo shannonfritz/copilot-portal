@@ -14,7 +14,7 @@ All notable changes to Copilot Portal are documented here.
 - Example instructions included:
   - Test Context, 20 Questions, Choose Your Own Adventure
   - My Preferences (self-updating), My Dev Environment (discover + ask)
-  - Copilot Portal Dev (project briefing), System Explorer, CRM & ADO
+  - Copilot Portal Dev (project briefing), System Explorer
 
 ### Per-Message Tool Summaries
 - Tools collapse into summaries on the message that dispatched them
