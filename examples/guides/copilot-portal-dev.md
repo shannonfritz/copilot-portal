@@ -7,7 +7,7 @@ This is the copilot-portal project — a web portal for GitHub Copilot CLI sessi
 - **Build:** `npm run build` (esbuild for server, vite for UI)
 - **Package release:** `npm run package` (creates zip in releases/)
 - **Start server:** `npm start` (runs launcher which starts CLI server + portal)
-- **Project root:** C:\Projects\copilot-portal
+- **Project root:** (the directory where you cloned the repo)
 
 ## Read These Docs
 

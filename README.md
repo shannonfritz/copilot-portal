@@ -21,7 +21,7 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 
 3. The console will print a URL and QR code:
    ```
-   Open: http://192.168.1.42:3847?token=abc123...
+   Open: http://localhost:3847?token=abc123...
    ```
    Open that URL in any browser on your local network.
 

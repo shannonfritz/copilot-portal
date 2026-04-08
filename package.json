@@ -2,6 +2,12 @@
 	"name": "copilot-portal",
 	"description": "Mobile-friendly web portal for GitHub Copilot CLI — share a session across any device",
 	"version": "0.4.0",
+	"author": "Shannon Fritz",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/shannonfritz/copilot-portal.git"
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=22.5.0"
