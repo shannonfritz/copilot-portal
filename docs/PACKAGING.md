@@ -34,10 +34,9 @@ stages release files, and creates a versioned zip in `releases/`.
 ```bash
 # Commit the bumped BUILD file
 git add BUILD && git commit -m "Bump build"
-
-# Copy to OneDrive for distribution
-copy releases\copilot-portal-v0.2.0-build-260323-01.zip "%USERPROFILE%\OneDrive - Microsoft\Documents\copilot-portal\"
 ```
+
+The zip is in `releases/` — distribute via GitHub Releases or other channels.
 
 ## Versioning Scheme
 
