@@ -1805,6 +1805,12 @@ export default function App() {
 										disabled={!newGuideName || (!newGuideCheck && !newPromptsCheck)}
 										onClick={async () => {
 											if (!newGuideName) return;
+											// Check for conflict
+											const existing = guides.find(g => g.id === newGuideName);
+											if (existing) {
+												const overwrite = confirm(`A file named "${newGuideName}" already exists. Overwrite it?`);
+												if (!overwrite) return;
+											}
 											try {
 												if (selectedExample) {
 													await apiFetch('/api/guides/from-example', {
