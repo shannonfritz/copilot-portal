@@ -23,10 +23,10 @@ data/prompts/             User's working prompt files
 ### Main List
 - Shows files from `data/guides/` and `data/prompts/` (current behavior)
 - Same icons: eye (guide), speech bubble (prompts), trash (delete)
-- **"+ Add" button** in the picker header (new)
+- **"+ New" button** in the picker header (consistent with Sessions picker)
 
-### "+ Add" Flow
-When the user clicks "+ Add", a panel opens within the picker:
+### "+ New" Flow
+When the user clicks "+ New", a panel opens within the picker:
 
 1. **Example Selector**
    - Dropdown at the top listing all examples from `examples/`
@@ -48,6 +48,8 @@ When the user clicks "+ Add", a panel opens within the picker:
    - Copies selected files from `examples/` to `data/`
    - If "Blank" selected, creates empty `.md` files with the user's chosen name
    - After adding, the item appears in the main list
+   - Newly added items are **briefly highlighted** with an accent color (e.g. primary-tint
+     background that fades after a few seconds) to draw attention to the new entry
    - Optionally opens the editor immediately
 
 ### Conflict Handling
@@ -56,6 +58,12 @@ When the user clicks "+ Add", a panel opens within the picker:
 - Options: Overwrite / Rename / Cancel
 
 ## Editor
+
+### Container
+- When viewing or editing content, the picker **expands to a wider container**
+  (the item list can stay narrow, but text content needs more room to read/edit)
+- The wider view applies to both the guide viewer and the prompts viewer
+- Returns to narrow width when going back to the list
 
 ### Integration
 - In the existing viewer, add an **"Edit" button** next to "Apply" and "Back"
