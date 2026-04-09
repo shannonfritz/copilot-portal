@@ -13,6 +13,9 @@
 		"node": ">=22.5.0"
 	},
 	"main": "./dist/server.js",
+	"bin": {
+		"copilot-portal": "./bin/copilot-portal.mjs"
+	},
 	"scripts": {
 		"build": "node esbuild.cjs --production && cd webui && npm run build",
 		"build:ext": "node esbuild.cjs",
@@ -22,7 +25,8 @@
 		"watch:ui": "cd webui && npm run dev",
 		"test": "node tools/test-client.mjs",
 		"package": "node package.mjs",
-		"postinstall": "patch-package && node patch.mjs"
+		"postinstall": "patch-package && node patch.mjs",
+		"prepare": "npm run build"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
