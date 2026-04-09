@@ -579,6 +579,15 @@ export default function App() {
 	const [showGuides, setshowGuides] = useState(false);
 	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
 	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean; filePath?: string } | null>(null);
+	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
+	const [showNewGuide, setShowNewGuide] = useState(false);
+	const [examples, setExamples] = useState<Array<{ id: string; hasGuide: boolean; hasPrompts: boolean }>>([]);
+	const [selectedExample, setSelectedExample] = useState<string>('');
+	const [examplePreview, setExamplePreview] = useState<{ guide: string; prompts: string } | null>(null);
+	const [newGuideCheck, setNewGuideCheck] = useState(true);
+	const [newPromptsCheck, setNewPromptsCheck] = useState(true);
+	const [newGuideName, setNewGuideName] = useState('');
+	const [recentlyAdded, setRecentlyAdded] = useState<string | null>(null);
 	const [guides, setGuides] = useState<Array<{ id: string; name: string; hasGuide?: boolean; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
@@ -1692,14 +1701,145 @@ export default function App() {
 					onClick={() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); }}
 				>
 					<div
-						className="w-full max-w-md rounded-2xl p-4"
+						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide ? 'max-w-2xl' : 'max-w-md'}`}
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="mb-3">
+						<div className="mb-3 flex items-center justify-between">
 							<h2 className="font-semibold">Guides and Prompts</h2>
+							{!viewingGuide && !showNewGuide && (
+								<button
+									type="button"
+									className="rounded-lg px-2.5 py-1 text-xs font-medium"
+									style={{ background: 'var(--primary)', color: 'white' }}
+									onClick={() => {
+										setShowNewGuide(true);
+										setSelectedExample('');
+										setExamplePreview(null);
+										setNewGuideName('');
+										setNewGuideCheck(true);
+										setNewPromptsCheck(true);
+										apiFetch('/api/examples').then(r => r.json()).then(setExamples).catch(() => {});
+									}}
+								>+ New</button>
+							)}
 						</div>
-						{viewingGuide ? (
+						{showNewGuide ? (
+							<div>
+								<div className="mb-3">
+									<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start from</label>
+									<select
+										className="w-full rounded-lg px-3 py-2 text-sm"
+										style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+										value={selectedExample}
+										onChange={async (e) => {
+											const id = e.target.value;
+											setSelectedExample(id);
+											if (!id) { setExamplePreview(null); setNewGuideName(''); return; }
+											setNewGuideName(id);
+											try {
+												const [gRes, pRes] = await Promise.all([
+													apiFetch(`/api/examples/${encodeURIComponent(id)}`).then(r => r.json()),
+													apiFetch(`/api/examples/${encodeURIComponent(id)}/prompts`).then(r => r.json()),
+												]);
+												setExamplePreview({ guide: gRes.content ?? '', prompts: pRes.content ?? '' });
+												const ex = examples.find(e => e.id === id);
+												setNewGuideCheck(!!ex?.hasGuide);
+												setNewPromptsCheck(!!ex?.hasPrompts);
+											} catch { setExamplePreview(null); }
+										}}
+									>
+										<option value="">Blank (start from scratch)</option>
+										{examples.map(ex => (
+											<option key={ex.id} value={ex.id}>{ex.id}</option>
+										))}
+									</select>
+								</div>
+
+								{/* Name input */}
+								<div className="mb-3">
+									<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Name</label>
+									<input
+										type="text"
+										className="w-full rounded-lg px-3 py-2 text-sm"
+										style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+										placeholder="my-guide-name"
+										value={newGuideName}
+										onChange={(e) => setNewGuideName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '-'))}
+									/>
+								</div>
+
+								{/* Preview tabs */}
+								{examplePreview && (
+									<div className="mb-3">
+										<div className="flex gap-2 mb-2">
+											<label className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+												<input type="checkbox" checked={newGuideCheck} onChange={(e) => setNewGuideCheck(e.target.checked)} disabled={!examplePreview.guide} />
+												Guide
+											</label>
+											<label className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+												<input type="checkbox" checked={newPromptsCheck} onChange={(e) => setNewPromptsCheck(e.target.checked)} disabled={!examplePreview.prompts} />
+												Prompts
+											</label>
+										</div>
+										<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+											<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
+												{newGuideCheck && examplePreview.guide ? examplePreview.guide : newPromptsCheck && examplePreview.prompts ? examplePreview.prompts : 'Select guide or prompts to preview'}
+											</pre>
+										</div>
+									</div>
+								)}
+
+								{/* Action buttons */}
+								<div className="flex gap-2 justify-end">
+									<button
+										type="button"
+										className="rounded-lg px-3 py-1.5 text-xs"
+										style={{ border: '1px solid var(--border)' }}
+										onClick={() => setShowNewGuide(false)}
+									>Cancel</button>
+									<button
+										type="button"
+										className="rounded-lg px-3 py-1.5 text-xs font-medium"
+										style={{ background: 'var(--primary)', color: 'white', opacity: newGuideName && (newGuideCheck || newPromptsCheck) ? 1 : 0.5 }}
+										disabled={!newGuideName || (!newGuideCheck && !newPromptsCheck)}
+										onClick={async () => {
+											if (!newGuideName) return;
+											try {
+												if (selectedExample) {
+													await apiFetch('/api/guides/from-example', {
+														method: 'POST',
+														headers: { 'Content-Type': 'application/json' },
+														body: JSON.stringify({ exampleId: selectedExample, copyGuide: newGuideCheck, copyPrompts: newPromptsCheck, name: newGuideName }),
+													});
+												} else {
+													if (newGuideCheck) {
+														await apiFetch('/api/guides', {
+															method: 'POST',
+															headers: { 'Content-Type': 'application/json' },
+															body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName}\n\n` }),
+														});
+													}
+													if (newPromptsCheck) {
+														await apiFetch('/api/prompts', {
+															method: 'POST',
+															headers: { 'Content-Type': 'application/json' },
+															body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName} Prompts\n\n## Example Prompt\nDescribe what you want here\n` }),
+														});
+													}
+												}
+												setShowNewGuide(false);
+												setRecentlyAdded(newGuideName);
+												setTimeout(() => setRecentlyAdded(null), 3000);
+												apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
+											} catch (e) {
+												setError(`Failed to create: ${e}`);
+											}
+										}}
+									>Add</button>
+								</div>
+							</div>
+						) : viewingGuide ? (
 							<div>
 								<div className="mb-2 flex items-center justify-between">
 									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
@@ -1730,7 +1870,31 @@ export default function App() {
 												}
 											}
 										}} type="button">{viewingGuide.isPrompts ? 'Load Prompts' : 'Apply'}</button>
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setviewingGuide(null)} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
+											if (editingGuide) {
+												setEditingGuide(null);
+											} else {
+												setEditingGuide({ id: viewingGuide.id, content: viewingGuide.content, isPrompts: viewingGuide.isPrompts });
+											}
+										}} type="button">{editingGuide ? 'Cancel Edit' : 'Edit'}</button>
+										{editingGuide && (
+											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--success)', color: '#111' }} onClick={async () => {
+												try {
+													const endpoint = editingGuide.isPrompts ? '/api/prompts' : '/api/guides';
+													await apiFetch(endpoint, {
+														method: 'POST',
+														headers: { 'Content-Type': 'application/json' },
+														body: JSON.stringify({ id: editingGuide.id, content: editingGuide.content }),
+													});
+													setviewingGuide({ ...viewingGuide, content: editingGuide.content });
+													setEditingGuide(null);
+													apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
+												} catch (e) {
+													setError(`Failed to save: ${e}`);
+												}
+											}} type="button">Save</button>
+										)}
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setviewingGuide(null); setEditingGuide(null); }} type="button">Back</button>
 									</div>
 								</div>
 								{viewingGuide.filePath && (
@@ -1742,7 +1906,16 @@ export default function App() {
 									</div>
 								)}
 								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
-									<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
+									{editingGuide ? (
+										<textarea
+											className="w-full resize-none bg-transparent text-xs outline-none"
+											style={{ fontFamily: 'monospace', color: 'var(--text)', minHeight: 300 }}
+											value={editingGuide.content}
+											onChange={(e) => setEditingGuide({ ...editingGuide, content: e.target.value })}
+										/>
+									) : (
+										<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
+									)}
 								</div>
 							</div>
 						) : guides.length === 0 ? (
@@ -1755,8 +1928,8 @@ export default function App() {
 									<button
 										key={inst.id}
 										type="button"
-										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm"
-										style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-1000"
+										style={{ background: recentlyAdded === inst.id ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${recentlyAdded === inst.id ? 'var(--primary)' : 'var(--border)'}` }}
 										onClick={async () => {
 											setshowGuides(false);
 											try {
