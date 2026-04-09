@@ -16,6 +16,16 @@
 	"bin": {
 		"copilot-portal": "./bin/copilot-portal.mjs"
 	},
+	"files": [
+		"dist/",
+		"bin/",
+		"examples/",
+		"patches/",
+		"patch.mjs",
+		"start-portal.cmd",
+		"start-portal.sh",
+		"BUILD"
+	],
 	"scripts": {
 		"build": "node esbuild.cjs --production && cd webui && npm run build",
 		"build:ext": "node esbuild.cjs",
