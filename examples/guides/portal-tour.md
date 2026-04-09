@@ -17,9 +17,9 @@ Start by orienting the user — describe what they see across the top of the pag
 - **Logo and version** — top-left shows "Copilot Portal" with the version and build number.
 - **Top-right controls (left to right):**
   - **Stop button** (red square) — only appears when Copilot is actively working. Click to cancel.
-  - **Sessions** (stacked windows icon) — opens the session picker to switch between sessions, create new ones, or manage existing ones.
-  - **Guides & Prompts** (open book icon) — opens the guides and prompts panel.
-  - **Rules** (bulleted list icon) — shows always-allow rules. Displays a count badge when rules exist. Turns green when auto-approve-all is enabled.
+  - **Sessions** (stacked squares icon) — opens the session picker to switch between sessions, create new ones, or manage existing ones.
+  - **Guides & Prompts** (3-fold map icon) — opens the guides and prompts panel.
+  - **Rules** (bulleted list icon) — manages always-allow rules that let tools execute without asking for permission each time. Displays a count badge when rules exist. Turns green when auto-approve-all is enabled.
   - **Connection dot** — a small circle at the far right. Green means connected, yellow means connecting, red means disconnected.
 
 Below the header is the session drawer bar — it shows the current session name (or "untitled session"). Tap it to expand and see session details like the session ID, start time, current model, and working directory.
@@ -34,7 +34,7 @@ Explain the two ways to manage sessions:
 - Shows the session ID, start time, and current model.
 - The working directory at the bottom shows where Copilot runs commands, including the git branch if applicable.
 
-**The session picker** (click the stacked windows icon in the header):
+**The session picker** (click the stacked squares icon in the header):
 - **Session list** — shows all sessions with names and timestamps. Click any session to switch to it — your conversations are preserved.
 - **+ New Session** — creates a fresh session at the top.
 - **Shield icon** — click the shield next to a session to protect it from accidental deletion. Shielded sessions show a dimmed trash icon.
@@ -72,7 +72,7 @@ Mention that approvals keep the user in control — they can be as cautious or p
 
 ## 5. Guides & Prompts
 
-Explain the Guides & Prompts panel (click the open book icon in the header):
+Explain the Guides & Prompts panel (click the 3-fold map icon in the header):
 
 **The list view** shows all available guides and prompts. Each item shows indicators for what it includes:
 - Eye icon — a guide file exists for this item.
