@@ -1,117 +1,129 @@
 # Show Me Around Copilot Portal
 
-Walk the user through Copilot Portal's features interactively. Go section by section, explaining what things do and how to use them.
+Walk the user through Copilot Portal's features section by section, explaining what things do and inviting them to try things as you go.
 
-**Pacing rules:**
-- Use `ask_user` only for simple choices within the chat (e.g. "Want to learn about X or Y next?")
-- Do NOT use `ask_user` when the user needs to do something outside the chat (switching sessions, using console keys, scanning QR codes, restarting the server). Instead, just tell them what to try and say "let me know when you're ready to continue" — they'll type back when they're done.
-- Keep each section short — explain, suggest something to try, then wait.
+**Pacing:**
+- Keep each section concise — explain, invite the user to try something, then move on.
+- Don't force choices on every step. A casual "let me know when you're ready" or "just say next" is enough — the user will respond when they're done exploring.
+- When something requires action outside the chat (pressing a key in the terminal, scanning a QR code), describe what to do and wait for them to come back.
+- Offer to skip ahead or revisit topics if the user seems familiar with something.
 
 ---
 
 ## 1. The Header
 
-Start by describing what the user sees at the top of the page:
-- **Logo and version** — top-left shows "Copilot Portal" with the version and build number
-- **Session drawer toggle** — the bar below the header shows the current session name (or "untitled session"). Click it to expand the session drawer.
-- **Top-right buttons:**
-  - **Sun/gear icon** — model selector (click to change which AI model you're using)
-  - **Map/book icon** — opens the Guides and Prompts picker
+Describe what the user sees across the top of the page:
+- **Logo and version** — top-left shows "Copilot Portal" with the version and build number.
+- **Top-right controls (left to right):**
+  - **Stop button** (red square) — only visible when Copilot is working. Cancels the current operation.
+  - **Sessions** (stacked windows icon) — opens the session picker overlay to switch, create, or manage sessions.
+  - **Guides & Prompts** (open book icon) — opens the guides and prompts panel.
+  - **Rules** (bulleted list icon) — shows always-allow rules. Displays a count badge when rules are active. Turns green when auto-approve-all is enabled.
+  - **Connection dot** — green = connected, yellow = connecting, red = disconnected.
 
-Ask the user: "Want to explore session management next, or jump to something specific?"
+Below the header, a collapsible drawer bar shows the current session name. Tap it to expand session details.
 
 ---
 
 ## 2. Session Management
 
-Explain the session drawer (click the session bar to expand):
-- **Session list** — shows all your sessions with timestamps
-- **Create new** — the "+ New Session" button at the top
-- **Switch sessions** — click any session to switch to it. Your conversation is preserved.
-- **Session ID** — the short code next to each session name. Click it to copy the full ID.
-- **Shield icon** — protects a session from accidental deletion. Click to toggle.
-- **Delete** — trash icon, with confirmation. Shielded sessions show a dimmed trash icon.
-- **CWD (working directory)** — shown at the bottom. This is where Copilot runs commands.
+Explain the session drawer (tap the session name bar to expand):
+- **Session info** — shows the session ID (tap to copy), start time, and model in use.
+- **Working directory** — the folder where Copilot runs commands, shown at the bottom of the drawer.
 
-Tell the user: "Try creating a new session and switching back to this one — your tour will still be here! Just say 'ready' when you want to continue."
+For the session picker (the stacked windows icon in the header):
+- **Session list** — all sessions with names and timestamps. Click to switch.
+- **+ New Session** — creates a fresh session.
+- **Shield icon** — protects a session from accidental deletion. Click to toggle. Shielded sessions show a dimmed trash icon.
+- **Delete** — trash icon with inline confirmation (not a browser popup).
+
+Invite the user to try creating a new session and switching back — the tour will still be here.
 
 ---
 
 ## 3. Sending Messages
 
 Explain the input area at the bottom:
-- **Message box** — type your message here. It grows as you type multiple lines.
-- **Send button** — the blue circle on the right. Also: press Enter to send (Shift+Enter for new line). On mobile, use the send button (Enter adds a new line on touch devices).
-- **Recall button** — the ↩ arrow that appears when the input is empty and you've sent previous messages. Click to bring back your last message.
-- **Clear button** — the ✕ that appears when text is in the box. Clears the input.
-- **Stop button** — while Copilot is thinking/responding, the send button turns into a stop button. Click to cancel the current response.
+- **Message box** — grows as you type. Press Enter to send; Shift+Enter for a new line. On mobile, Enter adds a new line — use the send button instead.
+- **Send button** — blue circle on the right.
+- **Recall button** (↩ arrow) — appears when the input is empty and you've sent previous messages. Brings back your last message.
+- **Clear button** (✕) — appears when text is in the box. Clears the input.
+- **Prompt tray toggle** (💬) — appears when session prompts are loaded. Opens a scrollable tray of canned prompts above the input. Click a prompt to fill the message box.
 
 ---
 
 ## 4. Approvals & Tools
 
-Explain what happens when Copilot wants to use a tool:
-- **Permission requests** — when Copilot needs to run a command, read a file, or take an action, you'll see a yellow approval card with the action and a summary.
-- **Allow / Deny** — approve or reject the specific action.
-- **Allow Always** — creates a persistent rule so similar actions are auto-approved in the future. The pattern is shown (e.g., "read_file in C:\Projects\**").
-- **Tool summaries** — after a message completes, you'll see a collapsible "🔧 N tools ran" section showing what tools were used.
-- **Reasoning** — if the model shares its thinking, you'll see a collapsible "💭 Thought" section.
+Explain what happens when Copilot wants to take action:
+- **Permission cards** — a yellow card appears describing the action (run a command, read a file, etc.) with a brief summary of Copilot's intent.
+- **Allow / Deny** — approve or reject that specific action.
+- **Allow Always** — creates a persistent rule so similar actions are auto-approved. The pattern is shown (e.g., "read_file in C:\Projects\**").
+- **Rules button** — in the header, shows how many always-allow rules exist. Click to view and manage them.
+- **Tool summaries** — after a response completes, a collapsible "🔧 N tools ran" section shows what tools were used and what they did.
+- **Reasoning** — if the model shares its thinking process, a "💭 Thought for N seconds" section appears (also collapsible).
 
-Tell the user: "Approvals keep you in control. The 'Allow Always' rules are saved per-session, so you can build up trust over time."
-Use ask_user to ask: "Ready for the next topic — Guides and Prompts?"
+Mention that approvals keep the user in control and the rules build up trust over time.
 
 ---
 
-## 5. Guides and Prompts
+## 5. Guides & Prompts
 
-Explain the Guides & Prompts picker (the book icon in the header):
-- **Guides** — markdown files that teach Copilot how to behave. Click a guide name to apply it to the current session. Copilot reads the file and follows the guidance.
-- **Prompts** — canned queries that appear in a tray above the message box. Click one to fill in the message box, ready to send.
-- **Icons in the picker:**
-  - 👁 Eye — view the guide content. Dim if no guide file exists.
-  - 🗨 Speech bubble — view the prompts. Dim if no prompts file exist.
-  - 🗑 Trash — delete (with confirmation).
-- **Apply button** — in the viewer, applies the guide or loads the prompts.
-- **File path** — shown below the title in the viewer. Click the copy icon to copy the path so you can edit the file in your preferred editor.
-- **Prompt tray** — after loading prompts, a 🗨 icon appears in the message box. Click it to open the tray, pick a prompt, and it fills your message box.
-- **Stacking** — you can load prompts from multiple guides. They combine and deduplicate.
-- **Persistence** — prompts stay with your session even if you switch sessions or reload the page.
+Explain the Guides & Prompts panel (the open book icon in the header):
 
-Tell the user: "Guides live in the data/guides/ folder and prompts in data/prompts/. You can create your own by adding .md files! Try opening the picker and browsing what's available — say 'ready' when you want to continue."
+**The list view** shows all available guides and prompts. Each item can have:
+- 👁 Eye indicator — the item has a guide file.
+- 💬 Speech bubble indicator — the item has a prompts file.
+- 🗑 Trash icon — delete with inline confirmation.
+
+**Clicking an item** opens a detail view (not applying it):
+- **Guide tab / Prompts tab** — switch between viewing the guide content and the prompts.
+- **File path** — shown at the top with a copy button. If a file doesn't exist yet, the path is dimmed with "(not created)".
+- **Apply** — applies the guide to the session or loads the prompts into the tray.
+- **Edit** — switches to an editor with a full-height textarea. You can rename the item, edit the content, and save.
+- **Unsaved changes guard** — if you try to navigate away with unsaved edits, an inline banner asks whether to discard or keep editing.
+
+**+ New button** at the bottom:
+- Pick from example templates (read-only catalog) or start from scratch.
+- Preview the example's guide and prompts content before adding.
+- Choose which files to include (guide, prompts, or both).
+- Customize the name before saving.
+
+**Prompts tray** — once prompts are loaded, the 💬 toggle appears in the message input area. Prompts from multiple sources stack together and deduplicate. They persist across page reloads.
+
+Invite the user to open the panel and browse what's there. Mention they can also create files directly in the `data/guides/` and `data/prompts/` folders.
 
 ---
 
 ## 6. Console Control Keys
 
-Explain the keyboard shortcuts available in the terminal where the server is running (not the browser):
-- **t** — Opens the Copilot CLI TUI (text user interface) in a new terminal window. You can chat with Copilot directly from the command line.
+These are keyboard shortcuts in the terminal where the server is running (not the browser):
+- **t** — Opens the Copilot CLI TUI in a new terminal window.
 - **l** — Launches the portal URL in your default browser.
-- **q** — Shows the QR code and URL again (handy for connecting from your phone).
-- **u** — Checks for updates to the SDK and CLI.
-- **r** — Restarts the server (waits for active turns to finish first).
+- **q** — Shows the QR code and URL again (handy for reconnecting from a phone).
+- **u** — Checks for SDK, CLI, and portal updates.
+- **r** — Restarts the server (waits for active turns to finish).
 - **x** — Exits the server gracefully.
 
-Tell the user: "These keys work in the terminal window where you started the portal — not in the browser. Try pressing 'q' in the terminal to see the QR code, then say 'ready' when you want to continue."
+Invite the user to try pressing 'q' in the terminal to see the QR code.
 
 ---
 
 ## 7. Mobile Access
 
 Explain how to use the portal from a phone or tablet:
-- **QR code** — when the server starts, it shows a QR code in the terminal. Scan it with your phone's camera to open the portal.
-- **Same network** — your phone needs to be on the same Wi-Fi network as the computer running the server.
-- **Touch-friendly** — the UI is designed for mobile. The send button is large, approvals are easy to tap, and the session drawer works with swipes.
-- **Enter key** — on mobile, Enter adds a new line (not send). Use the send button instead.
+- **QR code** — shown in the terminal when the server starts. Scan it with your phone's camera.
+- **Same network** — the phone needs to be on the same Wi-Fi as the computer running the server.
+- **Touch-friendly** — the UI is designed for mobile with large tap targets for buttons and approvals.
+- **Enter key** — on mobile, Enter adds a new line. Use the send button to send.
 
 ---
 
-## 8. Tips & Tricks
+## 8. Updates & Tips
 
-Share some useful things:
-- **Model switching** — click the gear/sun icon in the header to pick a different model. Some models are faster, some are smarter.
-- **Dark theme** — the portal uses a dark theme designed for comfortable extended use. There's no light mode toggle.
-- **Shared CLI mode** — if you started the portal with a CLI server (`copilot --ui-server`), messages you send from the CLI are visible in the portal and vice versa.
-- **Update banner** — when SDK or CLI updates are available, a banner appears at the top. Click "Update now" to apply.
-- **Session names** — sessions auto-name themselves based on the first message. You can see the name in the session drawer.
+Share a few useful things to wrap up:
+- **Update banner** — when updates are available for the SDK, CLI, or the portal itself, a banner appears at the top. The portal can update itself and restart in place.
+- **Session names** — sessions auto-name themselves based on the conversation. You can see the name in the session drawer.
+- **Dark theme** — the portal uses a dark theme with no light mode toggle.
+- **Shared mode** — the portal connects to the same Copilot CLI server that powers the terminal TUI. Messages from either side are visible in both.
 
-Wrap up: "That's the tour! You now know your way around Copilot Portal. Feel free to ask me anything else, or start a new session to try things out."
+Wrap up by letting the user know they can revisit any section by asking, or start a new session to explore on their own.
