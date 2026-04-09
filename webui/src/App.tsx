@@ -1710,7 +1710,7 @@ export default function App() {
 							{!viewingGuide && !showNewGuide && (
 								<button
 									type="button"
-									className="rounded-lg px-2.5 py-1 text-xs font-medium"
+									className="rounded-lg px-3 py-1.5 text-sm font-medium"
 									style={{ background: 'var(--primary)', color: 'white' }}
 									onClick={() => {
 										setShowNewGuide(true);
