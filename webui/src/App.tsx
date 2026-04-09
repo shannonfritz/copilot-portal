@@ -581,6 +581,7 @@ export default function App() {
 	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean; filePath?: string } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
 	const [showNewGuide, setShowNewGuide] = useState(false);
+	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 	const [examples, setExamples] = useState<Array<{ id: string; hasGuide: boolean; hasPrompts: boolean }>>([]);
 	const [selectedExample, setSelectedExample] = useState<string>('');
 	const [examplePreview, setExamplePreview] = useState<{ guide: string; prompts: string } | null>(null);
@@ -1568,6 +1569,41 @@ export default function App() {
 		}
 	};
 
+	const doAddGuide = async () => {
+		if (!newGuideName) return;
+		try {
+			if (selectedExample) {
+				await apiFetch('/api/guides/from-example', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ exampleId: selectedExample, copyGuide: newGuideCheck, copyPrompts: newPromptsCheck, name: newGuideName }),
+				});
+			} else {
+				if (newGuideCheck) {
+					await apiFetch('/api/guides', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName}\n\n` }),
+					});
+				}
+				if (newPromptsCheck) {
+					await apiFetch('/api/prompts', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName} Prompts\n\n## Example Prompt\nDescribe what you want here\n` }),
+					});
+				}
+			}
+			setShowNewGuide(false);
+			setConfirmOverwrite(false);
+			setRecentlyAdded(newGuideName);
+			setTimeout(() => setRecentlyAdded(null), 3000);
+			apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
+		} catch (e) {
+			setError(`Failed to create: ${e}`);
+		}
+	};
+
 	const loadPromptsForGuide = async (instId: string) => {
 		try {
 			const pRes = await apiFetch(`/api/guides/${encodeURIComponent(instId)}/prompts`);
@@ -1803,47 +1839,24 @@ export default function App() {
 										className="rounded-lg px-3 py-1.5 text-xs font-medium"
 										style={{ background: 'var(--primary)', color: 'white', opacity: newGuideName && (newGuideCheck || newPromptsCheck) ? 1 : 0.5 }}
 										disabled={!newGuideName || (!newGuideCheck && !newPromptsCheck)}
-										onClick={async () => {
+										onClick={() => {
 											if (!newGuideName) return;
-											// Check for conflict
 											const existing = guides.find(g => g.id === newGuideName);
 											if (existing) {
-												const overwrite = confirm(`A file named "${newGuideName}" already exists. Overwrite it?`);
-												if (!overwrite) return;
-											}
-											try {
-												if (selectedExample) {
-													await apiFetch('/api/guides/from-example', {
-														method: 'POST',
-														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({ exampleId: selectedExample, copyGuide: newGuideCheck, copyPrompts: newPromptsCheck, name: newGuideName }),
-													});
-												} else {
-													if (newGuideCheck) {
-														await apiFetch('/api/guides', {
-															method: 'POST',
-															headers: { 'Content-Type': 'application/json' },
-															body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName}\n\n` }),
-														});
-													}
-													if (newPromptsCheck) {
-														await apiFetch('/api/prompts', {
-															method: 'POST',
-															headers: { 'Content-Type': 'application/json' },
-															body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName} Prompts\n\n## Example Prompt\nDescribe what you want here\n` }),
-														});
-													}
-												}
-												setShowNewGuide(false);
-												setRecentlyAdded(newGuideName);
-												setTimeout(() => setRecentlyAdded(null), 3000);
-												apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
-											} catch (e) {
-												setError(`Failed to create: ${e}`);
+												setConfirmOverwrite(true);
+											} else {
+												doAddGuide();
 											}
 										}}
 									>Add</button>
 								</div>
+								{confirmOverwrite && (
+									<div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--warning-tint)', border: '1px solid var(--warning)' }}>
+										<span className="flex-1 text-xs" style={{ color: 'var(--warning)' }}>"{newGuideName}" already exists. Overwrite?</span>
+										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: '#111' }} onClick={() => { setConfirmOverwrite(false); doAddGuide(); }}>Overwrite</button>
+										<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmOverwrite(false)}>Cancel</button>
+									</div>
+								)}
 							</div>
 						) : viewingGuide ? (
 							<div>
