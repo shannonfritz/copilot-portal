@@ -1905,11 +1905,11 @@ export default function App() {
 										<CopyButton text={viewingGuide.filePath} />
 									</div>
 								)}
-								<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 16rem)' : undefined, maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
 									{editingGuide ? (
 										<textarea
-											className="w-full resize-none bg-transparent text-xs outline-none"
-											style={{ fontFamily: 'monospace', color: 'var(--text)', minHeight: 300 }}
+											className="w-full flex-1 resize-none bg-transparent text-xs outline-none"
+											style={{ fontFamily: 'monospace', color: 'var(--text)' }}
 											value={editingGuide.content}
 											onChange={(e) => setEditingGuide({ ...editingGuide, content: e.target.value })}
 										/>
