@@ -1730,7 +1730,7 @@ export default function App() {
 					onClick={() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); }}
 				>
 					<div
-						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide ? 'max-w-2xl' : 'max-w-md'}`}
+						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide || showNewGuide ? 'max-w-2xl' : 'max-w-md'}`}
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
 						onClick={(e) => e.stopPropagation()}
 					>
@@ -1827,10 +1827,10 @@ export default function App() {
 												Prompts
 											</button>
 										</div>
-										<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+										<div className="chat-scroll rounded-lg p-3" style={{ height: 'calc(100vh - 26rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: 'flex' }}>
 											<textarea
-												className="w-full resize-none bg-transparent text-xs outline-none"
-												style={{ fontFamily: 'monospace', color: 'var(--text)', minHeight: 150 }}
+												className="w-full flex-1 resize-none bg-transparent text-xs outline-none"
+												style={{ fontFamily: 'monospace', color: 'var(--text)' }}
 												value={previewTab === 'guide' ? examplePreview.guide : examplePreview.prompts}
 												onChange={(e) => {
 													if (previewTab === 'guide') {
