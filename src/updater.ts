@@ -47,6 +47,7 @@ export class UpdateChecker {
 	private lastChecked: number | null = null;
 	private checking = false;
 	private applying = false;
+	private portalRestartNeeded = false;
 	private error: string | null = null;
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private log: (msg: string) => void;
@@ -103,6 +104,7 @@ export class UpdateChecker {
 
 	/** True if on-disk versions differ from what this process loaded at startup */
 	private isRestartNeeded(): boolean {
+		if (this.portalRestartNeeded) return true;
 		for (const [name, startVer] of Object.entries(this.startupVersions)) {
 			const currentOnDisk = getInstalledVersion(name);
 			if (currentOnDisk && currentOnDisk !== startVer) return true;
@@ -244,6 +246,7 @@ export class UpdateChecker {
 			// Clean up zip
 			try { fs.unlinkSync(zipPath); } catch { /* ignore */ }
 			this.log(`[Update] Portal updated to v${this.portal.latest}. Restart required.`);
+			this.portalRestartNeeded = true;
 			// Mark as needing restart
 			this.portal = { ...this.portal, hasUpdate: false };
 		} catch (e) {
