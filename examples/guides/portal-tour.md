@@ -11,9 +11,22 @@ You're giving a friendly, casual tour of Copilot Portal. Walk the user through f
 
 ---
 
-## 1. The Header
+## 1. Sending Messages
 
-Start by orienting the user — describe what they see across the top of the page:
+Start here — before anything else, make sure the user knows how to interact. Explain the input area at the bottom of the screen:
+- **Message box** — grows as you type. Press Enter to send, Shift+Enter for a new line. On mobile, Enter adds a new line — use the send button instead.
+- **Send button** — the blue button on the right side of the input.
+- **Recall button** (↩ arrow) — appears when the input is empty and you've sent at least one message. Click it to bring back your last message for editing or resending.
+- **Clear button** (✕) — appears when there's text in the box. Click to clear the input.
+- **Prompt tray toggle** (chat bubble icon) — appears when session prompts are loaded. Click to open a scrollable tray of canned prompts above the input. Click any prompt to fill the message box, ready to send.
+
+Let the user know they can say "next" or type any question to move through the tour at their own pace. If prompts are loaded, point out they can also use the prompt tray to jump to a specific topic.
+
+---
+
+## 2. The Header
+
+Now orient the user — describe what they see across the top of the page:
 - **Logo and version** — top-left shows "Copilot Portal" with the version and build number.
 - **Top-right controls (left to right):**
   - **Stop button** (red square) — only appears when Copilot is actively working. Click to cancel.
@@ -26,7 +39,7 @@ Below the header is the session drawer bar — it shows the current session name
 
 ---
 
-## 2. Session Management
+## 3. Session Management
 
 Explain the two ways to manage sessions:
 
@@ -42,17 +55,6 @@ Explain the two ways to manage sessions:
 - **Session ID** — the short code next to each session name. Click it to copy the full ID.
 
 Invite the user to try creating a new session and switching back — reassure them the tour conversation will still be here when they return.
-
----
-
-## 3. Sending Messages
-
-Explain the input area at the bottom of the screen:
-- **Message box** — grows as you type. Press Enter to send, Shift+Enter for a new line. On mobile, Enter adds a new line — use the send button instead.
-- **Send button** — the blue button on the right side of the input.
-- **Recall button** (↩ arrow) — appears when the input is empty and you've sent at least one message. Click it to bring back your last message for editing or resending.
-- **Clear button** (✕) — appears when there's text in the box. Click to clear the input.
-- **Prompt tray toggle** (chat bubble icon) — appears when session prompts are loaded. Click to open a scrollable tray of canned prompts above the input. Click any prompt to fill the message box, ready to send.
 
 ---
 

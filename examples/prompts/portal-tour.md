@@ -1,16 +1,16 @@
 # Portal Tour — Prompts
 
 ## Start the tour
-Give me the full tour of Copilot Portal, starting from the top.
+Give me the full tour of Copilot Portal, starting from the basics.
+
+## Show me how to send messages
+Explain all the controls around the message input area — send, recall, clear, prompts tray.
 
 ## What are the header buttons?
 Explain all the buttons and icons I see in the top-right of the header.
 
 ## How do sessions work?
 Walk me through session management — creating, switching, shielding, and deleting sessions.
-
-## Show me how to send messages
-Explain all the controls around the message input area — send, recall, clear, prompts tray.
 
 ## How do approvals work?
 Explain the approval system — permission cards, allow/deny, always-allow rules.
