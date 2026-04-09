@@ -43,16 +43,16 @@ Below the header is the session drawer bar — it shows the current session name
 
 Explain the two ways to manage sessions:
 
-**The session drawer** (tap the session name bar below the header to expand):
-- Shows the session ID, start time, and current model.
-- The working directory at the bottom shows where Copilot runs commands, including the git branch if applicable.
-
 **The session picker** (click the stacked squares icon in the header):
 - **Session list** — shows all sessions with names and timestamps. Click any session to switch to it — your conversations are preserved.
 - **+ New Session** — creates a fresh session at the top.
 - **Shield icon** — click the shield next to a session to protect it from accidental deletion. Shielded sessions show a dimmed trash icon.
-- **Delete** — click the trash icon, then confirm inline (no browser popup).
+- **Delete** — click the trash icon, then confirm inline.
 - **Session ID** — the short code next to each session name. Click it to copy the full ID.
+
+**The session drawer** shows details about the active session (tap the session name bar below the header to expand):
+- Shows the session ID, start time, and current model.
+- The working directory at the bottom shows where Copilot runs commands, including the git branch if applicable.
 
 Invite the user to try creating a new session and switching back — reassure them the tour conversation will still be here when they return.
 
