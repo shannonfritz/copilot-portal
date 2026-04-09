@@ -6,7 +6,7 @@ import * as https from 'node:https';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { exec } from 'node:child_process';
+import { exec, execSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
@@ -139,6 +139,7 @@ export class UpdateChecker {
 
 			// Check for portal self-update via GitHub Releases
 			if (this.repoOwner && this.repoName) {
+				this.log(`[Update] Checking portal releases for ${this.repoOwner}/${this.repoName}...`);
 				try {
 					const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
 					const installed = pkg.version ?? 'unknown';
@@ -150,12 +151,16 @@ export class UpdateChecker {
 						if (hasUpdate) {
 							this.log(`[Update] Portal update available: v${installed} → v${latestVer}`);
 						} else {
-							this.log(`[Update] Portal v${installed} is up to date`);
+							this.log(`[Update] Portal v${installed} is up to date (latest: v${latestVer})`);
 						}
+					} else {
+						this.log(`[Update] No release found for ${this.repoOwner}/${this.repoName}`);
 					}
 				} catch (e) {
 					this.log(`[Update] Portal version check failed: ${e}`);
 				}
+			} else {
+				this.log(`[Update] No repository configured — skipping portal update check`);
 			}
 
 			// Log installed versions on first check (startup)
@@ -317,7 +322,6 @@ function getGitHubToken(): string | null {
 	if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
 	// Try gh CLI's cached token
 	try {
-		const { execSync } = require('node:child_process');
 		return execSync('gh auth token', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).toString().trim() || null;
 	} catch { return null; }
 }
