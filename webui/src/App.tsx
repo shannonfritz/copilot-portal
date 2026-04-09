@@ -578,7 +578,7 @@ export default function App() {
 	const [showRules, setShowRules] = useState(false);
 	const [showGuides, setshowGuides] = useState(false);
 	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
-	const [viewingGuide, setviewingGuide] = useState<{ id: string; title: string; content: string; isPrompts?: boolean; filePath?: string } | null>(null);
+	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
 	const [showNewGuide, setShowNewGuide] = useState(false);
 	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
@@ -1880,39 +1880,41 @@ export default function App() {
 						) : viewingGuide ? (
 							<div>
 								<div className="mb-2 flex items-center justify-between">
-									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
+									<h3 className="font-semibold text-sm">{viewingGuide.id}</h3>
 									<div className="flex gap-1">
-										{!editingGuide && <button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
-											const vi = viewingGuide;
-											setviewingGuide(null);
-											setshowGuides(false);
-											if (vi.isPrompts) {
-												await loadPromptsForGuide(vi.id);
-											} else {
-												// Apply guide
-												try {
-													const res = await apiFetch(`/api/guides/${encodeURIComponent(vi.id)}`);
-													const { filePath, title } = await res.json() as { filePath: string; title: string };
-													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
-														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
-														wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
-														setIsStreaming(true);
-														setIsThinking(true);
-														setThinkingText('Applying guide...');
+										{!editingGuide && (
+											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
+												const vi = viewingGuide;
+												setviewingGuide(null);
+												setshowGuides(false);
+												// Apply guide if it exists
+												if (vi.guideContent) {
+													try {
+														const res = await apiFetch(`/api/guides/${encodeURIComponent(vi.id)}`);
+														const { filePath, title } = await res.json() as { filePath: string; title: string };
+														if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
+															const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
+															wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
+															setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
+															setIsStreaming(true);
+															setIsThinking(true);
+															setThinkingText('Applying guide...');
+														}
+													} catch (e) {
+														setError(`Failed to load guide: ${e}`);
 													}
-													const inst = guides.find(i => i.id === vi.id);
-													if (inst?.hasPrompts) await loadPromptsForGuide(vi.id);
-												} catch (e) {
-													setError(`Failed to load guide: ${e}`);
 												}
-											}
-										}} type="button">{viewingGuide.isPrompts ? 'Load Prompts' : 'Apply'}</button>}
+												// Load prompts if available
+												if (vi.promptsContent) await loadPromptsForGuide(vi.id);
+											}} type="button">Apply</button>
+										)}
 										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
 											if (editingGuide) {
 												setEditingGuide(null);
 											} else {
-												setEditingGuide({ id: viewingGuide.id, content: viewingGuide.content, isPrompts: viewingGuide.isPrompts });
+												const tab = viewingGuide.activeTab ?? 'guide';
+												const content = tab === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent;
+												setEditingGuide({ id: viewingGuide.id, content: content ?? '', isPrompts: tab === 'prompts' });
 											}
 										}} type="button">{editingGuide ? 'Cancel Edit' : 'Edit'}</button>
 										{editingGuide && (
@@ -1924,7 +1926,13 @@ export default function App() {
 														headers: { 'Content-Type': 'application/json' },
 														body: JSON.stringify({ id: editingGuide.id, content: editingGuide.content }),
 													});
-													setviewingGuide({ ...viewingGuide, content: editingGuide.content });
+													// Update the viewing state
+													const tab = viewingGuide.activeTab ?? 'guide';
+													if (tab === 'guide' && !editingGuide.isPrompts) {
+														setviewingGuide({ ...viewingGuide, guideContent: editingGuide.content });
+													} else if (tab === 'prompts' && editingGuide.isPrompts) {
+														setviewingGuide({ ...viewingGuide, promptsContent: editingGuide.content });
+													}
 													setEditingGuide(null);
 													apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 												} catch (e) {
@@ -1943,7 +1951,22 @@ export default function App() {
 										<CopyButton text={viewingGuide.filePath} />
 									</div>
 								)}
-								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 16rem)' : undefined, maxHeight: 'calc(100vh - 16rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
+								{/* Guide / Prompts tabs */}
+								<div className="flex mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+									<button
+										type="button"
+										className="px-3 py-1.5 text-xs font-medium"
+										style={{ color: (viewingGuide.activeTab ?? 'guide') === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: (viewingGuide.activeTab ?? 'guide') === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.guideContent ? 1 : 0.4 }}
+										onClick={() => { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); }}
+									>Guide</button>
+									<button
+										type="button"
+										className="px-3 py-1.5 text-xs font-medium"
+										style={{ color: viewingGuide.activeTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: viewingGuide.activeTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.promptsContent ? 1 : 0.4 }}
+										onClick={() => { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); }}
+									>Prompts</button>
+								</div>
+								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 20rem)' : undefined, maxHeight: 'calc(100vh - 20rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
 									{editingGuide ? (
 										<textarea
 											className="w-full flex-1 resize-none bg-transparent text-xs outline-none"
@@ -1952,7 +1975,9 @@ export default function App() {
 											onChange={(e) => setEditingGuide({ ...editingGuide, content: e.target.value })}
 										/>
 									) : (
-										<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{viewingGuide.content}</pre>
+										<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
+											{((viewingGuide.activeTab ?? 'guide') === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent) || '(empty)'}
+										</pre>
 									)}
 								</div>
 							</div>
@@ -1969,26 +1994,19 @@ export default function App() {
 										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-1000"
 										style={{ background: recentlyAdded === inst.id ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${recentlyAdded === inst.id ? 'var(--primary)' : 'var(--border)'}` }}
 										onClick={async () => {
-											setshowGuides(false);
 											try {
-												// Apply guide if it exists
-												if (inst.hasGuide) {
-													const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`);
-													const { filePath, title } = await res.json() as { filePath: string; title: string };
-													if (filePath && wsRef.current?.readyState === WebSocket.OPEN) {
-														const prompt = `${title}\n\nRead the file "${filePath}" and follow the guidance in it for this session. Do not summarize the file — just acknowledge that you've read it and are ready.`;
-														wsRef.current.send(JSON.stringify({ type: 'prompt', content: prompt }));
-														setMessages(prev => [...prev, { id: `inst-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() }]);
-														setIsStreaming(true);
-														setIsThinking(true);
-														setThinkingText('Applying guide...');
-													}
-												}
-												// Load prompts if available
-												if (inst.hasPrompts) await loadPromptsForGuide(inst.id);
-											} catch (e) {
-												setError(`Failed to load guide: ${e}`);
-											}
+												const [gRes, pRes] = await Promise.all([
+													inst.hasGuide ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`).then(r => r.json()) : Promise.resolve(null),
+													inst.hasPrompts ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`).then(r => r.json()).then(d => d.prompts?.map((p: { label: string; text: string }) => `## ${p.label}\n${p.text}`).join('\n\n') ?? '') : Promise.resolve(null),
+												]);
+												setviewingGuide({
+													id: inst.id,
+													guideContent: gRes?.content ?? '',
+													promptsContent: typeof pRes === 'string' ? pRes : '',
+													filePath: gRes?.filePath,
+													activeTab: inst.hasGuide ? 'guide' : 'prompts',
+												});
+											} catch {}
 										}}
 									>
 										<svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" style={{ color: 'var(--text-muted)' }}>
@@ -2009,35 +2027,18 @@ export default function App() {
 											</span>
 										) : (
 											<span className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
-												<button className="rounded p-1.5" style={{ opacity: inst.hasGuide ? 0.7 : 0.2 }} onClick={async (e) => {
-													e.stopPropagation();
-													if (!inst.hasGuide) return;
-													try {
-														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`);
-														const data = await res.json() as { title: string; content: string; filePath: string };
-														setviewingGuide({ id: inst.id, title: data.title, content: data.content, filePath: data.filePath });
-													} catch {}
-												}} type="button" title={inst.hasGuide ? 'View guide' : 'No guide'}>
+												<span className="rounded p-1.5" style={{ opacity: inst.hasGuide ? 0.7 : 0.2 }} title={inst.hasGuide ? 'Has guide' : 'No guide'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 														<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
 														<circle cx="12" cy="12" r="3" />
 													</svg>
-												</button>
-												<button className="rounded p-1.5" style={{ opacity: inst.hasPrompts ? 0.7 : 0.2 }} onClick={async (e) => {
-													e.stopPropagation();
-													if (!inst.hasPrompts) return;
-													try {
-														const res = await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`);
-														const { prompts, filePath } = await res.json() as { prompts: Array<{ label: string; text: string }>; filePath?: string };
-														const content = prompts.map(p => `## ${p.label}\n${p.text}`).join('\n\n');
-														setviewingGuide({ id: inst.id, title: `Prompts: ${inst.name}`, content, isPrompts: true, filePath });
-													} catch {}
-												}} type="button" title={inst.hasPrompts ? 'View prompts' : 'No prompts'}>
+												</span>
+												<span className="rounded p-1.5" style={{ opacity: inst.hasPrompts ? 0.7 : 0.2 }} title={inst.hasPrompts ? 'Has prompts' : 'No prompts'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 														<path d="M3 15a2 2 0 0 0 2 2h12l4 4V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z" />
 														<path d="M8 9h8M8 13h5" />
 													</svg>
-												</button>
+												</span>
 												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(inst.id); }} type="button" title="Delete">
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
