@@ -578,7 +578,7 @@ export default function App() {
 	const [showRules, setShowRules] = useState(false);
 	const [showGuides, setshowGuides] = useState(false);
 	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
-	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
+	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; guideFilePath?: string; promptsFilePath?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
 	const [showNewGuide, setShowNewGuide] = useState(false);
 	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
@@ -1943,14 +1943,17 @@ export default function App() {
 										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setviewingGuide(null); setEditingGuide(null); }} type="button">Back</button>
 									</div>
 								</div>
-								{viewingGuide.filePath && (
-									<div className="mb-2 flex items-center gap-1 rounded px-2 py-1" style={{ background: 'var(--bg)' }}>
-										<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)', scrollbarWidth: 'none' }}>
-											{viewingGuide.filePath}
+								{(() => {
+									const fp = (viewingGuide.activeTab ?? 'guide') === 'guide' ? viewingGuide.guideFilePath : viewingGuide.promptsFilePath;
+									return fp ? (
+										<div className="mb-2 flex items-center gap-1 rounded px-2 py-1" style={{ background: 'var(--bg)' }}>
+											<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)', scrollbarWidth: 'none' }}>
+												{fp}
+											</div>
+											<CopyButton text={fp} />
 										</div>
-										<CopyButton text={viewingGuide.filePath} />
-									</div>
-								)}
+									) : null;
+								})()}
 								{/* Guide / Prompts tabs */}
 								<div className="flex mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
 									<button
@@ -1995,15 +1998,17 @@ export default function App() {
 										style={{ background: recentlyAdded === inst.id ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${recentlyAdded === inst.id ? 'var(--primary)' : 'var(--border)'}` }}
 										onClick={async () => {
 											try {
-												const [gRes, pRes] = await Promise.all([
+												const [gRes, pRaw] = await Promise.all([
 													inst.hasGuide ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`).then(r => r.json()) : Promise.resolve(null),
-													inst.hasPrompts ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`).then(r => r.json()).then(d => d.prompts?.map((p: { label: string; text: string }) => `## ${p.label}\n${p.text}`).join('\n\n') ?? '') : Promise.resolve(null),
+													inst.hasPrompts ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`).then(r => r.json()) : Promise.resolve(null),
 												]);
+												const promptsContent = pRaw?.prompts?.map((p: { label: string; text: string }) => `## ${p.label}\n${p.text}`).join('\n\n') ?? '';
 												setviewingGuide({
 													id: inst.id,
 													guideContent: gRes?.content ?? '',
-													promptsContent: typeof pRes === 'string' ? pRes : '',
-													filePath: gRes?.filePath,
+													promptsContent,
+													guideFilePath: gRes?.filePath,
+													promptsFilePath: pRaw?.filePath,
 													activeTab: inst.hasGuide ? 'guide' : 'prompts',
 												});
 											} catch {}
