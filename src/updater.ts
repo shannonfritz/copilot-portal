@@ -318,11 +318,10 @@ function getGitHubToken(): string | null {
 	} catch { return null; }
 }
 
-/** Fetch the latest release from GitHub Releases API */
+/** Fetch the latest release from GitHub Releases API (tries unauthenticated first, falls back to auth for private repos) */
 function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => void): Promise<{ tag: string; zipUrl: string } | null> {
-	return new Promise((resolve) => {
+	const doFetch = (token?: string): Promise<{ tag: string; zipUrl: string } | null> => new Promise((resolve) => {
 		const url = `/repos/${owner}/${repo}/releases/latest`;
-		const token = getGitHubToken();
 		const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' };
 		if (token) headers['Authorization'] = `Bearer ${token}`;
 		const req = https.get({
@@ -331,6 +330,10 @@ function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => 
 			headers,
 			timeout: 10_000,
 		}, (res) => {
+			if (res.statusCode === 404 && !token) {
+				// Private repo — resolve null to trigger auth fallback
+				resolve(null); res.resume(); return;
+			}
 			if (res.statusCode !== 200) { log?.(`[Update] GitHub API returned ${res.statusCode} for releases`); resolve(null); res.resume(); return; }
 			let body = '';
 			res.on('data', (chunk: Buffer) => { body += chunk; });
@@ -347,6 +350,15 @@ function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => 
 		});
 		req.on('error', (e) => { log?.(`[Update] GitHub API error: ${(e as Error).message}`); resolve(null); });
 		req.on('timeout', () => { log?.(`[Update] GitHub API timeout`); req.destroy(); resolve(null); });
+	});
+
+	// Try unauthenticated first, fall back to authenticated for private repos
+	return doFetch().then(result => {
+		if (result) return result;
+		const token = getGitHubToken();
+		if (!token) return null;
+		log?.(`[Update] Retrying with auth token...`);
+		return doFetch(token);
 	});
 }
 
