@@ -18,7 +18,9 @@ Before making changes, read the relevant docs in `docs/`:
 - `CODE_REVIEW.md` — known issues and deferred fixes
 - `PACKAGING.md` — how releases are built and distributed
 - `cli-server-mode.md` — how the CLI server connection works
-- `uplink-comparison.md` — ACP protocol research and comparison with uplink project
+- `uplink-comparison.md` — comparison with uplink project
+- `acp-protocol.md` — ACP protocol reference and migration path
+- `dev-tunnels.md` — remote access via Microsoft Dev Tunnels
 - `guides-prompts-redesign.md` — guides & prompts feature spec
 
 ## Key Files
