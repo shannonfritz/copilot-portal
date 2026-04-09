@@ -1,31 +1,4 @@
-# Sample Prompts
-
-## Write a Haiku
-Write a Haiku
-
-## Monthly Haiku Collection
-Write me a haiku about each month of the year
-
-## Three Questions Game
-Ask me three questions, each has two possible answers. Use my answer as an input to the next question.
-
-## Basketball Shoe Brands
-Name three basketball players and their shoe brand
-
-## Basketball Score Predictions
-Name three basketball players, the number of points scored in each of their last three games. Use that trend to predict what they may score in their next game.
-
-## EU Leaders
-Name all the current members of the EU and the title and name of their leader
-
-## Latest News Headlines
-Show me the three newest articles from three news web sites including a link to the article
-
-## Movie Recommendations
-Name three movies that a 16yo boy might enjoy
-
-## Logo Comparison
-Download the logos for three social media platforms, then describe them and compare their file sizes.
+# Storytelling & Characters
 
 ## Character Creator
 Come up with three characters. Give them names, physical descriptions and a two sentence backstory.
@@ -59,3 +32,6 @@ Jesse has two kids in grade school. Describe two alternate futures for each of t
 
 ## Decision Tree
 Jesse is faced with a series of three challenging decisions. One at a time, tell me what that decision is, then give me two options to pick from. Use my selection to determine the next decision to ask me about. At the end, tell me how it ends for him.
+
+## Three Questions Game
+Ask me three questions, each has two possible answers. Use my answer as an input to the next question.
