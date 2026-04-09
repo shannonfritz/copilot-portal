@@ -1751,7 +1751,7 @@ export default function App() {
 									onClick={() => {
 										setShowNewGuide(true);
 										setSelectedExample('');
-										setExamplePreview(null);
+										setExamplePreview({ guide: '# my-new-guide\n\n', prompts: '# my-new-guide Prompts\n\n## Example Prompt\nDescribe what you want here\n' });
 										setNewGuideName('');
 										setNewGuideCheck(true);
 										setNewPromptsCheck(true);
@@ -1771,7 +1771,13 @@ export default function App() {
 										onChange={async (e) => {
 											const id = e.target.value;
 											setSelectedExample(id);
-											if (!id) { setExamplePreview(null); setNewGuideName(''); return; }
+											if (!id) {
+												setExamplePreview({ guide: '# my-new-guide\n\n', prompts: '# my-new-guide Prompts\n\n## Example Prompt\nDescribe what you want here\n' });
+												setNewGuideName('');
+												setNewGuideCheck(true);
+												setNewPromptsCheck(true);
+												return;
+											}
 											setNewGuideName(id);
 											try {
 												const [gRes, pRes] = await Promise.all([
