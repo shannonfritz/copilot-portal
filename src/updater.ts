@@ -351,7 +351,9 @@ function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => 
 					const tag = data.tag_name ?? '';
 					// Find the first .zip asset
 					const asset = (data.assets ?? []).find((a: { name: string }) => a.name.endsWith('.zip'));
-					const zipUrl = asset?.browser_download_url ?? null;
+					// For private repos, use API URL (requires auth + Accept: application/octet-stream)
+					// For public repos, browser_download_url works without auth
+					const zipUrl = (token ? asset?.url : asset?.browser_download_url) ?? null;
 					resolve(tag && zipUrl ? { tag, zipUrl } : null);
 				} catch { resolve(null); }
 			});
