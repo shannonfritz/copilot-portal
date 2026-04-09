@@ -215,7 +215,7 @@ if (process.stdin.isTTY) {
 	};
 
 	const showHelp = () => {
-		console.log('\n  Command Keys: [t] CLI TUI  [l] Launch Browser  [q] QR/URL  [u] Update  [r] Restart  [x] Exit\n');
+		console.log('\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  [u] Update  [r] Restart  [x] Exit\n');
 	};
 	showHelp();
 
@@ -231,7 +231,7 @@ if (process.stdin.isTTY) {
 			return;
 		}
 		switch (key.toLowerCase()) {
-			case 't':
+			case 'c':
 				showCliPicker();
 				break;
 			case 'l': {

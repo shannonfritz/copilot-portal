@@ -30,7 +30,7 @@ Before making changes, read the relevant docs in `docs/`:
 | `src/server.ts` | HTTP + WebSocket server, all API endpoints (guides, prompts, examples, sessions, updates) |
 | `src/session.ts` | Session management, SDK event handling, approval/input queuing, reconnect logic |
 | `src/launcher.ts` | Process launcher, CLI server detection/startup, restart support (exit code 75) |
-| `src/main.ts` | Entry point, console key commands ([t] TUI, [l] launch, [q] QR, [u] update, [r] restart, [x] exit) |
+| `src/main.ts` | Entry point, console key commands ([c] CLI, [l] launch, [q] QR, [u] update, [r] restart, [x] exit) |
 | `src/updater.ts` | SDK package updates (npm registry) + portal self-update (GitHub Releases API) |
 | `src/rules.ts` | Per-session approval rules ("Allow Always" patterns) |
 | `webui/src/App.tsx` | Entire React UI (~2900 lines, single file) |
@@ -92,7 +92,7 @@ Copilot CLI (copilot --server --port 3848)
 - **Approval Management** — Allow/Deny/Always rules, queued display
 - **Session Management** — create, switch, delete, shield, auto-naming
 - **Tool Visibility** — intention summaries, tool cards, collapsed summaries
-- **Console Keys** — [t] TUI, [l] browser, [q] QR, [u] update, [r] restart, [x] exit
+- **Console Keys** — [c] CLI, [l] browser, [q] QR, [u] update, [r] restart, [x] exit
 
 ## Current State
 

@@ -97,7 +97,7 @@ Invite the user to open the panel and browse what's there. Mention they can also
 ## 6. Console Control Keys
 
 These are keyboard shortcuts in the terminal where the server is running (not the browser):
-- **t** — Opens the Copilot CLI TUI in a new terminal window.
+- **c** — Opens the Copilot CLI console (TUI) in a new terminal window.
 - **l** — Launches the portal URL in your default browser.
 - **q** — Shows the QR code and URL again (handy for reconnecting from a phone).
 - **u** — Checks for SDK, CLI, and portal updates.
