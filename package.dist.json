@@ -2,8 +2,17 @@
   "name": "copilot-portal",
   "version": "0.4.0",
   "description": "Mobile-friendly web portal for GitHub Copilot CLI",
+  "author": "Shannon Fritz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shannonfritz/copilot-portal.git"
+  },
   "type": "module",
   "main": "./dist/server.js",
+  "bin": {
+    "copilot-portal": "./bin/copilot-portal.mjs"
+  },
   "engines": { "node": ">=22.5.0" },
   "scripts": {
     "start": "node dist/launcher.js"
