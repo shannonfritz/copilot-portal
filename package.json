@@ -35,7 +35,7 @@
 		"watch:ui": "cd webui && npm run dev",
 		"test": "node tools/test-client.mjs",
 		"package": "node package.mjs",
-		"postinstall": "patch-package && node patch.mjs",
+		"postinstall": "node patch.mjs",
 		"prepare": "npm run build"
 	},
 	"devDependencies": {
@@ -43,7 +43,6 @@
 		"@types/qrcode": "^1.5.5",
 		"@types/ws": "^8.5.14",
 		"esbuild": "^0.25.0",
-		"patch-package": "^8.0.1",
 		"typescript": "^5.0.0"
 	},
 	"dependencies": {
