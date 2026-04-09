@@ -1974,13 +1974,18 @@ export default function App() {
 									const tab = viewingGuide.activeTab ?? 'guide';
 									const fp = tab === 'guide' ? viewingGuide.guideFilePath : viewingGuide.promptsFilePath;
 									// Show actual path or construct expected path
-									const displayPath = fp ?? (viewingGuide.guideFilePath || viewingGuide.promptsFilePath
+									let displayPath = fp ?? (viewingGuide.guideFilePath || viewingGuide.promptsFilePath
 										? ((tab === 'guide' ? viewingGuide.promptsFilePath : viewingGuide.guideFilePath) ?? '').replace(/([/\\])(guides|prompts)([/\\])/, `$1${tab === 'guide' ? 'guides' : 'prompts'}$3`)
 										: '');
+									// Live-update filename when renaming
+									if (displayPath && editingName && editingName !== viewingGuide.id) {
+										displayPath = displayPath.replace(/[/\\][^/\\]+\.md$/, (m) => m.charAt(0) + editingName + '.md');
+									}
+									const exists = !!(tab === 'guide' ? viewingGuide.guideFilePath : viewingGuide.promptsFilePath);
 									return displayPath ? (
 										<div className="mb-2 flex items-center gap-1 rounded px-2 py-1" style={{ background: 'var(--bg)' }}>
-											<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: fp ? 'var(--text-muted)' : 'var(--text-muted)', opacity: fp ? 1 : 0.5 }}>
-												{displayPath}{!fp && ' (not created)'}
+											<div className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs" style={{ color: 'var(--text-muted)', opacity: exists ? 1 : 0.5 }}>
+												{displayPath}{!exists && ' (not created)'}
 											</div>
 											<CopyButton text={displayPath} />
 										</div>
