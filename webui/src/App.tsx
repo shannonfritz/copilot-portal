@@ -2013,10 +2013,13 @@ export default function App() {
 											style={{ fontFamily: 'monospace', color: 'var(--text)' }}
 											value={editingGuide.content}
 											onChange={(e) => setEditingGuide({ ...editingGuide, content: e.target.value })}
+											placeholder={editingGuide.isPrompts
+												? '# Prompts\n\n## My first prompt\nDescribe what you want Copilot to do\n\n## Another prompt\nEach ## heading becomes a selectable prompt'
+												: '# Guide Title\n\nWrite instructions for Copilot here.\n\n## Section\nUse sections to organize your guide.'}
 										/>
 									) : (
-										<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
-											{((viewingGuide.activeTab ?? 'guide') === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent) || '(empty)'}
+										<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)', opacity: ((viewingGuide.activeTab ?? 'guide') === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent) ? 1 : 0.4 }}>
+											{((viewingGuide.activeTab ?? 'guide') === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent) || ((viewingGuide.activeTab ?? 'guide') === 'prompts' ? 'No prompts file. Click Edit to create one.\n\nFormat: use ## headings for prompt labels,\ntext below becomes the prompt content.' : 'No guide file. Click Edit to create one.')}
 										</pre>
 									)}
 								</div>
