@@ -587,6 +587,7 @@ export default function App() {
 	const [examplePreview, setExamplePreview] = useState<{ guide: string; prompts: string } | null>(null);
 	const [newGuideCheck, setNewGuideCheck] = useState(true);
 	const [newPromptsCheck, setNewPromptsCheck] = useState(true);
+	const [previewTab, setPreviewTab] = useState<'guide' | 'prompts'>('guide');
 	const [newGuideName, setNewGuideName] = useState('');
 	const [recentlyAdded, setRecentlyAdded] = useState<string | null>(null);
 	const [guides, setGuides] = useState<Array<{ id: string; name: string; hasGuide?: boolean; hasPrompts?: boolean }>>([]);
@@ -1814,19 +1815,32 @@ export default function App() {
 								{/* Preview tabs */}
 								{examplePreview && (
 									<div className="mb-3">
-										<div className="flex gap-2 mb-2">
-											<label className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-												<input type="checkbox" checked={newGuideCheck} onChange={(e) => setNewGuideCheck(e.target.checked)} disabled={!examplePreview.guide} />
+										<div className="flex mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+											<button
+												type="button"
+												className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium"
+												style={{ color: previewTab === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }}
+												onClick={() => setPreviewTab('guide')}
+											>
+												<input type="checkbox" checked={newGuideCheck} onChange={(e) => { e.stopPropagation(); setNewGuideCheck(e.target.checked); }} style={{ marginRight: 2 }} />
 												Guide
-											</label>
-											<label className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-												<input type="checkbox" checked={newPromptsCheck} onChange={(e) => setNewPromptsCheck(e.target.checked)} disabled={!examplePreview.prompts} />
+											</button>
+											<button
+												type="button"
+												className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium"
+												style={{ color: previewTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }}
+												onClick={() => setPreviewTab('prompts')}
+											>
+												<input type="checkbox" checked={newPromptsCheck} onChange={(e) => { e.stopPropagation(); setNewPromptsCheck(e.target.checked); }} style={{ marginRight: 2 }} />
 												Prompts
-											</label>
+											</button>
 										</div>
 										<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
 											<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
-												{newGuideCheck && examplePreview.guide ? examplePreview.guide : newPromptsCheck && examplePreview.prompts ? examplePreview.prompts : 'Select guide or prompts to preview'}
+												{previewTab === 'guide'
+													? (examplePreview.guide || '(no guide content)')
+													: (examplePreview.prompts || '(no prompts content)')
+												}
 											</pre>
 										</div>
 									</div>
