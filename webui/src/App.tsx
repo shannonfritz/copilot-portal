@@ -1844,7 +1844,7 @@ export default function App() {
 								<div className="mb-2 flex items-center justify-between">
 									<h3 className="font-semibold text-sm">{viewingGuide.title}</h3>
 									<div className="flex gap-1">
-										<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
+										{!editingGuide && <button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
 											const vi = viewingGuide;
 											setviewingGuide(null);
 											setshowGuides(false);
@@ -1869,7 +1869,7 @@ export default function App() {
 													setError(`Failed to load guide: ${e}`);
 												}
 											}
-										}} type="button">{viewingGuide.isPrompts ? 'Load Prompts' : 'Apply'}</button>
+										}} type="button">{viewingGuide.isPrompts ? 'Load Prompts' : 'Apply'}</button>}
 										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
 											if (editingGuide) {
 												setEditingGuide(null);
