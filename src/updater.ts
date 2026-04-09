@@ -306,14 +306,29 @@ function runCommand(cmd: string, cwd: string): Promise<string> {
 	});
 }
 
+/** Get a GitHub token from environment or gh CLI */
+function getGitHubToken(): string | null {
+	// Check environment first
+	if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+	if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+	// Try gh CLI's cached token
+	try {
+		const { execSync } = require('node:child_process');
+		return execSync('gh auth token', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).toString().trim() || null;
+	} catch { return null; }
+}
+
 /** Fetch the latest release from GitHub Releases API */
 function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => void): Promise<{ tag: string; zipUrl: string } | null> {
 	return new Promise((resolve) => {
 		const url = `/repos/${owner}/${repo}/releases/latest`;
+		const token = getGitHubToken();
+		const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' };
+		if (token) headers['Authorization'] = `Bearer ${token}`;
 		const req = https.get({
 			hostname: 'api.github.com',
 			path: url,
-			headers: { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' },
+			headers,
 			timeout: 10_000,
 		}, (res) => {
 			if (res.statusCode !== 200) { log?.(`[Update] GitHub API returned ${res.statusCode} for releases`); resolve(null); res.resume(); return; }
@@ -335,13 +350,18 @@ function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => 
 	});
 }
 
-/** Download a file from a URL (follows redirects) to a local path */
+/** Download a file from a URL (follows redirects, uses GitHub auth for private repos) to a local path */
 function downloadFile(url: string, dest: string, log?: (msg: string) => void): Promise<void> {
+	const token = getGitHubToken();
 	return new Promise((resolve, reject) => {
 		const doGet = (getUrl: string, redirects = 0) => {
 			if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-			const mod = getUrl.startsWith('https') ? https : https;
-			const req = mod.get(getUrl, { headers: { 'User-Agent': 'copilot-portal' }, timeout: 60_000 }, (res) => {
+			const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/octet-stream' };
+			// Only send auth to GitHub domains (don't leak token to CDN redirects)
+			if (token && (getUrl.includes('github.com') || getUrl.includes('githubusercontent.com'))) {
+				headers['Authorization'] = `Bearer ${token}`;
+			}
+			const req = https.get(getUrl, { headers, timeout: 60_000 }, (res) => {
 				if (res.statusCode === 302 || res.statusCode === 301) {
 					const loc = res.headers.location;
 					if (loc) { res.resume(); doGet(loc, redirects + 1); return; }
