@@ -1571,29 +1571,21 @@ export default function App() {
 	};
 
 	const doAddGuide = async () => {
-		if (!newGuideName) return;
+		if (!newGuideName || !examplePreview) return;
 		try {
-			if (selectedExample) {
-				await apiFetch('/api/guides/from-example', {
+			if (newGuideCheck && examplePreview.guide) {
+				await apiFetch('/api/guides', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ exampleId: selectedExample, copyGuide: newGuideCheck, copyPrompts: newPromptsCheck, name: newGuideName }),
+					body: JSON.stringify({ id: newGuideName, content: examplePreview.guide }),
 				});
-			} else {
-				if (newGuideCheck) {
-					await apiFetch('/api/guides', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName}\n\n` }),
-					});
-				}
-				if (newPromptsCheck) {
-					await apiFetch('/api/prompts', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ id: newGuideName, content: `# ${newGuideName} Prompts\n\n## Example Prompt\nDescribe what you want here\n` }),
-					});
-				}
+			}
+			if (newPromptsCheck && examplePreview.prompts) {
+				await apiFetch('/api/prompts', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ id: newGuideName, content: examplePreview.prompts }),
+				});
 			}
 			setShowNewGuide(false);
 			setConfirmOverwrite(false);
@@ -1836,12 +1828,19 @@ export default function App() {
 											</button>
 										</div>
 										<div className="chat-scroll rounded-lg p-3" style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
-											<pre className="text-xs whitespace-pre-wrap break-words" style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
-												{previewTab === 'guide'
-													? (examplePreview.guide || '(no guide content)')
-													: (examplePreview.prompts || '(no prompts content)')
-												}
-											</pre>
+											<textarea
+												className="w-full resize-none bg-transparent text-xs outline-none"
+												style={{ fontFamily: 'monospace', color: 'var(--text)', minHeight: 150 }}
+												value={previewTab === 'guide' ? examplePreview.guide : examplePreview.prompts}
+												onChange={(e) => {
+													if (previewTab === 'guide') {
+														setExamplePreview({ ...examplePreview, guide: e.target.value });
+													} else {
+														setExamplePreview({ ...examplePreview, prompts: e.target.value });
+													}
+												}}
+												placeholder={previewTab === 'guide' ? '# My Guide\n\nWrite your guide here...' : '# My Prompts\n\n## First Prompt\nDescribe what you want here'}
+											/>
 										</div>
 									</div>
 								)}
