@@ -42,10 +42,6 @@ if %errorlevel% neq 0 (
     echo  ERROR: npm install failed. See errors above.
     goto :done
 )
-if exist patch.mjs (
-    echo       Applying compatibility patch...
-    node patch.mjs
-)
 echo       Done.
 goto :deps_done
 :deps_ok
