@@ -816,6 +816,30 @@ export class PortalServer {
 			return;
 		}
 
+		// Rename a guide/prompts pair
+		if (url.pathname === '/api/guides/rename' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { oldId, newId } = JSON.parse(body) as { oldId?: string; newId?: string };
+				if (!oldId || !newId) { this.sendJson(res, 400, { error: 'oldId and newId required' }); return; }
+				if (!/^[a-zA-Z0-9_-]+$/.test(newId)) { this.sendJson(res, 400, { error: 'newId must be alphanumeric with dashes/underscores only' }); return; }
+				const renamed: string[] = [];
+				for (const sub of ['guides', 'prompts']) {
+					const oldFile = path.join(this.dataDir, sub, oldId + '.md');
+					const newFile = path.join(this.dataDir, sub, newId + '.md');
+					if (fs.existsSync(oldFile)) {
+						fs.renameSync(oldFile, newFile);
+						renamed.push(sub);
+					}
+				}
+				this.log(`[Guides] Renamed "${oldId}" → "${newId}" (${renamed.join(', ') || 'no files found'})`);
+				this.sendJson(res, 200, { ok: true, renamed });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		// Session prompts — per-session persistent storage
 		const sessionPromptsMatch = url.pathname.match(/^\/api\/session-prompts\/(.+)$/);
 		if (sessionPromptsMatch && method === 'GET') {

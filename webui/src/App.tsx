@@ -580,6 +580,7 @@ export default function App() {
 	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
 	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; guideFilePath?: string; promptsFilePath?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
+	const [editingName, setEditingName] = useState<string | null>(null);
 	const [showNewGuide, setShowNewGuide] = useState(false);
 	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 	const [examples, setExamples] = useState<Array<{ id: string; hasGuide: boolean; hasPrompts: boolean }>>([]);
@@ -1880,7 +1881,17 @@ export default function App() {
 						) : viewingGuide ? (
 							<div>
 								<div className="mb-2 flex items-center justify-between">
-									<h3 className="font-semibold text-sm">{viewingGuide.id}</h3>
+									{editingGuide || editingName !== null ? (
+										<input
+											type="text"
+											className="font-semibold text-sm bg-transparent outline-none border-b"
+											style={{ color: 'var(--text)', borderColor: 'var(--primary)', minWidth: 150 }}
+											value={editingName ?? viewingGuide.id}
+											onChange={(e) => setEditingName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '-'))}
+										/>
+									) : (
+										<h3 className="font-semibold text-sm">{viewingGuide.id}</h3>
+									)}
 									<div className="flex gap-1">
 										{!editingGuide && (
 											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
@@ -1911,36 +1922,52 @@ export default function App() {
 										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => {
 											if (editingGuide) {
 												setEditingGuide(null);
+												setEditingName(null);
 											} else {
 												const tab = viewingGuide.activeTab ?? 'guide';
 												const content = tab === 'guide' ? viewingGuide.guideContent : viewingGuide.promptsContent;
 												setEditingGuide({ id: viewingGuide.id, content: content ?? '', isPrompts: tab === 'prompts' });
+												setEditingName(viewingGuide.id);
 											}
 										}} type="button">{editingGuide ? 'Cancel Edit' : 'Edit'}</button>
 										{editingGuide && (
 											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--success)', color: '#111' }} onClick={async () => {
 												try {
+													const newName = editingName ?? editingGuide.id;
+													const renamed = newName !== viewingGuide.id;
+													// Rename files if name changed
+													if (renamed) {
+														await apiFetch('/api/guides/rename', {
+															method: 'POST',
+															headers: { 'Content-Type': 'application/json' },
+															body: JSON.stringify({ oldId: viewingGuide.id, newId: newName }),
+														});
+													}
+													// Save content
 													const endpoint = editingGuide.isPrompts ? '/api/prompts' : '/api/guides';
 													await apiFetch(endpoint, {
 														method: 'POST',
 														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({ id: editingGuide.id, content: editingGuide.content }),
+														body: JSON.stringify({ id: newName, content: editingGuide.content }),
 													});
 													// Update the viewing state
 													const tab = viewingGuide.activeTab ?? 'guide';
+													const updated = { ...viewingGuide, id: newName };
 													if (tab === 'guide' && !editingGuide.isPrompts) {
-														setviewingGuide({ ...viewingGuide, guideContent: editingGuide.content });
+														updated.guideContent = editingGuide.content;
 													} else if (tab === 'prompts' && editingGuide.isPrompts) {
-														setviewingGuide({ ...viewingGuide, promptsContent: editingGuide.content });
+														updated.promptsContent = editingGuide.content;
 													}
+													setviewingGuide(updated);
 													setEditingGuide(null);
+													setEditingName(null);
 													apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 												} catch (e) {
 													setError(`Failed to save: ${e}`);
 												}
 											}} type="button">Save</button>
 										)}
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setviewingGuide(null); setEditingGuide(null); }} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setviewingGuide(null); setEditingGuide(null); setEditingName(null); }} type="button">Back</button>
 									</div>
 								</div>
 								{(() => {
