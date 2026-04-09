@@ -558,6 +558,16 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/updates/apply-portal' && method === 'POST') {
+			if (this.updater.getStatus().applying) {
+				this.sendJson(res, 409, { error: 'Update already in progress' });
+				return;
+			}
+			const status = await this.updater.applyPortalUpdate();
+			this.sendJson(res, 200, status);
+			return;
+		}
+
 		if (url.pathname === '/api/quota' && method === 'GET') {
 			try {
 				const quota = await this.pool.getQuota();

@@ -35,8 +35,7 @@
 		"watch:ui": "cd webui && npm run dev",
 		"test": "node tools/test-client.mjs",
 		"package": "node package.mjs",
-		"postinstall": "node patch.mjs",
-		"prepare": "npm run build"
+		"postinstall": "node patch.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",

@@ -18,8 +18,16 @@ export interface PackageUpdate {
 	hasUpdate: boolean;
 }
 
+export interface PortalUpdate {
+	installed: string;
+	latest: string;
+	hasUpdate: boolean;
+	downloadUrl: string | null;
+}
+
 export interface UpdateStatus {
 	packages: PackageUpdate[];
+	portal: PortalUpdate | null;
 	lastChecked: number | null;  // ms epoch
 	checking: boolean;
 	applying: boolean;
@@ -35,6 +43,7 @@ const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 export class UpdateChecker {
 	private packages: PackageUpdate[] = [];
+	private portal: PortalUpdate | null = null;
 	private lastChecked: number | null = null;
 	private checking = false;
 	private applying = false;
@@ -44,6 +53,8 @@ export class UpdateChecker {
 	/** Versions at process start — if on-disk versions differ after an apply, restart is needed */
 	private startupVersions: Record<string, string> = {};
 	private hasLoggedVersions = false;
+	private repoOwner: string;
+	private repoName: string;
 
 	constructor(log: (msg: string) => void) {
 		this.log = log;
@@ -54,6 +65,17 @@ export class UpdateChecker {
 		}
 		const cliV = getInstalledVersion('@github/copilot');
 		if (cliV) this.startupVersions['@github/copilot'] = cliV;
+		// Parse GitHub repo from package.json for portal self-update
+		try {
+			const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+			const repoUrl = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url ?? '';
+			const match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+			this.repoOwner = match?.[1] ?? '';
+			this.repoName = match?.[2] ?? '';
+		} catch {
+			this.repoOwner = '';
+			this.repoName = '';
+		}
 	}
 
 	/** Start periodic checking. First check runs immediately. */
@@ -70,6 +92,7 @@ export class UpdateChecker {
 	getStatus(): UpdateStatus {
 		return {
 			packages: this.packages,
+			portal: this.portal,
 			lastChecked: this.lastChecked,
 			checking: this.checking,
 			applying: this.applying,
@@ -113,6 +136,23 @@ export class UpdateChecker {
 
 			this.packages = results;
 			this.lastChecked = Date.now();
+
+			// Check for portal self-update via GitHub Releases
+			if (this.repoOwner && this.repoName) {
+				try {
+					const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+					const installed = pkg.version ?? 'unknown';
+					const release = await fetchLatestRelease(this.repoOwner, this.repoName, this.log);
+					if (release) {
+						const latestVer = release.tag.replace(/^v/, '');
+						const hasUpdate = isNewer(latestVer, installed);
+						this.portal = { installed, latest: latestVer, hasUpdate, downloadUrl: release.zipUrl };
+						if (hasUpdate) this.log(`[Update] Portal update available: v${installed} → v${latestVer}`);
+					}
+				} catch (e) {
+					this.log(`[Update] Portal version check failed: ${e}`);
+				}
+			}
 
 			// Log installed versions on first check (startup)
 			if (!this.hasLoggedVersions) {
@@ -175,6 +215,38 @@ export class UpdateChecker {
 		}
 		return this.getStatus();
 	}
+
+	/** Download and extract a portal update from GitHub Releases */
+	async applyPortalUpdate(): Promise<UpdateStatus> {
+		if (this.applying || !this.portal?.hasUpdate || !this.portal.downloadUrl) return this.getStatus();
+		this.applying = true;
+		this.error = null;
+		try {
+			this.log(`[Update] Downloading portal v${this.portal.latest}...`);
+			const zipPath = path.join(PROJECT_ROOT, 'portal-update.zip');
+			await downloadFile(this.portal.downloadUrl, zipPath, this.log);
+			this.log(`[Update] Extracting update...`);
+			// Extract zip — overwrite existing files
+			if (process.platform === 'win32') {
+				await runCommand(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${PROJECT_ROOT}' -Force"`, PROJECT_ROOT);
+			} else {
+				await runCommand(`unzip -o "${zipPath}" -d "${PROJECT_ROOT}"`, PROJECT_ROOT);
+			}
+			// Clean up zip
+			try { fs.unlinkSync(zipPath); } catch { /* ignore */ }
+			this.log(`[Update] Portal updated to v${this.portal.latest}. Restart required.`);
+			// Mark as needing restart
+			this.portal = { ...this.portal, hasUpdate: false };
+		} catch (e) {
+			this.error = String(e);
+			this.log(`[Update] Portal update failed: ${this.error}`);
+			// Clean up partial download
+			try { fs.unlinkSync(path.join(PROJECT_ROOT, 'portal-update.zip')); } catch { /* ignore */ }
+		} finally {
+			this.applying = false;
+		}
+		return this.getStatus();
+	}
 }
 
 /** Read the installed version of a package from its package.json in node_modules */
@@ -231,5 +303,58 @@ function runCommand(cmd: string, cwd: string): Promise<string> {
 			}
 			else resolve(stdout);
 		});
+	});
+}
+
+/** Fetch the latest release from GitHub Releases API */
+function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => void): Promise<{ tag: string; zipUrl: string } | null> {
+	return new Promise((resolve) => {
+		const url = `/repos/${owner}/${repo}/releases/latest`;
+		const req = https.get({
+			hostname: 'api.github.com',
+			path: url,
+			headers: { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' },
+			timeout: 10_000,
+		}, (res) => {
+			if (res.statusCode !== 200) { log?.(`[Update] GitHub API returned ${res.statusCode} for releases`); resolve(null); res.resume(); return; }
+			let body = '';
+			res.on('data', (chunk: Buffer) => { body += chunk; });
+			res.on('end', () => {
+				try {
+					const data = JSON.parse(body);
+					const tag = data.tag_name ?? '';
+					// Find the first .zip asset
+					const asset = (data.assets ?? []).find((a: { name: string }) => a.name.endsWith('.zip'));
+					const zipUrl = asset?.browser_download_url ?? null;
+					resolve(tag && zipUrl ? { tag, zipUrl } : null);
+				} catch { resolve(null); }
+			});
+		});
+		req.on('error', (e) => { log?.(`[Update] GitHub API error: ${(e as Error).message}`); resolve(null); });
+		req.on('timeout', () => { log?.(`[Update] GitHub API timeout`); req.destroy(); resolve(null); });
+	});
+}
+
+/** Download a file from a URL (follows redirects) to a local path */
+function downloadFile(url: string, dest: string, log?: (msg: string) => void): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const doGet = (getUrl: string, redirects = 0) => {
+			if (redirects > 5) { reject(new Error('Too many redirects')); return; }
+			const mod = getUrl.startsWith('https') ? https : https;
+			const req = mod.get(getUrl, { headers: { 'User-Agent': 'copilot-portal' }, timeout: 60_000 }, (res) => {
+				if (res.statusCode === 302 || res.statusCode === 301) {
+					const loc = res.headers.location;
+					if (loc) { res.resume(); doGet(loc, redirects + 1); return; }
+				}
+				if (res.statusCode !== 200) { reject(new Error(`Download failed: HTTP ${res.statusCode}`)); res.resume(); return; }
+				const file = fs.createWriteStream(dest);
+				res.pipe(file);
+				file.on('finish', () => { file.close(); resolve(); });
+				file.on('error', (e) => { fs.unlinkSync(dest); reject(e); });
+			});
+			req.on('error', reject);
+			req.on('timeout', () => { req.destroy(); reject(new Error('Download timeout')); });
+		};
+		doGet(url);
 	});
 }

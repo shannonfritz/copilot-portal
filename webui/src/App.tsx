@@ -151,6 +151,7 @@ interface PackageUpdate {
 
 interface UpdateStatus {
 	packages: PackageUpdate[];
+	portal: { installed: string; latest: string; hasUpdate: boolean; downloadUrl: string | null } | null;
 	lastChecked: number | null;
 	checking: boolean;
 	applying: boolean;
@@ -2201,9 +2202,10 @@ export default function App() {
 				{/* Update banner */}
 				{updateStatus && !updateDismissed && (() => {
 					const updatable = updateStatus.packages.filter(p => p.hasUpdate);
+					const portalUpdate = updateStatus.portal?.hasUpdate ? updateStatus.portal : null;
 					const restart = updateStatus.restartNeeded;
 					// Nothing to show: no updates, not applying, no error, no restart pending
-					if (updatable.length === 0 && !updateStatus.applying && !updateStatus.error && !restart) return null;
+					if (updatable.length === 0 && !portalUpdate && !updateStatus.applying && !updateStatus.error && !restart) return null;
 
 					return (
 						<div
@@ -2226,11 +2228,29 @@ export default function App() {
 								<span className="flex-1" style={{ color: 'var(--text)' }}>Update installed — restart to apply</span>
 							) : (
 								<span className="flex-1" style={{ color: 'var(--text)' }}>
-									{updatable.map(p => `${p.name.replace('@github/', '')} ${p.installed} → ${p.latest}`).join(', ')}
+									{[
+										portalUpdate ? `Portal v${portalUpdate.installed} → v${portalUpdate.latest}` : '',
+										...updatable.map(p => `${p.name.replace('@github/', '')} ${p.installed} → ${p.latest}`),
+									].filter(Boolean).join(', ')}
 								</span>
 							)}
 
 							{/* Action buttons */}
+							{!updateStatus.applying && !restart && portalUpdate && (
+								<button
+									type="button"
+									className="rounded-md px-2.5 py-1 text-xs font-medium"
+									style={{ background: 'var(--primary)', color: 'white' }}
+									onClick={async () => {
+										setUpdateStatus(prev => prev ? { ...prev, applying: true } : prev);
+										const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
+										const status = await res.json() as UpdateStatus;
+										setUpdateStatus(status);
+									}}
+								>
+									Update Portal
+								</button>
+							)}
 							{!updateStatus.applying && !restart && updatable.length > 0 && (
 								<button
 									type="button"
@@ -2238,7 +2258,7 @@ export default function App() {
 									style={{ background: 'var(--primary)', color: 'white' }}
 									onClick={applyUpdates}
 								>
-									Update now
+									Update SDK
 								</button>
 							)}
 							{restart && (
