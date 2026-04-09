@@ -581,6 +581,7 @@ export default function App() {
 	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; guideFilePath?: string; promptsFilePath?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
 	const [editingName, setEditingName] = useState<string | null>(null);
+	const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
 	const [showNewGuide, setShowNewGuide] = useState(false);
 	const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 	const [examples, setExamples] = useState<Array<{ id: string; hasGuide: boolean; hasPrompts: boolean }>>([]);
@@ -1572,7 +1573,9 @@ export default function App() {
 	};
 
 	const hasUnsavedEdits = () => !!editingGuide || (showNewGuide && examplePreview && (examplePreview.guide || examplePreview.prompts));
-	const confirmDiscard = () => !hasUnsavedEdits() || confirm('You have unsaved changes. Discard?');
+	const guardDiscard = (action: () => void) => {
+		if (hasUnsavedEdits()) { setPendingDiscard(() => action); } else { action(); }
+	};
 
 	const doAddGuide = async () => {
 		if (!newGuideName || !examplePreview) return;
@@ -1731,7 +1734,7 @@ export default function App() {
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
-					onClick={() => { if (confirmDiscard()) { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); setEditingGuide(null); setEditingName(null); setShowNewGuide(false); } }}
+					onClick={() => guardDiscard(() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); setEditingGuide(null); setEditingName(null); setShowNewGuide(false); setPendingDiscard(null); })}
 				>
 					<div
 						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide || showNewGuide ? 'max-w-2xl' : 'max-w-md'}`}
@@ -1970,7 +1973,7 @@ export default function App() {
 												}
 											}} type="button">Save</button>
 										)}
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { if (confirmDiscard()) { setviewingGuide(null); setEditingGuide(null); setEditingName(null); } }} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => guardDiscard(() => { setviewingGuide(null); setEditingGuide(null); setEditingName(null); setPendingDiscard(null); })} type="button">Back</button>
 									</div>
 								</div>
 								{(() => {
@@ -1994,19 +1997,27 @@ export default function App() {
 										</div>
 									) : null;
 								})()}
+								{/* Discard warning */}
+								{pendingDiscard && (
+									<div className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--warning-tint)', border: '1px solid var(--warning)' }}>
+										<span className="flex-1 text-xs" style={{ color: 'var(--warning)' }}>You have unsaved changes.</span>
+										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: '#111' }} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action(); }}>Discard</button>
+										<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setPendingDiscard(null)}>Keep Editing</button>
+									</div>
+								)}
 								{/* Guide / Prompts tabs */}
 								<div className="flex mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
 									<button
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: (viewingGuide.activeTab ?? 'guide') === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: (viewingGuide.activeTab ?? 'guide') === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.guideContent ? 1 : 0.4 }}
-										onClick={() => { if (confirmDiscard()) { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); } }}
+										onClick={() => guardDiscard(() => { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); setPendingDiscard(null); })}
 									>Guide</button>
 									<button
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: viewingGuide.activeTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: viewingGuide.activeTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.promptsContent ? 1 : 0.4 }}
-										onClick={() => { if (confirmDiscard()) { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); } }}
+										onClick={() => guardDiscard(() => { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); setPendingDiscard(null); })}
 									>Prompts</button>
 								</div>
 								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 20rem)' : undefined, maxHeight: 'calc(100vh - 20rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
