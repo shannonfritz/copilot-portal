@@ -2000,13 +2000,13 @@ export default function App() {
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: (viewingGuide.activeTab ?? 'guide') === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: (viewingGuide.activeTab ?? 'guide') === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.guideContent ? 1 : 0.4 }}
-										onClick={() => { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); }}
+										onClick={() => { if (confirmDiscard()) { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); } }}
 									>Guide</button>
 									<button
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: viewingGuide.activeTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: viewingGuide.activeTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.promptsContent ? 1 : 0.4 }}
-										onClick={() => { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); }}
+										onClick={() => { if (confirmDiscard()) { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); } }}
 									>Prompts</button>
 								</div>
 								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 20rem)' : undefined, maxHeight: 'calc(100vh - 20rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
