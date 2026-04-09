@@ -40,7 +40,7 @@ export class PortalServer {
 		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
 		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
 		// Seed guide examples on first run
-		this.seedContextExamples();
+		this.ensureDataDirs();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
@@ -336,23 +336,10 @@ export class PortalServer {
 		}
 	}
 
-	/** Copy examples into data/guides/ and data/prompts/ if the folders are empty */
-	private seedContextExamples(): void {
-		const examplesBase = path.join(__dirname, '..', 'examples');
+	/** Ensure data directories exist */
+	private ensureDataDirs(): void {
 		for (const sub of ['guides', 'prompts']) {
-			const dataDir = path.join(this.dataDir, sub);
-			const exDir = path.join(examplesBase, sub);
-			try {
-				fs.mkdirSync(dataDir, { recursive: true });
-				const existing = fs.readdirSync(dataDir).filter(f => f.endsWith('.md'));
-				if (existing.length > 0) continue;
-				if (!fs.existsSync(exDir)) continue;
-				const examples = fs.readdirSync(exDir).filter(f => f.endsWith('.md'));
-				for (const f of examples) {
-					fs.copyFileSync(path.join(exDir, f), path.join(dataDir, f));
-				}
-				if (examples.length > 0) this.log(`[Setup] Seeded ${examples.length} ${sub} example(s) into data/${sub}/`);
-			} catch { /* ignore */ }
+			try { fs.mkdirSync(path.join(this.dataDir, sub), { recursive: true }); } catch { /* ignore */ }
 		}
 	}
 
@@ -714,8 +701,115 @@ export class PortalServer {
 				if (!fs.existsSync(contextsDir)) fs.mkdirSync(contextsDir, { recursive: true });
 				const filePath = path.join(contextsDir, id + '.md');
 				fs.writeFileSync(filePath, content, 'utf8');
-				this.log(`[Context] Saved context: ${id} (${content.length} bytes)`);
+				this.log(`[Guides] Saved guide: ${id} (${content.length} bytes)`);
 				this.sendJson(res, 200, { ok: true, id });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Save/create a prompts file
+		if (url.pathname === '/api/prompts' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { id, content } = JSON.parse(body) as { id?: string; content?: string };
+				if (!id || !content) { this.sendJson(res, 400, { error: 'id and content required' }); return; }
+				if (!/^[a-zA-Z0-9_-]+$/.test(id)) { this.sendJson(res, 400, { error: 'id must be alphanumeric with dashes/underscores only' }); return; }
+				const promptsDir = path.join(this.dataDir, 'prompts');
+				if (!fs.existsSync(promptsDir)) fs.mkdirSync(promptsDir, { recursive: true });
+				const filePath = path.join(promptsDir, id + '.md');
+				fs.writeFileSync(filePath, content, 'utf8');
+				this.log(`[Prompts] Saved prompts: ${id} (${content.length} bytes)`);
+				this.sendJson(res, 200, { ok: true, id });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// List examples (from examples/ directory, read-only catalog)
+		if (url.pathname === '/api/examples' && method === 'GET') {
+			try {
+				const exBase = path.join(__dirname, '..', 'examples');
+				const guidesDir = path.join(exBase, 'guides');
+				const promptsDir = path.join(exBase, 'prompts');
+				const guideFiles = fs.existsSync(guidesDir) ? fs.readdirSync(guidesDir).filter(f => f.endsWith('.md')) : [];
+				const promptFiles = fs.existsSync(promptsDir) ? fs.readdirSync(promptsDir).filter(f => f.endsWith('.md')) : [];
+				const allIds = [...new Set([...guideFiles.map(f => f.replace(/\.md$/, '')), ...promptFiles.map(f => f.replace(/\.md$/, ''))])].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+				const items = allIds.map(id => ({
+					id,
+					name: id + '.md',
+					hasGuide: guideFiles.includes(id + '.md'),
+					hasPrompts: promptFiles.includes(id + '.md'),
+				}));
+				this.sendJson(res, 200, items);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Get example guide content
+		const examplePromptsMatch = url.pathname.match(/^\/api\/examples\/(.+)\/prompts$/);
+		if (examplePromptsMatch && method === 'GET') {
+			try {
+				const promptsFile = path.join(__dirname, '..', 'examples', 'prompts', decodeURIComponent(examplePromptsMatch[1]) + '.md');
+				const resolved = path.resolve(promptsFile);
+				const exDir = path.resolve(path.join(__dirname, '..', 'examples', 'prompts'));
+				if (!resolved.startsWith(exDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 200, { content: '' }); return; }
+				this.sendJson(res, 200, { content: fs.readFileSync(resolved, 'utf8') });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		const exampleMatch = url.pathname.match(/^\/api\/examples\/(.+)$/);
+		if (exampleMatch && method === 'GET') {
+			try {
+				const guideFile = path.join(__dirname, '..', 'examples', 'guides', decodeURIComponent(exampleMatch[1]) + '.md');
+				const resolved = path.resolve(guideFile);
+				const exDir = path.resolve(path.join(__dirname, '..', 'examples', 'guides'));
+				if (!resolved.startsWith(exDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
+				if (!fs.existsSync(resolved)) { this.sendJson(res, 200, { content: '' }); return; }
+				this.sendJson(res, 200, { content: fs.readFileSync(resolved, 'utf8') });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Copy example to user's data directory
+		if (url.pathname === '/api/guides/from-example' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { exampleId, copyGuide, copyPrompts, name } = JSON.parse(body) as { exampleId: string; copyGuide?: boolean; copyPrompts?: boolean; name?: string };
+				const targetName = name || exampleId;
+				if (!/^[a-zA-Z0-9_-]+$/.test(targetName)) { this.sendJson(res, 400, { error: 'name must be alphanumeric with dashes/underscores only' }); return; }
+				const exBase = path.join(__dirname, '..', 'examples');
+				const copied: string[] = [];
+				if (copyGuide !== false) {
+					const src = path.join(exBase, 'guides', exampleId + '.md');
+					if (fs.existsSync(src)) {
+						const dest = path.join(this.dataDir, 'guides', targetName + '.md');
+						fs.mkdirSync(path.dirname(dest), { recursive: true });
+						fs.copyFileSync(src, dest);
+						copied.push('guide');
+					}
+				}
+				if (copyPrompts !== false) {
+					const src = path.join(exBase, 'prompts', exampleId + '.md');
+					if (fs.existsSync(src)) {
+						const dest = path.join(this.dataDir, 'prompts', targetName + '.md');
+						fs.mkdirSync(path.dirname(dest), { recursive: true });
+						fs.copyFileSync(src, dest);
+						copied.push('prompts');
+					}
+				}
+				this.log(`[Guides] Copied example "${exampleId}" → "${targetName}" (${copied.join(', ') || 'nothing to copy'})`);
+				this.sendJson(res, 200, { ok: true, id: targetName, copied });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
