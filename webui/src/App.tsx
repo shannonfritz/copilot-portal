@@ -1571,6 +1571,9 @@ export default function App() {
 		}
 	};
 
+	const hasUnsavedEdits = () => !!editingGuide || (showNewGuide && examplePreview && (examplePreview.guide || examplePreview.prompts));
+	const confirmDiscard = () => !hasUnsavedEdits() || confirm('You have unsaved changes. Discard?');
+
 	const doAddGuide = async () => {
 		if (!newGuideName || !examplePreview) return;
 		try {
@@ -1728,7 +1731,7 @@ export default function App() {
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
-					onClick={() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); }}
+					onClick={() => { if (confirmDiscard()) { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); setEditingGuide(null); setEditingName(null); setShowNewGuide(false); } }}
 				>
 					<div
 						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide || showNewGuide ? 'max-w-2xl' : 'max-w-md'}`}
@@ -1967,7 +1970,7 @@ export default function App() {
 												}
 											}} type="button">Save</button>
 										)}
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setviewingGuide(null); setEditingGuide(null); setEditingName(null); }} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { if (confirmDiscard()) { setviewingGuide(null); setEditingGuide(null); setEditingName(null); } }} type="button">Back</button>
 									</div>
 								</div>
 								{(() => {
