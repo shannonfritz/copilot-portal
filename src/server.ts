@@ -564,6 +564,8 @@ export class PortalServer {
 				return;
 			}
 			const status = await this.updater.applyPortalUpdate();
+			// Force restartNeeded if no error — the running process always needs restart after portal update
+			if (!status.error) status.restartNeeded = true;
 			this.sendJson(res, 200, status);
 			return;
 		}
