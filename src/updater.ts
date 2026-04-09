@@ -147,7 +147,11 @@ export class UpdateChecker {
 						const latestVer = release.tag.replace(/^v/, '');
 						const hasUpdate = isNewer(latestVer, installed);
 						this.portal = { installed, latest: latestVer, hasUpdate, downloadUrl: release.zipUrl };
-						if (hasUpdate) this.log(`[Update] Portal update available: v${installed} → v${latestVer}`);
+						if (hasUpdate) {
+							this.log(`[Update] Portal update available: v${installed} → v${latestVer}`);
+						} else {
+							this.log(`[Update] Portal v${installed} is up to date`);
+						}
 					}
 				} catch (e) {
 					this.log(`[Update] Portal version check failed: ${e}`);
