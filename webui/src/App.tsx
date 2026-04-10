@@ -165,7 +165,14 @@ function getToken(): string | null {
 		localStorage.setItem('portal_token', urlToken);
 		return urlToken;
 	}
-	return localStorage.getItem('portal_token');
+	const stored = localStorage.getItem('portal_token');
+	if (stored) {
+		// Ensure token is in the URL bar so iOS "Add to Home Screen" captures it
+		const params = new URLSearchParams(window.location.search);
+		params.set('token', stored);
+		window.history.replaceState(null, '', `?${params.toString()}`);
+	}
+	return stored;
 }
 
 function timeAgo(iso: string): string {
