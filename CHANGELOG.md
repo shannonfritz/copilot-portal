@@ -2,6 +2,37 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.5.0
+
+### Guides & Prompts Redesign
+- Catalog-based model: examples are read-only templates, user files live in `data/`
+- Click a list item to open a detail view with Guide/Prompts tabs (no accidental apply)
+- Apply and Edit buttons in the detail view
+- Full-height editor with rename support (live filepath preview)
+- \+ New flow: browse example catalog, preview content, choose which files to include, customize name
+- Overwrite confirmation when a name conflicts with an existing item
+- Unsaved changes guard: inline Discard/Keep Editing banner on navigation, tab switch, or backdrop click
+- File path display with copy button; dimmed "(not created)" for missing files
+- OS-consistent path separators
+
+### Examples Overhaul
+- Removed: my-dev-environment, system-explorer, common-prompts, choose-your-own-adventure
+- Renamed: test-context → set-personality-quirks, 20-questions → play-20-questions
+- New guides: storytime-bedtime-tales, storytime-pick-your-path, guide-builder
+- New prompt sets: storytelling, trivia-and-research
+- Added companion prompts for: portal-tour, copilot-portal-dev, set-personality-quirks, play-20-questions, storytime-bedtime-tales
+- Portal tour fully rewritten for accuracy and first-impression quality
+- Copilot Portal Dev guide updated with current architecture, all key files, directory structure
+
+### Console Keys
+- Rebound `[t]` to `[c]` for CLI Console (frees `[t]` for future tunnel support)
+
+### Documentation
+- Split `uplink-comparison.md` into three focused docs:
+  - `uplink-comparison.md` — architecture comparison and patterns
+  - `acp-protocol.md` — protocol reference, wire format, migration path
+  - `dev-tunnels.md` — installation, usage, access control, integration plan
+
 ## v0.4.0
 
 ### Instructions
