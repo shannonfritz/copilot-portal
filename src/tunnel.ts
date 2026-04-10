@@ -1,6 +1,6 @@
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface TunnelConfig {
@@ -166,5 +166,22 @@ export class TunnelManager {
 	/** Check if config exists */
 	hasConfig(): boolean {
 		return this.config !== null;
+	}
+
+	/** Delete the tunnel from devtunnel service and remove local config */
+	reset(): { deleted: boolean; name?: string } {
+		this.stop();
+		const config = this.config;
+		if (config) {
+			try {
+				execSync(`devtunnel delete ${config.name} --force`, { stdio: 'ignore' });
+			} catch { /* tunnel may not exist */ }
+			try {
+				if (existsSync(this.configPath)) unlinkSync(this.configPath);
+			} catch {}
+			this.config = null;
+			return { deleted: true, name: config.name };
+		}
+		return { deleted: false };
 	}
 }

@@ -964,6 +964,16 @@ export class PortalServer {
 		return this.token;
 	}
 
+	/** Rotate the access token — invalidates all existing URLs and disconnects all clients */
+	rotateToken(): string {
+		const tokenFile = path.join(this.dataDir, 'token.txt');
+		try { fs.unlinkSync(tokenFile); } catch {}
+		this.token = this.loadOrCreateToken();
+		// Disconnect all clients — they'll need the new token
+		for (const client of this.wss.clients) client.terminate();
+		return this.token;
+	}
+
 	/** List sessions (for console CLI launcher) */
 	async listSessions(): Promise<Array<{ sessionId: string; summary?: string }>> {
 		try {

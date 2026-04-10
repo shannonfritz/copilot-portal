@@ -296,7 +296,7 @@ if (process.stdin.isTTY) {
 	const showHelp = () => {
 		const tunnelState = tunnel.getState();
 		const tunnelLabel = tunnelState.running ? '[t] Stop Tunnel' : '[t] Tunnel';
-		console.log(`\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  ${tunnelLabel}  [u] Update  [r] Restart  [x] Exit\n`);
+		console.log(`\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  ${tunnelLabel}  [T] Reset Access  [u] Update  [r] Restart  [x] Exit\n`);
 	};
 	showHelp();
 
@@ -314,6 +314,20 @@ if (process.stdin.isTTY) {
 		// If CLI picker is active, route keys there
 		if (cliPickerState) {
 			handleCliPick(key.toLowerCase());
+			return;
+		}
+		// Handle shift-sensitive keys before lowercasing
+		if (key === 'T') {
+			console.log('\n  Security reset: revoking all remote access...');
+			const result = tunnel.reset();
+			if (result.deleted) {
+				console.log(`  ✓ Tunnel "${result.name}" deleted from devtunnel service`);
+			}
+			server.rotateToken();
+			console.log(`  ✓ Token rotated — all existing URLs are now invalid`);
+			console.log(`  ✓ All connected clients disconnected`);
+			console.log(`\n  New local URL: ${server.getURL()}`);
+			console.log(`  Press [t] to create a new tunnel with the new token.\n`);
 			return;
 		}
 		switch (key.toLowerCase()) {
