@@ -316,16 +316,16 @@ if (process.stdin.isTTY) {
 		}
 		// Handle shift-sensitive keys before lowercasing
 		if (key === 'T') {
-			console.log('\n  Security reset: revoking all remote access...');
+			console.log('\n  Security reset: revoking all access...');
 			const result = tunnel.reset();
 			if (result.deleted) {
-				console.log(`  ✓ Tunnel "${result.name}" deleted from devtunnel service`);
+				console.log(`  ✓ Tunnel "${result.name}" deleted — old tunnel URL is dead`);
 			}
 			server.rotateToken();
-			console.log(`  ✓ Token rotated — all existing URLs are now invalid`);
+			console.log(`  ✓ Token rotated — all existing URLs (tunnel and local) are now invalid`);
 			console.log(`  ✓ All connected clients disconnected`);
 			console.log(`\n  New local URL: ${server.getURL()}`);
-			console.log(`  Press [t] to create a new tunnel with the new token.\n`);
+			console.log(`  Press [q] for a new QR code, or [t] to create a new tunnel.\n`);
 			return;
 		}
 		switch (key.toLowerCase()) {
