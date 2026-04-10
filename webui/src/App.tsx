@@ -611,6 +611,7 @@ export default function App() {
 	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 	const [updateDismissed, setUpdateDismissed] = useState(false);
+	const [pwaDismissed, setPwaDismissed] = useState(() => localStorage.getItem('portal_pwa_dismissed') === '1');
 
 	const wsRef = useRef<WebSocket | null>(null);
 	const mgmtWsRef = useRef<WebSocket | null>(null);
@@ -640,6 +641,13 @@ export default function App() {
 			apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
 		}
 	}, []);
+
+	// Track visit count for PWA install hint (show on 2nd+ mobile visit)
+	const [pwaVisitCount] = useState(() => {
+		const count = parseInt(localStorage.getItem('portal_visit_count') ?? '0', 10) + 1;
+		localStorage.setItem('portal_visit_count', String(count));
+		return count;
+	});
 
 	// Poll for available updates every 5 minutes (server checks npm every 4 hours)
 	useEffect(() => {
@@ -2556,6 +2564,21 @@ export default function App() {
 						</div>
 					);
 				})()}
+
+				{/* PWA install hint — mobile only, 2nd+ visit, not already installed, not dismissed */}
+				{!pwaDismissed && pwaVisitCount >= 2
+					&& /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+					&& !window.matchMedia('(display-mode: standalone)').matches
+					&& (
+					<div className="flex items-center justify-between px-4 py-2 text-xs" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+						<span>📱 Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
+						<button
+							className="ml-3 px-1.5 rounded"
+							style={{ color: 'var(--text-muted)', background: 'none', border: 'none', fontSize: '14px' }}
+							onClick={() => { setPwaDismissed(true); localStorage.setItem('portal_pwa_dismissed', '1'); }}
+						>✕</button>
+					</div>
+				)}
 
 				<div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
 					{historyTruncated && (() => {
