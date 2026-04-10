@@ -897,11 +897,9 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/' || url.pathname === '/index.html') {
-			if (!this.checkToken(url, req)) {
-				res.writeHead(401, { 'Content-Type': 'text/html' });
-				res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:4em"><h2>Access Denied</h2><p>A valid <code>?token=</code> is required. Check the server console for the URL.</p></body></html>');
-				return;
-			}
+			// Serve the HTML unconditionally — auth is handled client-side via localStorage token.
+			// API and WebSocket endpoints still require the token.
+			// This allows PWA home screen launches (no token in start_url) to work.
 			const indexPath = path.join(this.webuiPath, 'index.html');
 			fs.readFile(indexPath, 'utf8', (err, html) => {
 				if (err) { res.writeHead(404); res.end('Web UI not built.'); return; }
