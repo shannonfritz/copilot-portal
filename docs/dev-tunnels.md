@@ -100,20 +100,44 @@ This means:
 | `devtunnel delete NAME` | Remove a tunnel |
 | `devtunnel access create NAME -p PORT --anonymous` | Allow anonymous access |
 
+## Service Limits
+
+Dev Tunnels has monthly limits per user (resets monthly):
+
+| Resource | Limit |
+|---|---|
+| **Bandwidth** | 5 GB per user |
+| **Tunnels** | 10 per user |
+| **Active connections** | 1,000 per port |
+| **Ports** | 10 per tunnel |
+| **HTTP request rate** | 1,500/min per port |
+| **Data transfer rate** | Up to 20 MB/s per tunnel |
+| **Max HTTP request body** | 16 MB |
+
+**Bandwidth is the main concern.** Copilot responses with tool output can be chatty. Rough estimate: a heavy coding session might use 5-10 MB/hour through the tunnel. At that rate, 5 GB lasts ~500-1000 hours — fine for mobile/remote use, but don't use the tunnel as your primary daily driver.
+
+The `[t]` toggle design is ideal: use the tunnel when you need remote access, turn it off when you're on the same network.
+
+## Important Notes
+
+**Anti-phishing interstitial:** The first time you open a devtunnel URL, Microsoft shows a warning page asking you to confirm the connection. This is a one-time security feature per tunnel — you'll only see it once.
+
+**Token in URL:** The tunnel URL includes your portal access token as a query parameter. Don't share tunnel URLs in screen recordings, screenshots, or public channels.
+
+**Inactive tunnel cleanup:** Tunnels not used for 30 days are automatically deleted by the service. Deterministic naming means the portal will recreate it transparently on next use.
+
 ## Integration Plan for Portal
 
-### Phase 1: Documentation Only (now)
-Zero code changes needed. Users can run `devtunnel host` alongside the portal manually. Document it in the README.
+### Phase 2: `[t]` Console Key (implemented)
+Press `[t]` to toggle a DevTunnel on/off:
+1. Checks if `devtunnel` is installed and authenticated
+2. On first use, asks about access mode (anonymous vs authenticated)
+3. Creates a tunnel with deterministic naming if it doesn't exist
+4. Hosts the tunnel and displays the public URL + QR code (with portal token)
+5. Press `[t]` again to stop
+6. Config saved in `data/tunnel.json` — delete to reconfigure
 
-### Phase 2: `--tunnel` Flag
-Add a `--tunnel` flag to the portal launcher that:
-1. Checks if `devtunnel` is installed
-2. Creates a tunnel with deterministic naming if it doesn't exist
-3. Starts the tunnel alongside the portal
-4. Displays the public URL (and generates a QR code for it)
-5. Cleans up the tunnel process on exit
-
-### Phase 3: Tunnel-Aware UI
+### Phase 3: Tunnel-Aware UI (future)
 - Show the public tunnel URL in the portal header or session drawer
 - Generate QR code from the tunnel URL instead of the local one
 - Auto-detect tunnel connection and show remote access indicator

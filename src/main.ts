@@ -230,8 +230,10 @@ if (process.stdin.isTTY) {
 			console.log(`\n  Tunnel: ${fullUrl}\n`);
 			console.log('  Scan to open remotely:');
 			qrcode.generate(fullUrl, { small: true });
+			console.log('  Note: First visit shows a Microsoft security interstitial (one-time).');
+			console.log('  Warning: URL contains your access token — do not share in recordings or public channels.');
 			if (!allowAnonymous) {
-				console.log('  Note: Visitors must sign in with a Microsoft or GitHub account.\n');
+				console.log('  Access: Visitors must sign in with a Microsoft or GitHub account.');
 			}
 		} catch (e) {
 			console.log(`  Failed to start tunnel: ${e}\n`);
