@@ -921,6 +921,7 @@ export class PortalServer {
 			const mime: Record<string, string> = {
 				'.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
 				'.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2',
+				'.json': 'application/json', '.webmanifest': 'application/manifest+json',
 			};
 			res.writeHead(200, { 'Content-Type': mime[path.extname(filePath)] ?? 'application/octet-stream' });
 			res.end(data);
