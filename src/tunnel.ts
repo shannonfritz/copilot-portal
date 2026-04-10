@@ -1,5 +1,5 @@
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -56,10 +56,9 @@ export class TunnelManager {
 		} catch { return false; }
 	}
 
-	/** Generate a deterministic tunnel name from the working directory */
-	static deriveName(cwd: string): string {
-		const hash = createHash('sha256').update(cwd).digest('hex').slice(0, 8);
-		return `portal-${hash}`;
+	/** Generate a random tunnel name */
+	static generateName(): string {
+		return `portal-${randomBytes(4).toString('hex')}`;
 	}
 
 	/** Check if a named tunnel already exists */

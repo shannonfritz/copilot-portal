@@ -211,28 +211,27 @@ if (process.stdin.isTTY) {
 		if (tunnelSetupState === 'asking-access') {
 			if (key === '1') {
 				tunnelSetupState = null;
-				startTunnel(true);
+				startTunnel({ name: TunnelManager.generateName(), allowAnonymous: true });
 			} else if (key === '2') {
 				tunnelSetupState = null;
-				startTunnel(false);
+				startTunnel({ name: TunnelManager.generateName(), allowAnonymous: false });
 			} else {
 				console.log('\n  Press [1] or [2]\n');
 			}
 		}
 	};
 
-	const startTunnel = async (allowAnonymous: boolean) => {
-		const name = TunnelManager.deriveName(process.cwd());
-		console.log(`\n  Starting tunnel "${name}"...`);
+	const startTunnel = async (config: { name: string; allowAnonymous: boolean }) => {
+		console.log(`\n  Starting tunnel "${config.name}"...`);
 		try {
-			const tunnelUrl = await tunnel.start({ name, allowAnonymous });
+			const tunnelUrl = await tunnel.start(config);
 			const fullUrl = `${tunnelUrl}?token=${server.getToken()}`;
 			console.log(`\n  Tunnel: ${fullUrl}\n`);
 			console.log('  Scan to open remotely:');
 			qrcode.generate(fullUrl, { small: true });
 			console.log('  Note: First visit shows a Microsoft security interstitial (one-time).');
 			console.log('  Warning: URL contains your access token — do not share in recordings or public channels.');
-			if (!allowAnonymous) {
+			if (!config.allowAnonymous) {
 				console.log('  Access: Visitors must sign in with a Microsoft or GitHub account.');
 			}
 		} catch (e) {
@@ -265,8 +264,7 @@ if (process.stdin.isTTY) {
 
 		// If we have saved config, use it
 		if (tunnel.hasConfig()) {
-			const config = tunnel.getConfig()!;
-			await startTunnel(config.allowAnonymous);
+			await startTunnel(tunnel.getConfig()!);
 			return;
 		}
 
