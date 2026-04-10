@@ -2,9 +2,8 @@
   "name": "Copilot Portal",
   "short_name": "Copilot Portal",
   "description": "Mobile-friendly web portal for GitHub Copilot CLI sessions",
-  "start_url": "/",
-  "scope": "/",
   "display": "standalone",
+  "scope": "/",
   "background_color": "#1e1e2e",
   "theme_color": "#1e1e2e",
   "icons": [
