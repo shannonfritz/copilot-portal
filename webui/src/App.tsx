@@ -702,7 +702,7 @@ export default function App() {
 		if (token) {
 			// Close any existing mgmt WS before opening a new one
 			if (mgmtWsRef.current) { mgmtWsRef.current.onerror = null; mgmtWsRef.current.close(); }
-			const mgmtWs = new WebSocket(`ws://${window.location.host}?token=${token}&management=1`);
+			const mgmtWs = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}?token=${token}&management=1`);
 			mgmtWs.onmessage = (e) => {
 				try {
 					const event = JSON.parse(e.data as string) as { type: string; sessionId?: string; shielded?: boolean; session?: SessionInfo };
@@ -754,7 +754,8 @@ export default function App() {
 		const sessionId = new URLSearchParams(window.location.search).get('session');
 		const sessionParam = sessionId ? `&session=${sessionId}` : '';
 		const historyParam = new URLSearchParams(window.location.search).get('history');
-		const wsUrl = `ws://${window.location.host}?token=${token}${sessionParam}${historyParam ? `&history=${historyParam}` : ''}`;
+		const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+		const wsUrl = `${wsProto}://${window.location.host}?token=${token}${sessionParam}${historyParam ? `&history=${historyParam}` : ''}`;
 		const ws = new WebSocket(wsUrl);
 		wsRef.current = ws;
 		let hadMsg = false;
@@ -1294,7 +1295,7 @@ export default function App() {
 			// Start in no-session mode — open management WS for live broadcasts
 			const token = getToken();
 			if (token) {
-				const mgmtWs = new WebSocket(`ws://${window.location.host}?token=${token}&management=1`);
+				const mgmtWs = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}?token=${token}&management=1`);
 				mgmtWs.onmessage = (e) => {
 					try {
 						const event = JSON.parse(e.data as string) as { type: string; sessionId?: string; shielded?: boolean; session?: SessionInfo };
