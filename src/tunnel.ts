@@ -90,7 +90,7 @@ export class TunnelManager {
 		this.saveConfig(config);
 
 		return new Promise<string>((resolve, reject) => {
-			const proc = spawn('devtunnel', ['host', config.name, '-p', String(this.port)], {
+			const proc = spawn('devtunnel', ['host', config.name], {
 				stdio: ['pipe', 'pipe', 'pipe'],
 				windowsHide: true,
 			});
