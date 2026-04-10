@@ -1,4 +1,5 @@
 import { PortalServer } from './server.js';
+import { TunnelManager } from './tunnel.js';
 import qrcode from 'qrcode-terminal';
 import { exec, spawnSync } from 'node:child_process';
 
@@ -36,6 +37,7 @@ const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: C
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');
+	tunnel.stop();
 	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -46,6 +48,7 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
+	tunnel.stop();
 	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -56,6 +59,10 @@ process.on('SIGTERM', async () => {
 });
 
 await server.start();
+
+// Initialize tunnel manager
+const dataDir = DATA_DIR ?? 'data';
+const tunnel = new TunnelManager(dataDir, PORT);
 
 // Print QR code for easy phone access
 if (!NO_QR) {
@@ -198,6 +205,75 @@ if (process.stdin.isTTY) {
 	};
 
 	let updateInProgress = false;
+	let tunnelSetupState: 'asking-access' | null = null;
+
+	const handleTunnelSetup = (key: string) => {
+		if (tunnelSetupState === 'asking-access') {
+			if (key === '1') {
+				tunnelSetupState = null;
+				startTunnel(true);
+			} else if (key === '2') {
+				tunnelSetupState = null;
+				startTunnel(false);
+			} else {
+				console.log('\n  Press [1] or [2]\n');
+			}
+		}
+	};
+
+	const startTunnel = async (allowAnonymous: boolean) => {
+		const name = TunnelManager.deriveName(process.cwd());
+		console.log(`\n  Starting tunnel "${name}"...`);
+		try {
+			const tunnelUrl = await tunnel.start({ name, allowAnonymous });
+			const fullUrl = `${tunnelUrl}?token=${server.getToken()}`;
+			console.log(`\n  Tunnel: ${fullUrl}\n`);
+			console.log('  Scan to open remotely:');
+			qrcode.generate(fullUrl, { small: true });
+			if (!allowAnonymous) {
+				console.log('  Note: Visitors must sign in with a Microsoft or GitHub account.\n');
+			}
+		} catch (e) {
+			console.log(`  Failed to start tunnel: ${e}\n`);
+		}
+	};
+
+	const toggleTunnel = async () => {
+		const state = tunnel.getState();
+
+		// If running, stop it
+		if (state.running) {
+			tunnel.stop();
+			console.log('\n  Tunnel stopped.\n');
+			return;
+		}
+
+		// Check prerequisites
+		if (!tunnel.isInstalled()) {
+			console.log('\n  devtunnel is not installed.');
+			console.log('  Install: winget install Microsoft.devtunnel');
+			console.log('  Then restart your terminal and run: devtunnel user login\n');
+			return;
+		}
+		if (!tunnel.isLoggedIn()) {
+			console.log('\n  devtunnel is not logged in.');
+			console.log('  Run: devtunnel user login\n');
+			return;
+		}
+
+		// If we have saved config, use it
+		if (tunnel.hasConfig()) {
+			const config = tunnel.getConfig()!;
+			await startTunnel(config.allowAnonymous);
+			return;
+		}
+
+		// First time — ask about access
+		tunnelSetupState = 'asking-access';
+		console.log('\n  Tunnel Access:');
+		console.log('    [1] Anonymous — anyone with the URL can connect (portal token still required)');
+		console.log('    [2] Authenticated — visitors must sign in with Microsoft/GitHub\n');
+	};
 
 	const killCliServer = () => {
 		if (process.platform === 'win32') {
@@ -209,13 +285,16 @@ if (process.stdin.isTTY) {
 
 	const shutdown = async () => {
 		console.log('\nShutting down...');
+		tunnel.stop();
 		await server.stop().catch(() => {}); // disconnect SDK first
 		killCliServer(); // then kill CLI process
 		process.exit(0);
 	};
 
 	const showHelp = () => {
-		console.log('\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  [u] Update  [r] Restart  [x] Exit\n');
+		const tunnelState = tunnel.getState();
+		const tunnelLabel = tunnelState.running ? '[t] Stop Tunnel' : '[t] Tunnel';
+		console.log(`\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  ${tunnelLabel}  [u] Update  [r] Restart  [x] Exit\n`);
 	};
 	showHelp();
 
@@ -223,6 +302,11 @@ if (process.stdin.isTTY) {
 		// If confirming CLI launch, handle y/n
 		if (confirmingCliLaunch) {
 			handleConfirm(key.toLowerCase());
+			return;
+		}
+		// If tunnel setup is active, route keys there
+		if (tunnelSetupState) {
+			handleTunnelSetup(key.toLowerCase());
 			return;
 		}
 		// If CLI picker is active, route keys there
@@ -248,6 +332,9 @@ if (process.stdin.isTTY) {
 				console.log('Scan to open on your phone:');
 				qrcode.generate(server.getURL(), { small: true });
 				break;
+			case 't':
+				toggleTunnel();
+				break;
 			case 'u':
 				if (updateInProgress) { console.log('\n  Update already in progress...\n'); break; }
 				console.log('\n  Checking for updates...');
@@ -268,6 +355,7 @@ if (process.stdin.isTTY) {
 				});
 				break;
 			case 'r':
+				tunnel.stop();
 				console.log('\nRestarting...');
 				process.exit(75); // launcher catches this and relaunches
 				break;

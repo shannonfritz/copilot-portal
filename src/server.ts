@@ -960,6 +960,10 @@ export class PortalServer {
 		return `http://${this.getLocalIP()}:${this.port}?token=${this.token}`;
 	}
 
+	getToken(): string {
+		return this.token;
+	}
+
 	/** List sessions (for console CLI launcher) */
 	async listSessions(): Promise<Array<{ sessionId: string; summary?: string }>> {
 		try {
