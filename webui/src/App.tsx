@@ -1759,7 +1759,7 @@ export default function App() {
 				>
 					<div
 						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide || showNewGuide ? 'max-w-2xl' : 'max-w-md'}`}
-						style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: 'calc(100vh - 6rem)', display: 'flex', flexDirection: 'column' as const }}
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)', height: viewingGuide || showNewGuide ? 'calc(100vh - 6rem)' : undefined, maxHeight: 'calc(100vh - 6rem)', display: 'flex', flexDirection: 'column' as const }}
 						onClick={(e) => e.stopPropagation()}
 					>
 						<div className="mb-3 flex items-center justify-between">
