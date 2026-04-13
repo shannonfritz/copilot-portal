@@ -15,6 +15,8 @@ Explain how a message flows from the browser input box all the way to the Copilo
 ## Add a new API endpoint
 Help me add a new endpoint to the portal server. I'll describe what it should do.
 
+Follow the existing patterns in server.ts — token check, path matching, sendJson for responses. Add it near related endpoints.
+
 ## Add a new UI feature
 Help me add something to the portal's React UI. I'll describe what I want it to look like and do.
 
@@ -23,3 +25,10 @@ Walk me through packaging a new release and creating a GitHub release.
 
 ## Review before pushing
 Check what's uncommitted and unpushed, and help me review it before pushing to GitHub.
+
+Look for:
+- Accidental debug code or console.logs
+- Sensitive data (tokens, paths, names)
+- Files that shouldn't be committed
+
+Summarize what you find before I decide to push.
