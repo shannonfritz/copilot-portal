@@ -1782,7 +1782,7 @@ export default function App() {
 							)}
 						</div>
 						{showNewGuide ? (
-							<div>
+							<div className="flex-1 flex flex-col min-h-0">
 								<div className="mb-3">
 									<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start from</label>
 									<select
