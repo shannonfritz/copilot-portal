@@ -306,7 +306,8 @@ if (process.stdin.isTTY) {
 	const showHelp = () => {
 		const tunnelState = tunnel.getState();
 		const tunnelLabel = tunnelState.running ? '[t] Stop Tunnel' : '[t] Tunnel';
-		console.log(`\n  Command Keys: [c] CLI Console  [l] Launch Browser  [q] QR/URL  ${tunnelLabel}  [T] Reset Access  [u] Update  [r] Restart  [x] Exit\n`);
+		console.log(`\n  Access:  [q] QR Code  [l] Launch Browser  ${tunnelLabel}  [T] Reset Access`);
+		console.log(`  Server:  [c] CLI Console  [u] Check Updates  [r] Restart  [x] Exit\n`);
 	};
 	showHelp();
 
