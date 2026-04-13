@@ -958,7 +958,11 @@ export class PortalServer {
 			const indexPath = path.join(this.webuiPath, 'index.html');
 			fs.readFile(indexPath, 'utf8', (err, html) => {
 				if (err) { res.writeHead(404); res.end('Web UI not built.'); return; }
-				res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+				res.writeHead(200, {
+					'Content-Type': 'text/html',
+					'Cache-Control': 'no-cache, no-store, must-revalidate',
+					...this.securityHeaders(req),
+				});
 				res.end(html);
 			});
 			return;
@@ -976,15 +980,39 @@ export class PortalServer {
 				'.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2',
 				'.json': 'application/json', '.webmanifest': 'application/manifest+json',
 			};
-			res.writeHead(200, { 'Content-Type': mime[path.extname(filePath)] ?? 'application/octet-stream' });
+			res.writeHead(200, {
+				'Content-Type': mime[path.extname(filePath)] ?? 'application/octet-stream',
+				...this.securityHeaders(req),
+			});
 			res.end(data);
 		});
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {
 		const data = JSON.stringify(body);
-		res.writeHead(status, { 'Content-Type': 'application/json' });
+		res.writeHead(status, {
+			'Content-Type': 'application/json',
+			'Cache-Control': 'no-store',
+			...this.securityHeaders(),
+		});
 		res.end(data);
+	}
+
+	/** Common security headers for all responses */
+	private securityHeaders(req?: http.IncomingMessage): Record<string, string> {
+		const headers: Record<string, string> = {
+			'X-Content-Type-Options': 'nosniff',
+			'X-Frame-Options': 'DENY',
+			'Referrer-Policy': 'no-referrer',
+			'X-DNS-Prefetch-Control': 'off',
+		};
+		// HSTS only over HTTPS (tunnel) — would break local HTTP
+		const isHttps = req?.headers['x-forwarded-proto'] === 'https'
+			|| req?.headers['x-forwarded-ssl'] === 'on';
+		if (isHttps) {
+			headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+		}
+		return headers;
 	}
 
 	private readBody(req: http.IncomingMessage): Promise<string> {
