@@ -2207,7 +2207,7 @@ export default function App() {
 										key={inst.id}
 										type="button"
 										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-1000"
-										style={{ background: recentlyAdded.has(inst.id) ? 'var(--primary-tint)' : lastViewedGuide === inst.id ? 'var(--surface)' : 'var(--bg)', border: `1px solid ${recentlyAdded.has(inst.id) ? 'var(--primary)' : 'var(--border)'}`, minHeight: '2.75rem' }}
+										style={{ background: recentlyAdded.has(inst.id) || lastViewedGuide === inst.id ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${recentlyAdded.has(inst.id) || lastViewedGuide === inst.id ? 'var(--primary)' : 'var(--border)'}`, minHeight: '2.75rem' }}
 										onClick={async () => {
 											setLastViewedGuide(null);
 											try {
