@@ -1831,7 +1831,7 @@ export default function App() {
 								</div>
 
 								{selectedExample === '__import__' ? (
-									<div>
+									<div style={{ minHeight: 'calc(100vh - 20rem)' }}>
 										{/* URL input */}
 										<div className="mb-3">
 											<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Gist URL</label>
