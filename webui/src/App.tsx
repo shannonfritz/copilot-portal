@@ -1907,7 +1907,7 @@ export default function App() {
 																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('guide')}>Guide</button>
 																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('prompts')}>Prompts</button>
 																	</div>
-																	<pre className="chat-scroll whitespace-pre-wrap text-xs p-2 rounded" style={{ background: 'var(--surface)', color: 'var(--text-muted)', height: `calc(100vh - ${importItems.length > 1 ? '26' : '22'}rem)`, overflow: 'auto' }}>
+																	<pre className="chat-scroll whitespace-pre-wrap text-xs p-2 rounded" style={{ background: 'var(--surface)', color: 'var(--text-muted)', height: `calc(100vh - ${importItems.length > 1 ? '30' : '26'}rem)`, overflow: 'auto' }}>
 																		{previewTab === 'guide' ? (item.guideContent || '(no guide)') : (item.promptsContent || '(no prompts)')}
 																	</pre>
 																</div>
