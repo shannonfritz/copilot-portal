@@ -2545,7 +2545,9 @@ export default function App() {
 									style={{ background: 'var(--primary)', color: 'white' }}
 									onClick={applyUpdates}
 								>
-									Update SDK
+									{updatable.length === 1
+									? `Update ${updatable[0].name.replace('@github/', '')}`
+									: 'Update Packages'}
 								</button>
 							)}
 							{restart && (
