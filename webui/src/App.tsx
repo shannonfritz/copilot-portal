@@ -1847,7 +1847,7 @@ export default function App() {
 												/>
 												<button
 													type="button"
-													className="rounded-lg py-1.5 text-xs font-medium"
+													className="rounded-lg px-3 py-1.5 text-xs font-medium"
 													style={{ background: 'var(--primary)', color: 'white', opacity: importUrl && !importLoading ? 1 : 0.5 }}
 													disabled={!importUrl || importLoading}
 													onClick={async () => {
