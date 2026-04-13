@@ -598,7 +598,8 @@ export default function App() {
 	const [newPromptsCheck, setNewPromptsCheck] = useState(true);
 	const [previewTab, setPreviewTab] = useState<'guide' | 'prompts'>('guide');
 	const [newGuideName, setNewGuideName] = useState('');
-	const [recentlyAdded, setRecentlyAdded] = useState<string | null>(null);
+	const [recentlyAdded, setRecentlyAdded] = useState<Set<string>>(new Set());
+	const [lastViewedGuide, setLastViewedGuide] = useState<string | null>(null);
 	const [importUrl, setImportUrl] = useState('');
 	const [importLoading, setImportLoading] = useState(false);
 	const [importError, setImportError] = useState<string | null>(null);
@@ -1617,8 +1618,8 @@ export default function App() {
 			}
 			setShowNewGuide(false);
 			setConfirmOverwrite(false);
-			setRecentlyAdded(newGuideName);
-			setTimeout(() => setRecentlyAdded(null), 3000);
+			setRecentlyAdded(new Set([newGuideName]));
+			setTimeout(() => setRecentlyAdded(new Set()), 3000);
 			apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 		} catch (e) {
 			setError(`Failed to create: ${e}`);
@@ -1832,7 +1833,7 @@ export default function App() {
 
 								{selectedExample === '__import__' ? (
 									<div>
-										{/* URL input */}
+										{/* URL input — positioned same as Name field */}
 										<div className="mb-3">
 											<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Gist URL</label>
 											<div className="flex gap-2">
@@ -1846,8 +1847,8 @@ export default function App() {
 												/>
 												<button
 													type="button"
-													className="rounded-lg px-3 py-1.5 text-xs font-medium"
-													style={{ background: 'var(--primary)', color: 'white', opacity: importUrl && !importLoading ? 1 : 0.5 }}
+													className="rounded-lg py-1.5 text-xs font-medium"
+													style={{ background: 'var(--primary)', color: 'white', opacity: importUrl && !importLoading ? 1 : 0.5, minWidth: '4.5rem' }}
 													disabled={!importUrl || importLoading}
 													onClick={async () => {
 														setImportLoading(true);
@@ -1940,8 +1941,8 @@ export default function App() {
 																}),
 															});
 															setShowNewGuide(false);
-															setRecentlyAdded(selected[0]?.name ?? null);
-															setTimeout(() => setRecentlyAdded(null), 3000);
+															setRecentlyAdded(new Set(selected.map(it => it.name)));
+															setTimeout(() => setRecentlyAdded(new Set()), 3000);
 															apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 														} catch (e) {
 															setImportError(`Import failed: ${e}`);
@@ -2130,7 +2131,7 @@ export default function App() {
 												}
 											}} type="button">Save</button>
 										)}
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => guardDiscard(() => { setviewingGuide(null); setEditingGuide(null); setEditingName(null); setPendingDiscard(null); })} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => guardDiscard(() => { setLastViewedGuide(viewingGuide.id); setviewingGuide(null); setEditingGuide(null); setEditingName(null); setPendingDiscard(null); })} type="button">Back</button>
 									</div>
 								</div>
 								{(() => {
@@ -2206,8 +2207,9 @@ export default function App() {
 										key={inst.id}
 										type="button"
 										className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-1000"
-										style={{ background: recentlyAdded === inst.id ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${recentlyAdded === inst.id ? 'var(--primary)' : 'var(--border)'}` }}
+										style={{ background: recentlyAdded.has(inst.id) ? 'var(--primary-tint)' : lastViewedGuide === inst.id ? 'var(--surface)' : 'var(--bg)', border: `1px solid ${recentlyAdded.has(inst.id) ? 'var(--primary)' : 'var(--border)'}`, minHeight: '2.75rem' }}
 										onClick={async () => {
+											setLastViewedGuide(null);
 											try {
 												const [gRes, pRaw] = await Promise.all([
 													inst.hasGuide ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`).then(r => r.json()) : Promise.resolve(null),
