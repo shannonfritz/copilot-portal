@@ -31,57 +31,53 @@ This gist contains two items: `crm-guide` and `portal-dev`.
 
 ## Storage
 
-Imported collections go into `data/imports/{gist-id}/`:
+Imported items go directly to `data/guides/` and `data/prompts/` — ready to use immediately. No intermediate examples step.
 
+Import metadata is tracked in `data/imports.json` for re-import support:
+
+```json
+{
+  "abc123": {
+    "url": "https://gist.github.com/shannonfritz/abc123",
+    "description": "My CRM guides collection",
+    "importedAt": "2026-04-13T17:00:00Z",
+    "items": ["crm-guide", "portal-dev"]
+  }
+}
 ```
-data/imports/
-  abc123/                          ← gist ID
-    meta.json                      ← source URL, import date, gist description
-    guides/crm-guide.md
-    prompts/crm-guide.md
-    guides/portal-dev.md
-    prompts/portal-dev.md
-```
 
-### Why not `examples/` or `data/guides/`?
+### Why straight to `data/`?
 
-- `examples/` is shipped with the portal and overwritten on update
-- `data/guides/` is the user's working files — importing directly there makes it unclear what's "mine" vs "imported" and risks overwriting user edits
-- `data/imports/` is user-managed, survives portal updates, and keeps imported content separate
-
-Imported items appear in the +New flow alongside shipped examples, but in their own "Imported" section. The user copies them to `data/` to use (same as examples).
+Import → examples → +New → preview → Add → Apply is too many steps. Going straight to `data/` means:
+- Items appear in the picker immediately after import
+- Same number of steps as +New from an example
+- User can apply, edit, or delete right away
+- Import metadata in `imports.json` supports re-import/update later
 
 ## UX Flow
 
-### Import (in the +New panel)
+### Import Button
 
-1. Text input: "Import from URL" with a paste field
-2. User pastes a GitHub Gist URL
-3. Portal fetches the gist, discovers `_guide.md` / `_prompts.md` pairs
-4. Shows a list of discovered items with checkboxes:
+An **Import** button next to +New at the bottom of the guides picker list.
+
+### Import Dialog
+
+1. Text input to paste a GitHub Gist URL
+2. **Load** button fetches and parses the gist
+3. Shows a list of discovered items with checkboxes (all selected by default):
    ```
-   Import from gist.github.com/shannonfritz/abc123:
     ☑ crm-guide (guide + prompts)
     ☑ portal-dev (guide only)
-    [Import]
    ```
-5. Selected items are saved to `data/imports/{gist-id}/`
-6. Items appear in the +New examples list under an "Imported" section
+4. Clicking an item name shows:
+   - Name field (editable — changes the filename on save)
+   - Guide/Prompts tabs with read-only preview of content
+5. Users can deselect an entire pair but not individual guide/prompts files
+6. Name conflict: show inline overwrite confirmation (same as +New)
+7. **Add to Portal** button saves selected items to `data/`
+8. **Cancel** returns to the picker
 
-### Using Imported Items
-
-Same as shipped examples:
-- Browse in +New → select → preview → customize name → Add
-- Copies to `data/guides/` and `data/prompts/` as working files
-- User can edit their copy without affecting the import
-
-### Re-importing
-
-Importing the same gist URL again updates `data/imports/{gist-id}/` in place. User's working copies in `data/` are not affected.
-
-### Removing an Import
-
-Delete the `data/imports/{gist-id}/` directory (future: UI for this).
+After import, items appear in the picker list immediately.
 
 ## API
 
@@ -89,7 +85,7 @@ Delete the `data/imports/{gist-id}/` directory (future: UI for this).
 
 Fetch a gist and return discovered items for preview.
 
-Request: `{ url: "https://gist.github.com/user/abc123" }`
+Request: `{ "url": "https://gist.github.com/user/abc123" }`
 
 Response:
 ```json
@@ -110,13 +106,13 @@ Response:
 
 ### `POST /api/guides/import`
 
-Save selected items from a previewed gist.
+Save selected items to `data/` and update `imports.json`.
 
 Request:
 ```json
 {
-  "url": "https://gist.github.com/user/abc123",
   "gistId": "abc123",
+  "url": "https://gist.github.com/user/abc123",
   "description": "My CRM guides collection",
   "items": [
     { "name": "crm-guide", "guideContent": "...", "promptsContent": "..." }
@@ -124,13 +120,7 @@ Request:
 }
 ```
 
-Response: `{ imported: ["crm-guide"] }`
-
-### Changes to `GET /api/examples`
-
-Extend to include imported items alongside shipped examples. Each item includes a `source` field:
-- `source: "shipped"` — from `examples/`
-- `source: "imported"` — from `data/imports/`, includes `gistUrl`
+Response: `{ "imported": ["crm-guide"] }`
 
 ## Server Implementation
 
@@ -173,13 +163,6 @@ for (const [filename, file] of Object.entries(gist.files)) {
 
 - Support raw `.md` URLs (single file import, treated as guide)
 - Support GitHub repo paths (folder with guides/ and prompts/ subdirectories)
-- "Import" section in the picker UI showing all imported collections
-- Sharing from the portal: "Export as Gist" button in the editor
+- "Export as Gist" button in the editor
+- Periodic update checks for imported gists
 - Import registry / community directory (much later)
-
-## Open Questions
-
-- Should importing auto-copy to data/ (ready to use immediately)?
-  Or keep the examples pattern (browse → preview → add)?
-- Should the portal periodically check for updates to imported gists?
-- How should name conflicts be handled when importing items that match existing user files?
