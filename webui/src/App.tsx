@@ -562,7 +562,7 @@ export default function App() {
 	const [thinkingText, setThinkingText] = useState('');
 	const [reasoningText, setReasoningText] = useState('');
 	const [error, setError] = useState<string | null>(null);
-	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string } | null>(null);
+	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } } | null>(null);
 	const [input, setInput] = useState('');
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
@@ -908,7 +908,7 @@ export default function App() {
 					// Check if the server has a newer build than the client
 					const serverBuild = (event as { serverBuild?: string }).serverBuild;
 					if (serverBuild && serverBuild !== __BUILD__) {
-						setNotification({ type: 'info', message: `Server updated to build ${serverBuild}. Reload the page for the latest UI.` });
+						setNotification({ type: 'info', message: `Server updated to build ${serverBuild}.`, action: { label: 'Reload', onClick: () => window.location.reload() } });
 					}
 					if (newId) {
 						const summary = (event as { summary?: string | null }).summary ?? undefined;
@@ -2816,6 +2816,14 @@ export default function App() {
 							}}
 						>
 							<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}
+							{notification.action && (
+								<button
+									type="button"
+									className="ml-2 rounded px-2 py-0.5 text-xs font-medium"
+									style={{ background: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)', color: '#111' }}
+									onClick={notification.action.onClick}
+								>{notification.action.label}</button>
+							)}
 						</div>
 					)}
 
