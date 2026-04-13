@@ -2535,7 +2535,7 @@ export default function App() {
 										setUpdateStatus(status);
 									}}
 								>
-									Update Portal
+									Update
 								</button>
 							)}
 							{!updateStatus.applying && !restart && updatable.length > 0 && (
@@ -2545,9 +2545,7 @@ export default function App() {
 									style={{ background: 'var(--primary)', color: 'white' }}
 									onClick={applyUpdates}
 								>
-									{updatable.length === 1
-									? `Update ${updatable[0].name.replace('@github/', '')}`
-									: 'Update Packages'}
+									Update
 								</button>
 							)}
 							{restart && (
