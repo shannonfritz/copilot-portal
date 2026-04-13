@@ -2774,7 +2774,6 @@ export default function App() {
 							<span className="truncate italic">
 								{thinkingText ? thinkingText.slice(-80) : 'Thinking…'}
 							</span>
-							<button type="button" className="shrink-0 text-xs hover:underline" style={{ color: 'var(--error)', opacity: 0.7 }} onClick={stopAgent}>[cancel]</button>
 						</div>
 					)}
 
