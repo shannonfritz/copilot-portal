@@ -222,7 +222,7 @@ if (process.stdin.isTTY) {
 	};
 
 	const startTunnel = async (config: { name: string; allowAnonymous: boolean }) => {
-		console.log(`\n  Starting tunnel "${config.name}"...`);
+		console.log(`  Connecting tunnel "${config.name}"...`);
 		try {
 			const tunnelUrl = await tunnel.start(config);
 			const fullUrl = `${tunnelUrl}?token=${server.getToken()}`;
@@ -239,6 +239,8 @@ if (process.stdin.isTTY) {
 		}
 	};
 
+	let tunnelBusy = false;
+
 	const toggleTunnel = async () => {
 		const state = tunnel.getState();
 
@@ -249,15 +251,23 @@ if (process.stdin.isTTY) {
 			return;
 		}
 
+		// Guard against double-press while starting
+		if (tunnelBusy) { console.log('\n  Tunnel is starting...\n'); return; }
+		tunnelBusy = true;
+
+		console.log('\n  Starting tunnel...');
+
 		// Check prerequisites
 		if (!tunnel.isInstalled()) {
-			console.log('\n  devtunnel is not installed.');
+			tunnelBusy = false;
+			console.log('  devtunnel is not installed.');
 			console.log('  Install: winget install Microsoft.devtunnel');
 			console.log('  Then restart your terminal and run: devtunnel user login\n');
 			return;
 		}
 		if (!tunnel.isLoggedIn()) {
-			console.log('\n  devtunnel is not logged in.');
+			tunnelBusy = false;
+			console.log('  devtunnel is not logged in.');
 			console.log('  Run: devtunnel user login\n');
 			return;
 		}
@@ -265,10 +275,12 @@ if (process.stdin.isTTY) {
 		// If we have saved config, use it
 		if (tunnel.hasConfig()) {
 			await startTunnel(tunnel.getConfig()!);
+			tunnelBusy = false;
 			return;
 		}
 
 		// First time — ask about access
+		tunnelBusy = false;
 		tunnelSetupState = 'asking-access';
 		console.log('\n  Tunnel Access:');
 		console.log('    [1] Anonymous — anyone with the URL can connect (portal token still required)');
@@ -300,6 +312,7 @@ if (process.stdin.isTTY) {
 
 	// Auto-restart tunnel if it was running before a server restart
 	if (tunnel.shouldAutoStart() && tunnel.isInstalled() && tunnel.isLoggedIn()) {
+		console.log('\n  Restarting tunnel...');
 		startTunnel(tunnel.getConfig()!);
 	}
 
