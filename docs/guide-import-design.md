@@ -56,28 +56,41 @@ Import → examples → +New → preview → Add → Apply is too many steps. Go
 
 ## UX Flow
 
-### Import Button
+### Integrated into +New
 
-An **Import** button next to +New at the bottom of the guides picker list.
+Import is an option in the +New dropdown, alongside "Start from scratch" and the example templates:
 
-### Import Dialog
+```
+[+ New]
+  ┌─────────────────────────┐
+  │ Start from scratch       │
+  │ Import from URL...       │
+  │ ──────────────────────── │
+  │ copilot-portal-dev       │
+  │ guide-builder            │
+  │ portal-tour              │
+  │ ...                      │
+  └─────────────────────────┘
+```
 
-1. Text input to paste a GitHub Gist URL
-2. **Load** button fetches and parses the gist
-3. Shows a list of discovered items with checkboxes (all selected by default):
+### Import Flow
+
+1. User selects **"Import from URL..."** from the +New dropdown
+2. Preview area shows a URL text input and **Load** button
+3. User pastes a GitHub Gist URL and clicks Load
+4. Portal fetches the gist, discovers `_guide.md` / `_prompts.md` pairs
+5. Shows a list of discovered items with checkboxes (all selected by default):
    ```
     ☑ crm-guide (guide + prompts)
     ☑ portal-dev (guide only)
    ```
-4. Clicking an item name shows:
+6. Clicking an item name shows:
    - Name field (editable — changes the filename on save)
    - Guide/Prompts tabs with read-only preview of content
-5. Users can deselect an entire pair but not individual guide/prompts files
-6. Name conflict: show inline overwrite confirmation (same as +New)
-7. **Add to Portal** button saves selected items to `data/`
-8. **Cancel** returns to the picker
-
-After import, items appear in the picker list immediately.
+7. Users can deselect an entire pair but not individual guide/prompts files
+8. Name conflict: show inline overwrite confirmation (same as +New)
+9. **Add to Portal** button saves selected items to `data/`
+10. Items appear in the picker list immediately
 
 ## API
 
