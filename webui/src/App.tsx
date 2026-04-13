@@ -1261,7 +1261,9 @@ export default function App() {
 					window.location.reload();
 				} else if (event.type === 'warning' || event.type === 'info') {
 					setNotification({ type: event.type, message: event.content ?? '' });
-					setTimeout(() => setNotification(null), 8000);
+					if (!(event as { action?: unknown }).action) {
+						setTimeout(() => setNotification(null), 8000);
+					}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
@@ -2940,21 +2942,31 @@ export default function App() {
 
 					{notification && (
 						<div
-							className="mb-2 rounded-xl px-4 py-3 text-sm"
+							className="mb-2 flex items-center gap-2 rounded-xl px-4 py-3 text-sm"
 							style={{
 								background: notification.type === 'warning' ? 'var(--warning-tint)' : 'var(--primary-tint)',
 								border: `1px solid ${notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)'}`,
 								color: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)',
 							}}
 						>
-							<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}
+							<span className="flex-1">
+								<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}
+							</span>
 							{notification.action && (
 								<button
 									type="button"
-									className="ml-2 rounded px-2 py-0.5 text-xs font-medium"
+									className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 									style={{ background: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)', color: '#111' }}
 									onClick={notification.action.onClick}
 								>{notification.action.label}</button>
+							)}
+							{notification.action && (
+								<button
+									type="button"
+									className="shrink-0 rounded px-1.5 py-0.5 text-xs"
+									style={{ opacity: 0.7 }}
+									onClick={() => setNotification(null)}
+								>✕</button>
 							)}
 						</div>
 					)}
