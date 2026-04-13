@@ -2234,7 +2234,7 @@ export default function App() {
 										</svg>
 										<span className="flex-1">{inst.name}</span>
 										{confirmDeleteGuide === inst.id ? (
-											<span className="flex gap-1" onClick={e => e.stopPropagation()}>
+											<span className="flex items-center gap-1" style={{ minHeight: '1.75rem' }} onClick={e => e.stopPropagation()}>
 												<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={async (e) => {
 													e.stopPropagation();
 													await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`, { method: 'DELETE' });
@@ -2244,7 +2244,7 @@ export default function App() {
 												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(null); }} type="button">Cancel</button>
 											</span>
 										) : (
-											<span className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+											<span className="flex gap-0.5 shrink-0" style={{ minHeight: '1.75rem' }} onClick={e => e.stopPropagation()}>
 												<span className="rounded p-1.5" style={{ opacity: inst.hasGuide ? 0.7 : 0.2 }} title={inst.hasGuide ? 'Has guide' : 'No guide'}>
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 														<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
