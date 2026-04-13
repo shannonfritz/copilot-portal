@@ -599,6 +599,11 @@ export default function App() {
 	const [previewTab, setPreviewTab] = useState<'guide' | 'prompts'>('guide');
 	const [newGuideName, setNewGuideName] = useState('');
 	const [recentlyAdded, setRecentlyAdded] = useState<string | null>(null);
+	const [importUrl, setImportUrl] = useState('');
+	const [importLoading, setImportLoading] = useState(false);
+	const [importError, setImportError] = useState<string | null>(null);
+	const [importItems, setImportItems] = useState<Array<{ name: string; hasGuide: boolean; hasPrompts: boolean; guideContent: string; promptsContent: string; selected: boolean }>>([]);
+	const [importPreviewItem, setImportPreviewItem] = useState<string | null>(null);
 	const [guides, setGuides] = useState<Array<{ id: string; name: string; hasGuide?: boolean; hasPrompts?: boolean }>>([]);
 	const [sessionPrompts, setSessionPrompts] = useState<Array<{ label: string; text: string }>>([]);
 	const sessionPromptsRef = useRef<Map<string, Array<{ label: string; text: string }>>>(new Map());
@@ -1787,6 +1792,15 @@ export default function App() {
 										onChange={async (e) => {
 											const id = e.target.value;
 											setSelectedExample(id);
+											setImportItems([]);
+											setImportPreviewItem(null);
+											setImportError(null);
+											setImportUrl('');
+											if (id === '__import__') {
+												setExamplePreview(null);
+												setNewGuideName('');
+												return;
+											}
 											if (!id) {
 												setExamplePreview({ guide: '# my-new-guide\n\n', prompts: '# my-new-guide Prompts\n\n## Example Prompt\nDescribe what you want here\n' });
 												setNewGuideName('');
@@ -1808,12 +1822,133 @@ export default function App() {
 										}}
 									>
 										<option value="">Blank (start from scratch)</option>
+										<option value="__import__">Import from URL...</option>
+										<option disabled>───────────</option>
 										{examples.map(ex => (
 											<option key={ex.id} value={ex.id}>{ex.id}</option>
 										))}
 									</select>
 								</div>
 
+								{selectedExample === '__import__' ? (
+									<div>
+										{/* URL input */}
+										<div className="mb-3">
+											<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Gist URL</label>
+											<div className="flex gap-2">
+												<input
+													type="text"
+													className="flex-1 rounded-lg px-3 py-2 text-sm"
+													style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+													placeholder="https://gist.github.com/user/abc123"
+													value={importUrl}
+													onChange={(e) => setImportUrl(e.target.value)}
+												/>
+												<button
+													type="button"
+													className="rounded-lg px-3 py-1.5 text-xs font-medium"
+													style={{ background: 'var(--primary)', color: 'white', opacity: importUrl && !importLoading ? 1 : 0.5 }}
+													disabled={!importUrl || importLoading}
+													onClick={async () => {
+														setImportLoading(true);
+														setImportError(null);
+														setImportItems([]);
+														setImportPreviewItem(null);
+														try {
+															const res = await apiFetch('/api/guides/import-preview', {
+																method: 'POST',
+																headers: { 'Content-Type': 'application/json' },
+																body: JSON.stringify({ url: importUrl }),
+															});
+															const data = await res.json() as { items?: Array<{ name: string; hasGuide: boolean; hasPrompts: boolean; guideContent: string; promptsContent: string }>; error?: string };
+															if (data.error) { setImportError(data.error); }
+															else if (!data.items?.length) { setImportError('No guide/prompt files found. Files must be named like: name_guide.md / name_prompts.md'); }
+															else { setImportItems(data.items.map(it => ({ ...it, selected: true }))); }
+														} catch (e) { setImportError(String(e)); }
+														setImportLoading(false);
+													}}
+												>{importLoading ? 'Loading...' : 'Load'}</button>
+											</div>
+											{importError && <div className="mt-1 text-xs" style={{ color: 'var(--error)' }}>{importError}</div>}
+										</div>
+
+										{/* Items list */}
+										{importItems.length > 0 && (
+											<div className="mb-3">
+												<div className="chat-scroll rounded-lg" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+													{importItems.map((item, i) => (
+														<div key={item.name}>
+															<div
+																className="flex items-center gap-2 px-3 py-2"
+																style={{ borderBottom: (importPreviewItem === item.name || i < importItems.length - 1) ? '1px solid var(--border)' : 'none', background: importPreviewItem === item.name ? 'var(--surface)' : 'transparent' }}
+															>
+																<input
+																	type="checkbox"
+																	checked={item.selected}
+																	onChange={() => setImportItems(prev => prev.map((it, j) => j === i ? { ...it, selected: !it.selected } : it))}
+																/>
+																<button
+																	type="button"
+																	className="flex-1 text-left text-sm"
+																	style={{ color: 'var(--text)' }}
+																	onClick={() => setImportPreviewItem(importPreviewItem === item.name ? null : item.name)}
+																>{item.name}</button>
+																<span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+																	{[item.hasGuide && 'guide', item.hasPrompts && 'prompts'].filter(Boolean).join(' + ')}
+																</span>
+															</div>
+															{importPreviewItem === item.name && (
+																<div className="px-3 pb-2">
+																	<div className="flex mb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('guide')}>Guide</button>
+																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('prompts')}>Prompts</button>
+																	</div>
+																	<pre className="whitespace-pre-wrap text-xs p-2 rounded" style={{ background: 'var(--surface)', color: 'var(--text-muted)', maxHeight: '200px', overflow: 'auto' }}>
+																		{previewTab === 'guide' ? (item.guideContent || '(no guide)') : (item.promptsContent || '(no prompts)')}
+																	</pre>
+																</div>
+															)}
+														</div>
+													))}
+												</div>
+											</div>
+										)}
+
+										{/* Action buttons */}
+										<div className="flex gap-2 justify-end">
+											<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setShowNewGuide(false)}>Cancel</button>
+											{importItems.some(it => it.selected) && (
+												<button
+													type="button"
+													className="rounded-lg px-3 py-1.5 text-xs font-medium"
+													style={{ background: 'var(--primary)', color: 'white' }}
+													onClick={async () => {
+														const selected = importItems.filter(it => it.selected);
+														const gistMatch = importUrl.match(/gist\.github\.com\/[\w-]+\/([a-f0-9]+)/);
+														try {
+															await apiFetch('/api/guides/import', {
+																method: 'POST',
+																headers: { 'Content-Type': 'application/json' },
+																body: JSON.stringify({
+																	gistId: gistMatch?.[1] ?? 'unknown',
+																	url: importUrl,
+																	items: selected.map(it => ({ name: it.name, guideContent: it.guideContent || undefined, promptsContent: it.promptsContent || undefined })),
+																}),
+															});
+															setShowNewGuide(false);
+															setRecentlyAdded(selected[0]?.name ?? null);
+															setTimeout(() => setRecentlyAdded(null), 3000);
+															apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
+														} catch (e) {
+															setImportError(`Import failed: ${e}`);
+														}
+													}}
+												>Add to Portal ({importItems.filter(it => it.selected).length})</button>
+											)}
+										</div>
+									</div>
+								) : (
+								<>
 								{/* Name input */}
 								<div className="mb-3">
 									<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Name</label>
@@ -1898,6 +2033,8 @@ export default function App() {
 										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: '#111' }} onClick={() => { setConfirmOverwrite(false); doAddGuide(); }}>Overwrite</button>
 										<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmOverwrite(false)}>Cancel</button>
 									</div>
+								)}
+								</>
 								)}
 							</div>
 						) : viewingGuide ? (

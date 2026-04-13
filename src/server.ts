@@ -840,6 +840,59 @@ export class PortalServer {
 			return;
 		}
 
+		// Import preview — fetch a GitHub Gist and parse guide/prompt pairs
+		if (url.pathname === '/api/guides/import-preview' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { url: gistUrl } = JSON.parse(body) as { url?: string };
+				if (!gistUrl) { this.sendJson(res, 400, { error: 'url required' }); return; }
+				const gistMatch = gistUrl.match(/gist\.github\.com\/[\w-]+\/([a-f0-9]+)/);
+				if (!gistMatch) { this.sendJson(res, 400, { error: 'URL must be a GitHub Gist (gist.github.com/user/id)' }); return; }
+				const gistId = gistMatch[1];
+				const gist = await this.fetchGist(gistId);
+				if (!gist) { this.sendJson(res, 404, { error: 'Could not fetch gist. It may be private — ensure gh CLI is authenticated.' }); return; }
+				const items = this.parseGistFiles(gist.files);
+				this.sendJson(res, 200, { gistId, description: gist.description ?? '', items });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		// Import — save selected items from a gist to data/
+		if (url.pathname === '/api/guides/import' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { gistId, url: gistUrl, items } = JSON.parse(body) as {
+					gistId: string; url: string;
+					items: Array<{ name: string; guideContent?: string; promptsContent?: string }>;
+				};
+				if (!items?.length) { this.sendJson(res, 400, { error: 'No items to import' }); return; }
+				const imported: string[] = [];
+				for (const item of items) {
+					if (!/^[a-zA-Z0-9_-]+$/.test(item.name)) continue;
+					if (item.guideContent) {
+						fs.writeFileSync(path.join(this.dataDir, 'guides', item.name + '.md'), item.guideContent);
+					}
+					if (item.promptsContent) {
+						fs.writeFileSync(path.join(this.dataDir, 'prompts', item.name + '.md'), item.promptsContent);
+					}
+					imported.push(item.name);
+				}
+				// Track import metadata
+				const importsFile = path.join(this.dataDir, 'imports.json');
+				let imports: Record<string, unknown> = {};
+				try { if (fs.existsSync(importsFile)) imports = JSON.parse(fs.readFileSync(importsFile, 'utf8')); } catch {}
+				imports[gistId] = { url: gistUrl, importedAt: new Date().toISOString(), items: imported };
+				fs.writeFileSync(importsFile, JSON.stringify(imports, null, 2) + '\n');
+				this.log(`[Import] Imported ${imported.length} items from gist ${gistId}: ${imported.join(', ')}`);
+				this.sendJson(res, 200, { imported });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		// Session prompts — per-session persistent storage
 		const sessionPromptsMatch = url.pathname.match(/^\/api\/session-prompts\/(.+)$/);
 		if (sessionPromptsMatch && method === 'GET') {
@@ -1040,6 +1093,66 @@ export class PortalServer {
 		} catch (e) {
 			process.stderr.write(`[Debug] Could not init debug files: ${e}\n`);
 		}
+	}
+
+	/** Fetch a GitHub Gist by ID (unauthenticated first, then with gh auth token) */
+	private fetchGist(gistId: string): Promise<{ description: string; files: Record<string, { content: string }> } | null> {
+		const https = require('node:https') as typeof import('node:https');
+		const doFetch = (token?: string): Promise<{ description: string; files: Record<string, { content: string }> } | null> => new Promise((resolve) => {
+			const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' };
+			if (token) headers['Authorization'] = `Bearer ${token}`;
+			const req = https.get({ hostname: 'api.github.com', path: `/gists/${gistId}`, headers, timeout: 10_000 }, (res) => {
+				let data = '';
+				res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+				res.on('end', () => {
+					if (res.statusCode === 200) {
+						try { resolve(JSON.parse(data)); } catch { resolve(null); }
+					} else if (res.statusCode === 404 && !token) {
+						// Try with auth for private gists
+						const ghToken = this.getGitHubToken();
+						if (ghToken) doFetch(ghToken).then(resolve);
+						else resolve(null);
+					} else { resolve(null); }
+				});
+			});
+			req.on('error', () => resolve(null));
+			req.on('timeout', () => { req.destroy(); resolve(null); });
+		});
+		return doFetch();
+	}
+
+	private getGitHubToken(): string | null {
+		if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+		if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+		try {
+			const { execSync } = require('node:child_process') as typeof import('node:child_process');
+			return execSync('gh auth token', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).toString().trim() || null;
+		} catch { return null; }
+	}
+
+	/** Parse gist files into guide/prompt pairs using the name_guide.md / name_prompts.md convention */
+	private parseGistFiles(files: Record<string, { content: string }>): Array<{ name: string; hasGuide: boolean; hasPrompts: boolean; guideContent: string; promptsContent: string }> {
+		const items = new Map<string, { guide?: string; prompts?: string }>();
+		for (const [filename, file] of Object.entries(files)) {
+			const guideMatch = filename.match(/^(.+)_guide\.md$/);
+			const promptsMatch = filename.match(/^(.+)_prompts\.md$/);
+			if (guideMatch) {
+				const name = guideMatch[1];
+				if (!items.has(name)) items.set(name, {});
+				items.get(name)!.guide = file.content;
+			} else if (promptsMatch) {
+				const name = promptsMatch[1];
+				if (!items.has(name)) items.set(name, {});
+				items.get(name)!.prompts = file.content;
+			}
+		}
+		return Array.from(items.entries()).map(([name, { guide, prompts }]) => ({
+			name,
+			hasGuide: !!guide,
+			hasPrompts: !!prompts,
+			guideContent: guide ?? '',
+			promptsContent: prompts ?? '',
+		}));
 	}
 
 	broadcastAll(msg: object): void {
