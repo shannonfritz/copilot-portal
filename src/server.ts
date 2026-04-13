@@ -1,8 +1,10 @@
 import * as http from 'node:http';
+import * as https from 'node:https';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
@@ -1097,7 +1099,6 @@ export class PortalServer {
 
 	/** Fetch a GitHub Gist by ID (unauthenticated first, then with gh auth token) */
 	private fetchGist(gistId: string): Promise<{ description: string; files: Record<string, { content: string }> } | null> {
-		const https = require('node:https') as typeof import('node:https');
 		const doFetch = (token?: string): Promise<{ description: string; files: Record<string, { content: string }> } | null> => new Promise((resolve) => {
 			const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' };
 			if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1125,7 +1126,6 @@ export class PortalServer {
 		if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
 		if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
 		try {
-			const { execSync } = require('node:child_process') as typeof import('node:child_process');
 			return execSync('gh auth token', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).toString().trim() || null;
 		} catch { return null; }
 	}
