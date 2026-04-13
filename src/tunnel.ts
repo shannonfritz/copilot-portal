@@ -6,6 +6,7 @@ import { join } from 'node:path';
 export interface TunnelConfig {
 	name: string;
 	allowAnonymous: boolean;
+	wasRunning?: boolean;
 }
 
 export interface TunnelState {
@@ -88,6 +89,7 @@ export class TunnelManager {
 		}
 
 		this.saveConfig(config);
+		this.setWasRunning(true);
 
 		return new Promise<string>((resolve, reject) => {
 			const proc = spawn('devtunnel', ['host', config.name], {
@@ -136,6 +138,7 @@ export class TunnelManager {
 
 	/** Stop the tunnel */
 	stop(): void {
+		this.setWasRunning(false);
 		if (this.process) {
 			const pid = this.process.pid;
 			this.process.kill('SIGINT');
@@ -146,6 +149,19 @@ export class TunnelManager {
 			this.process = null;
 			this.url = null;
 		}
+	}
+
+	/** Persist running flag so tunnel can auto-restart after server restart */
+	private setWasRunning(running: boolean): void {
+		if (this.config) {
+			this.config.wasRunning = running;
+			this.saveConfig(this.config);
+		}
+	}
+
+	/** Check if tunnel should auto-start (was running before server restart) */
+	shouldAutoStart(): boolean {
+		return this.config?.wasRunning === true;
 	}
 
 	/** Get current state */

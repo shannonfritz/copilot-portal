@@ -298,6 +298,11 @@ if (process.stdin.isTTY) {
 	};
 	showHelp();
 
+	// Auto-restart tunnel if it was running before a server restart
+	if (tunnel.shouldAutoStart() && tunnel.isInstalled() && tunnel.isLoggedIn()) {
+		startTunnel(tunnel.getConfig()!);
+	}
+
 	process.stdin.on('data', (key: string) => {
 		// If confirming CLI launch, handle y/n
 		if (confirmingCliLaunch) {
@@ -369,7 +374,6 @@ if (process.stdin.isTTY) {
 				});
 				break;
 			case 'r':
-				tunnel.stop();
 				console.log('\nRestarting...');
 				process.exit(75); // launcher catches this and relaunches
 				break;
