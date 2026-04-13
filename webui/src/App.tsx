@@ -1863,7 +1863,11 @@ export default function App() {
 															const data = await res.json() as { items?: Array<{ name: string; hasGuide: boolean; hasPrompts: boolean; guideContent: string; promptsContent: string }>; error?: string };
 															if (data.error) { setImportError(data.error); }
 															else if (!data.items?.length) { setImportError('No guide/prompt files found. Files must be named like: name_guide.md / name_prompts.md'); }
-															else { setImportItems(data.items.map(it => ({ ...it, selected: true }))); }
+															else {
+																const items = data.items.map(it => ({ ...it, selected: true }));
+																setImportItems(items);
+																if (items.length === 1) setImportPreviewItem(items[0].name);
+															}
 														} catch (e) { setImportError(String(e)); }
 														setImportLoading(false);
 													}}
