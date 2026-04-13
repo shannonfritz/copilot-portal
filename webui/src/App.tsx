@@ -1782,7 +1782,7 @@ export default function App() {
 							)}
 						</div>
 						{showNewGuide ? (
-							<div className="flex-1 flex flex-col min-h-0">
+							<div>
 								<div className="mb-3">
 									<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Start from</label>
 									<select
@@ -1831,7 +1831,7 @@ export default function App() {
 								</div>
 
 								{selectedExample === '__import__' ? (
-									<div className="flex-1 flex flex-col">
+									<div>
 										{/* URL input */}
 										<div className="mb-3">
 											<label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Gist URL</label>
@@ -1878,10 +1878,10 @@ export default function App() {
 
 										{/* Items list */}
 										{importItems.length > 0 && (
-											<div className="mb-3 flex-1 flex flex-col min-h-0">
-												<div className="chat-scroll rounded-lg flex-1 min-h-0" style={{ overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+											<div className="mb-3">
+												<div className="chat-scroll rounded-lg" style={{ overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)' }}>
 													{importItems.map((item, i) => (
-														<div key={item.name} className={importPreviewItem === item.name ? 'flex-1 flex flex-col' : ''}>
+														<div key={item.name}>
 															<div
 																className="flex items-center gap-2 px-3 py-2"
 																style={{ borderBottom: (importPreviewItem === item.name || i < importItems.length - 1) ? '1px solid var(--border)' : 'none', background: importPreviewItem === item.name ? 'var(--surface)' : 'transparent' }}
@@ -1902,12 +1902,12 @@ export default function App() {
 																</span>
 															</div>
 															{importPreviewItem === item.name && (
-																<div className="px-3 pb-2 flex-1 flex flex-col min-h-0">
+																<div className="px-3 pb-2">
 																	<div className="flex mb-1" style={{ borderBottom: '1px solid var(--border)' }}>
 																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('guide')}>Guide</button>
 																		<button type="button" className="px-3 py-1 text-xs font-medium" style={{ color: previewTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: previewTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }} onClick={() => setPreviewTab('prompts')}>Prompts</button>
 																	</div>
-																	<pre className="chat-scroll whitespace-pre-wrap text-xs p-2 rounded flex-1 min-h-0" style={{ background: 'var(--surface)', color: 'var(--text-muted)', overflow: 'auto' }}>
+																	<pre className="chat-scroll whitespace-pre-wrap text-xs p-2 rounded" style={{ background: 'var(--surface)', color: 'var(--text-muted)', height: `calc(100vh - ${importItems.length > 1 ? '26' : '22'}rem)`, overflow: 'auto' }}>
 																		{previewTab === 'guide' ? (item.guideContent || '(no guide)') : (item.promptsContent || '(no prompts)')}
 																	</pre>
 																</div>
