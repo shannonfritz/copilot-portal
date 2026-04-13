@@ -90,8 +90,8 @@ Explain the Guides & Prompts panel (click the 3-fold map icon in the header):
 
 **+ New button** at the bottom of the list:
 - Browse a catalog of example templates to start from, or create one from scratch.
-- Preview the example's guide and prompts before adding.
-- Choose which files to include (guide, prompts, or both) and customize the name.
+- **Import from URL** — paste a GitHub Gist URL to import guides and prompts shared by others. Gist files use the `name_guide.md` / `name_prompts.md` naming convention.
+- Preview the content before adding. Choose which files to include and customize the name.
 
 **Prompts tray** — once prompts are loaded, a chat bubble icon appears in the message input area. Click it to open a scrollable tray of prompts. Prompts from multiple sources stack together and deduplicate. They persist across page reloads and session switches.
 
@@ -104,9 +104,11 @@ Invite the user to open the panel and explore. Mention they can also create `.md
 These are keyboard shortcuts that work in the **terminal window** where the server is running — not in the browser:
 - **c** — Opens the Copilot CLI console in a new terminal window. Great for quick tasks without leaving the terminal.
 - **l** — Launches the portal URL in your default browser.
-- **q** — Shows the QR code and URL again. Handy for reconnecting from your phone without restarting the server.
+- **q** — Shows the QR code and URL. If a tunnel is running, shows both the local and tunnel URLs with a QR code for remote access.
+- **t** — Starts a DevTunnel for remote access (HTTPS from anywhere, not just your local network). Press again to stop it. First time, it asks about access settings.
+- **T** (Shift+T) — Security reset. Destroys the tunnel, rotates the access token, and disconnects all clients. Use if you think a URL was compromised.
 - **u** — Checks for SDK, CLI, and portal updates.
-- **r** — Restarts the server gracefully (waits for any active work to finish first).
+- **r** — Restarts the server gracefully (waits for any active work to finish first). If a tunnel was running, it auto-restarts.
 - **x** — Exits the server.
 
 Invite the user to try pressing 'q' in their terminal to see the QR code — they can come back and say "next" when they're ready.
@@ -117,11 +119,13 @@ Invite the user to try pressing 'q' in their terminal to see the QR code — the
 
 Explain how to use the portal from a phone or tablet:
 - **QR code** — when the server starts, it displays a QR code in the terminal. Scan it with your phone's camera to open the portal instantly.
-- **Same network** — your phone needs to be on the same Wi-Fi network as the computer running the server.
+- **Same network** — by default, your phone needs to be on the same Wi-Fi network as the computer running the server.
+- **Remote access** — press **t** in the terminal to start a DevTunnel. This creates an HTTPS URL that works from anywhere — cellular, different networks, even another building. The tunnel QR code appears automatically.
+- **Add to Home Screen** — on iOS, use Share → Add to Home Screen. The portal opens in standalone mode (no browser chrome) with a proper app icon. A subtle hint appears on mobile after a couple of visits.
 - **Touch-friendly** — the UI is designed for mobile. Buttons are large, approvals are easy to tap, and everything scrolls naturally.
 - **Enter key** — on mobile, Enter adds a new line (useful for multi-line messages). Tap the send button to send.
 
-Mention that the portal works great in a mobile browser — no app install needed.
+Mention that the portal works great as a home screen app — no install from the App Store needed.
 
 ---
 
