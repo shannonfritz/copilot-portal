@@ -2550,14 +2550,24 @@ export default function App() {
 								</button>
 							)}
 							{restart && (
+								<>
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--success)', color: '#111' }}
 									onClick={() => restartServer()}
 								>
-									Restart now
+									Restart
 								</button>
+								<button
+									type="button"
+									className="rounded-md px-2.5 py-1 text-xs font-medium"
+									style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}
+									onClick={() => window.location.reload()}
+								>
+									Reload
+								</button>
+								</>
 							)}
 							{!updateStatus.applying && (
 								<button
