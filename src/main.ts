@@ -359,11 +359,21 @@ if (process.stdin.isTTY) {
 				console.log(`\n  Opened in browser\n`);
 				break;
 			}
-			case 'q':
-				console.log(`\n  ${server.getURL()}\n`);
-				console.log('Scan to open on your phone:');
-				qrcode.generate(server.getURL(), { small: true });
+			case 'q': {
+				console.log(`\n  Local: ${server.getURL()}`);
+				const ts = tunnel.getState();
+				if (ts.running && ts.url) {
+					const tunnelFull = `${ts.url}?token=${server.getToken()}`;
+					console.log(`  Tunnel: ${tunnelFull}\n`);
+					console.log('  Scan for remote access:');
+					qrcode.generate(tunnelFull, { small: true });
+				} else {
+					console.log('');
+					console.log('  Scan to open on your phone (same network):');
+					qrcode.generate(server.getURL(), { small: true });
+				}
 				break;
+			}
 			case 't':
 				toggleTunnel();
 				break;
