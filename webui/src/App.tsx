@@ -2523,27 +2523,28 @@ export default function App() {
 							)}
 
 							{/* Action buttons */}
-							{!updateStatus.applying && !restart && portalUpdate && (
+							{!updateStatus.applying && !restart && (portalUpdate || updatable.length > 0) && (
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--primary)', color: 'white' }}
 									onClick={async () => {
-										setUpdateStatus(prev => prev ? { ...prev, applying: true } : prev);
-										const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
-										const status = await res.json() as UpdateStatus;
-										setUpdateStatus(status);
+										setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
+										try {
+											if (portalUpdate) {
+												const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
+												const status = await res.json() as UpdateStatus;
+												setUpdateStatus(status);
+											}
+											if (updatable.length > 0) {
+												const res = await apiFetch('/api/updates/apply', { method: 'POST' });
+												const status = await res.json() as UpdateStatus;
+												setUpdateStatus({ ...status, restartNeeded: true });
+											}
+										} catch (e) {
+											setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
+										}
 									}}
-								>
-									Update
-								</button>
-							)}
-							{!updateStatus.applying && !restart && updatable.length > 0 && (
-								<button
-									type="button"
-									className="rounded-md px-2.5 py-1 text-xs font-medium"
-									style={{ background: 'var(--primary)', color: 'white' }}
-									onClick={applyUpdates}
 								>
 									Update
 								</button>
