@@ -3139,6 +3139,8 @@ export default function App() {
 							<div className="relative">
 								<textarea
 									ref={textareaRef}
+									id="message-input"
+									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
 									placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
