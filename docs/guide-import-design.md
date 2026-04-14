@@ -38,7 +38,7 @@ Import metadata is tracked in `data/imports.json` for re-import support:
 ```json
 {
   "abc123": {
-    "url": "https://gist.github.com/shannonfritz/abc123",
+    "url": "https://gist.github.com/user/abc123",
     "description": "My CRM guides collection",
     "importedAt": "2026-04-13T17:00:00Z",
     "items": ["crm-guide", "portal-dev"]
