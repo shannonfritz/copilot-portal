@@ -3,7 +3,7 @@
 Guide for using Microsoft Dev Tunnels to access Copilot Portal remotely.
 
 See also:
-- [Uplink Comparison](uplink-comparison.md) — how uplink integrates tunnels
+- [Uplink Comparison](compare-uplink.md) — how uplink integrates tunnels
 - [ACP Protocol](acp-protocol.md) — the underlying agent protocol
 
 ## What Are Dev Tunnels?

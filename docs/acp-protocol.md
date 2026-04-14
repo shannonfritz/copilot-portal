@@ -3,7 +3,7 @@
 Reference for the Agent Client Protocol as it relates to Copilot Portal.
 
 See also:
-- [Uplink Comparison](uplink-comparison.md) — how uplink uses ACP as a raw pipe
+- [Uplink Comparison](compare-uplink.md) — how uplink uses ACP as a raw pipe
 - [Dev Tunnels](dev-tunnels.md) — remote access for ACP or portal connections
 
 ## What Is ACP?
