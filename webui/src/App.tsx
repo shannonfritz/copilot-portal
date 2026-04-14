@@ -460,7 +460,7 @@ function SessionDrawer({
 						<div>
 							<div className="text-sm font-semibold">GitHub Copilot CLI</div>
 							<div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-								{info ? `v${info.version} · ${info.login}` : 'Loading…'}
+								{info ? <>v{info.version} · <a href="https://github.com/settings/copilot" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{info.login}</a></> : 'Loading…'}
 							</div>
 						</div>
 						<div className="flex-1" />
