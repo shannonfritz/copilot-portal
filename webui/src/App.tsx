@@ -424,7 +424,7 @@ function SessionDrawer({
 		if (open && onFetchQuota && !quota) {
 			onFetchQuota().then(data => {
 				const chat = data.quotaSnapshots?.['chat'] ?? data.quotaSnapshots?.['premium_interactions'];
-				if (chat) setQuota({ unlimited: !!(chat as { isUnlimitedEntitlement?: boolean }).isUnlimitedEntitlement, used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
+				if (chat) setQuota({ unlimited: false, used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
 			}).catch(() => {});
 		}
 	}, [open]);
@@ -475,7 +475,7 @@ function SessionDrawer({
 							{(sessionQuota ?? quota) && (() => {
 								const q = sessionQuota ?? quota;
 								if (!q) return null;
-								if (sessionQuota?.unlimited) return <div>Quota: Unlimited</div>;
+								if (q.unlimited) return <div>Quota: Unlimited{q.resetDate ? ` · resets ${new Date(q.resetDate).toLocaleDateString()}` : ''}</div>;
 								return <div>Quota: {q.used}/{q.total} ({q.remaining}% left){q.resetDate ? ` · resets ${new Date(q.resetDate).toLocaleDateString()}` : ''}</div>;
 							})()}
 						</div>
