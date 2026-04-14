@@ -785,10 +785,13 @@ export default function App() {
 			fastFailCount.current = 0;
 			setConnectionState('connected');
 			// Re-check update status on (re)connect — server may have restarted with new versions
-			apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
+			// Poll immediately and again after 15s (server may still be running its initial check)
+			const pollUpdates = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
 				setUpdateStatus(s);
 				if (!s.packages.some(p => p.hasUpdate) && !s.restartNeeded) setUpdateDismissed(false);
 			}).catch(() => {});
+			pollUpdates();
+			setTimeout(pollUpdates, 15000);
 			// Start application-level heartbeat (browser WS API doesn't expose protocol pings)
 			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); }
 			const hb = { interval: setInterval(() => {
