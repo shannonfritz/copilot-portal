@@ -1,17 +1,20 @@
 # CLI Remote Access vs Copilot Portal
 
-Comparison of GitHub's new `/remote` feature with Copilot Portal's approach to remote access.
+Comparison of GitHub's new `/remote` feature with Copilot Portal's approach to remote CLI access.
 
 ## What Is `/remote`?
 
-GitHub announced a first-party remote access feature for Copilot CLI (public preview, April 2026). It lets you access a running CLI session from GitHub.com or GitHub Mobile.
+GitHub announced a first-party remote access feature for Copilot CLI (public preview, April 2026). It turns GitHub.com (and GitHub Mobile) into a web portal for your running CLI session — conceptually the same thing Copilot Portal does, but hosted on GitHub's infrastructure.
 
 **How it works:**
 - Start a session with `copilot --remote` or type `/remote` during a session
-- The CLI connects to GitHub.com and registers the session
+- The CLI streams session events to GitHub.com in real time
 - You access it via `https://github.com/OWNER/REPO/tasks/TASK_ID`
-- Session events stream to GitHub's servers, remote commands are polled back
+- GitHub.com renders the session as a web UI where you can interact
 - Both local terminal and remote interface are active simultaneously
+- Remote commands are polled by the CLI from GitHub and injected into the local session
+
+**The key insight:** `/remote` and Portal solve the same core problem — accessing your local CLI session from another device. The difference is self-hosted (Portal) vs cloud-hosted (GitHub.com).
 
 ## Feature Comparison
 
@@ -51,14 +54,14 @@ Phone ──wss://──▶ DevTunnel ──▶ Portal Server
 
 ### `/remote`
 ```
-Terminal ──▶ Copilot CLI ──events──▶ GitHub.com
-Browser/Mobile ──▶ GitHub.com ──commands──▶ Copilot CLI
+Terminal ──▶ Copilot CLI ──streams events──▶ GitHub.com (web UI + relay)
+Browser/Mobile ──▶ GitHub.com ──polls commands──▶ Copilot CLI
 ```
-- CLI connects directly to GitHub.com
-- Session events stream to GitHub's servers
-- Remote commands are polled by the CLI from GitHub
+- GitHub.com IS the web portal (like Portal, but cloud-hosted)
+- CLI streams session activity to GitHub in real time
+- Remote commands are polled by the CLI and injected locally
+- The repo provides the URL namespace (`/OWNER/REPO/tasks/ID`)
 - All remote interaction goes through GitHub's infrastructure
-- Requires the working directory to be a GitHub repository
 
 ## Key Differences
 
@@ -90,22 +93,26 @@ Browser/Mobile ──▶ GitHub.com ──commands──▶ Copilot CLI
 
 ### Is Portal obsolete?
 
-**No.** The features are complementary:
+**Not yet, but the gap narrowed significantly.** The core use case — accessing your CLI from another device — is now solved by GitHub natively. Portal's remaining value is in the extras:
 
-1. **Portal adds value beyond remote access** — guides, prompts, approval rules, session management, model switching, token tracking, custom UI. `/remote` provides none of these.
+1. **Guides & Prompts** — the entire guide system, import from gists, prompt tray. `/remote` has none of this.
+2. **Approval rules** — Allow Always patterns that persist. `/remote` is per-request only.
+3. **Session management** — picker, shield, create/delete multiple sessions. `/remote` is one session per link.
+4. **Token tracking** — per-session usage stats with copy. Not in `/remote`.
+5. **Works anywhere** — no GitHub repo required, no org policy needed, works in any directory.
+6. **Data sovereignty** — session data stays on your machine. `/remote` streams everything through GitHub.
+7. **Custom UI** — dark theme, tool summaries, reasoning display, compact mobile layout.
 
-2. **Portal works everywhere** — any directory, any network, no GitHub repo required, no org policy needed. `/remote` requires a GitHub repo and admin opt-in.
-
-3. **Data sovereignty** — Portal keeps all data on your machine. For users who can't or don't want session data flowing through GitHub's servers, Portal is the only option.
-
-4. **UI customization** — Portal's UI is purpose-built for the portal experience. `/remote` uses GitHub.com's standard interface.
+If GitHub adds guides, approval rules, or session management to their remote UI, Portal's unique value shrinks further. Worth monitoring closely.
 
 ### What `/remote` does better
 
-1. **Zero setup for remote access** — no DevTunnel install, no tunnel configuration. Just `/remote` and you get a URL.
-2. **GitHub.com integration** — sessions show up in your Copilot dashboard alongside other GitHub activity.
-3. **GitHub Mobile** — native mobile app experience (once it's out of beta).
-4. **Reconnection** — built into GitHub's infrastructure, no tunnel process to manage.
+1. **Zero setup** — no Portal install, no DevTunnel, no tunnel configuration. Just `--remote`.
+2. **GitHub.com integration** — sessions appear in your Copilot dashboard alongside other activity.
+3. **GitHub Mobile** — native mobile app experience (once out of beta).
+4. **Reconnection** — built into GitHub's infrastructure, handles sleep/network drops gracefully.
+5. **`/keep-alive`** — prevents machine sleep while session is active. Portal has no equivalent.
+6. **No bandwidth limits** — unlike DevTunnel's 5 GB/month cap.
 
 ### Could they work together?
 
