@@ -1,147 +1,114 @@
 # Copilot Portal
 
-A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server on your desktop, then open the URL on any device on your local network.
+A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server on your PC, then open the URL on any device — same network via QR code, or anywhere via DevTunnels.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v22 or later
-- [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) installed via winget (`winget install GitHub.CopilotCLI`)
+- [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — `winget install GitHub.CopilotCLI` (Windows) or `brew install gh-copilot` (macOS)
 
-## Setup
+## Getting Started
 
-1. Unzip this package to a folder of your choice.
-2. Double-click `start-portal.cmd` (Windows) or run `sh start-portal.sh` (Mac/Linux).
+1. Unzip the release to a folder of your choice.
+2. Run `start-portal.cmd` (Windows) or `sh start-portal.sh` (macOS/Linux).
+3. Scan the QR code from your phone, or open the URL in any browser.
 
-   On first run, the script will:
-   - Install npm dependencies
-   - Check for PowerShell 7 (suggests install if missing)
-   - Sign you in to GitHub (opens a browser window if needed)
-   - Start the Copilot CLI server in the background
-   - Start the portal server
+On first run, the script installs dependencies, signs you in to GitHub, and starts the CLI server automatically.
 
-3. The console will print a URL and QR code:
-   ```
-   Open: http://localhost:3847?token=abc123...
-   ```
-   Open that URL in any browser on your local network.
+## Console Keys
 
-## Console Commands
+While the server is running, press a key in the terminal:
 
-While running, press a key:
-- `t` — Open CLI TUI (session picker)
-- `l` — Launch browser
-- `q` — Show QR code and URL
-- `u` — Check for updates
-- `r` — Restart server
-- `x` — Exit
+| | Access | | Server |
+|---|---|---|---|
+| **q** | QR code & URL | **c** | CLI console |
+| **l** | Launch browser | **u** | Check updates |
+| **t** | Start/stop tunnel | **r** | Restart |
+| **T** | Security reset | **x** | Exit |
 
-## Guides and Prompts
+**Tunnel** creates a DevTunnel for remote access (HTTPS from anywhere). Press **t** to start, **t** again to stop. First time, it asks about access settings. The tunnel auto-restarts after a server restart.
 
-Drop `.md` files into `data/guides/` for reusable reusable guides, and
-`data/prompts/` for canned prompt collections. Files with the same name are paired.
-Examples are seeded on first run from `examples/`.
+**Security reset** (Shift+T) destroys the tunnel, rotates the access token, and disconnects all clients. Use if a URL was compromised. Press **q** for a new QR code, then **t** for a new tunnel.
 
-Click the 📋 button in the top bar to:
-- **Apply** a guide to the current session (click the name)
-- **View** the guide or prompts content (eye / speech bubble icon)
-- **Load Prompts** without applying the guide (from the prompts viewer)
-- **Delete** a guide and/or its prompts (trash icon)
+## Guides & Prompts
 
-Instructions tell Copilot how to behave — API access patterns, coding conventions,
-game rules, or anything you'd normally explain at the start of a session. They can
-even update themselves (see `my-preferences.md` example).
+Guides are markdown files that teach Copilot how to behave for a session. Prompts are canned queries that appear in a tray above the message box.
 
-Prompts are canned queries that appear in a tray above the message box. Click one
-to fill the message box, ready to send.
+- Click the map icon in the header to browse, apply, edit, or create guides and prompts
+- **+ New** — start from scratch, pick from example templates, or import from a GitHub Gist URL
+- Files live in `data/guides/` and `data/prompts/` — same filename pairs them
+- Prompts stack across multiple sources and persist per session
 
-## Architecture
+### Importing
 
-The portal runs in **connected mode** by default:
-- A headless Copilot CLI server runs in the background (port 3848)
-- The portal server connects to it via the SDK (port 3847)
-- Messages sent from the portal are visible in any CLI session, and vice versa
-
-Use `--standalone` to run without the CLI server (portal spawns its own subprocess).
-
-### Advanced: Using with CLI TUI
-
-If you want both the full CLI terminal experience AND the portal:
-
-1. Start the CLI with its built-in server:
-   ```
-   copilot --ui-server --port 3848
-   ```
-2. In another terminal, start the portal:
-   ```
-   start-portal.cmd
-   ```
-
-The portal will detect the running CLI server and connect to it. Both the
-CLI TUI and the portal are live on the same sessions — messages sent from
-either side are immediately visible to both.
-
-This is useful when you want to start work in the CLI and monitor or
-continue from your phone via the portal.
-
-## Port
-
-The default port is `3847`. To use a different port, pass `--port`:
-
+Share guides via GitHub Gists using the naming convention:
 ```
-npm start -- --port 8080
+my-guide_guide.md       → guide content
+my-guide_prompts.md     → companion prompts
 ```
+
+Import via **+ New → Import from URL** in the portal.
+
+## Mobile & PWA
+
+- Scan the QR code to open on your phone (same network)
+- Use Share → Add to Home Screen for a standalone app experience
+- Press **t** in the terminal for remote access via DevTunnel
 
 ## Security
 
-The URL includes a random access token generated on first run and saved to `data/token.txt`. Anyone with the URL can access your Copilot sessions, so keep it on a trusted local network.
+- All API and WebSocket endpoints require a token (generated on first run, saved to `data/token.txt`)
+- Security headers: CSP, HSTS (over tunnel), X-Frame-Options, referrer policy
+- Rate limiting on failed auth attempts
+- Press **T** to rotate the token and revoke all access
 
-To rotate the token (invalidate existing URLs), delete `data/token.txt` and restart the server — a new token will be generated automatically.
+## Architecture
 
-## Stopping the server
+```
+Browser (React SPA)
+  ↕ WebSocket
+Portal Server (Node.js, port 3847)
+  ↕ SDK (JSON-RPC)
+Copilot CLI (headless, port 3848)
+```
 
-Press `x` in the console, or `Ctrl+C`. The background CLI server is automatically stopped when the portal exits.
+The portal connects to a headless Copilot CLI server running in the background. Messages are bidirectional — the CLI console and portal share the same sessions.
+
+## Configuration
+
+| Flag | Default | Description |
+|---|---|---|
+| `--port N` | 3847 | Portal server port |
+| `--cli-url URL` | auto | Connect to a specific CLI server |
+| `--data DIR` | `data/` | Data directory for token, rules, guides |
+| `--new-token` | — | Generate a new access token on start |
+| `--launch` | — | Open browser on start |
+| `--no-qr` | — | Suppress QR code output |
 
 ---
 
 ## Development
 
-These sections are for contributors working from the source repository.
-
-### Building from source
+For contributors working from the source repository.
 
 ```bash
 npm install          # install dependencies
 npm run build        # build server + web UI
+npm run package      # create release zip
 ```
-
-### Packaging a release
-
-```bash
-npm run package
-```
-
-This will:
-1. Increment the build number in `BUILD`
-2. Build the server and web UI
-3. Create a distributable zip: `copilot-portal-v0.2.0-build-260319-02.zip`
-
-The zip contains everything an end user needs — no dev dependencies or source code.
 
 ### Versioning
 
-The project uses two identifiers shown in the portal title bar:
+- **Version** (`v0.5.4`) — semver in `package.json`, bumped for releases
+- **Build** (`260414-01`) — `YYMMDD-NN` in `BUILD`, auto-incremented by `npm run package`
 
-- **Version** (`v0.2.0`) — from `package.json`. Bump manually when cutting a release.
-- **Build** (`260319-02`) — `YYMMDD-NN` format, auto-incremented by `npm run package`. The `BUILD` file in the repo tracks the current number.
-
-For GitHub Releases, attach the zip and use the version as the tag (e.g. `v0.2.0`). Multiple builds can exist for the same version during development.
-
-### Project structure
+### Project Structure
 
 ```
-src/           Server source (TypeScript → dist/server.js)
-webui/src/     Frontend source (React + Vite → dist/webui/)
-BUILD          Current build number
-package.mjs    Packaging script
-patch.mjs      Post-install SDK compatibility patch
+src/              Server source (TypeScript)
+webui/src/        React UI source
+dist/             Compiled output
+examples/         Shipped guide/prompt templates (read-only)
+data/             User runtime data (gitignored)
+docs/             Design docs and specs
 ```
