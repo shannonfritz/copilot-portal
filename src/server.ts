@@ -1005,6 +1005,15 @@ export class PortalServer {
 			'X-Frame-Options': 'DENY',
 			'Referrer-Policy': 'no-referrer',
 			'X-DNS-Prefetch-Control': 'off',
+			'Content-Security-Policy': [
+				"default-src 'self'",
+				"script-src 'self'",
+				"style-src 'self' 'unsafe-inline'",
+				"connect-src 'self' ws: wss:",
+				"img-src 'self' data:",
+				"font-src 'self'",
+				"frame-ancestors 'none'",
+			].join('; '),
 		};
 		// HSTS only over HTTPS (tunnel) — would break local HTTP
 		const isHttps = req?.headers['x-forwarded-proto'] === 'https'
