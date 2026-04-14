@@ -472,12 +472,13 @@ function SessionDrawer({
 							{sessionStartTime && (
 								<div>Started {new Date(sessionStartTime).toLocaleString()}</div>
 							)}
-							{(sessionQuota ?? quota) && (() => {
-								const q = sessionQuota ?? quota;
-								if (!q) return null;
-								if (q.unlimited) return <div>Quota: Unlimited{q.resetDate ? ` · resets ${new Date(q.resetDate).toLocaleDateString()}` : ''}</div>;
-								return <div>Quota: {q.used}/{q.total} ({q.remaining}% left){q.resetDate ? ` · resets ${new Date(q.resetDate).toLocaleDateString()}` : ''}</div>;
-							})()}
+							{sessionQuota ? (
+								sessionQuota.unlimited
+									? <div>Quota: Unlimited{sessionQuota.resetDate ? ` · resets ${new Date(sessionQuota.resetDate).toLocaleDateString()}` : ''}</div>
+									: <div>Quota: {sessionQuota.used}/{sessionQuota.total} ({sessionQuota.remaining}% left){sessionQuota.resetDate ? ` · resets ${new Date(sessionQuota.resetDate).toLocaleDateString()}` : ''}</div>
+							) : (
+								<div>Quota: tbd</div>
+							)}
 						</div>
 					</div>
 
