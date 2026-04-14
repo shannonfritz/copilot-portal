@@ -411,7 +411,7 @@ function SessionDrawer({
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
-	const [quota, setQuota] = useState<{ used: number; total: number; remaining: number; resetDate?: string } | null>(null);
+	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -424,7 +424,7 @@ function SessionDrawer({
 		if (open && onFetchQuota && !quota) {
 			onFetchQuota().then(data => {
 				const chat = data.quotaSnapshots?.['chat'] ?? data.quotaSnapshots?.['premium_interactions'];
-				if (chat) setQuota({ used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
+				if (chat) setQuota({ unlimited: !!(chat as { isUnlimitedEntitlement?: boolean }).isUnlimitedEntitlement, used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
 			}).catch(() => {});
 		}
 	}, [open]);
