@@ -64,13 +64,31 @@ Import via **+ New → Import from URL** in the portal.
 
 ## Architecture
 
+```mermaid
+graph TD
+    Browser["📱 Browser / PWA"] -->|"ws:// (LAN)"| Portal["Portal Server :3847"]
+    Phone["📱 Mobile"] -->|"wss:// (tunnel)"| Tunnel["🌐 DevTunnel"]
+    Tunnel -->|HTTPS| Portal
+    Portal -->|SDK JSON-RPC| CLI["Copilot CLI :3848"]
 ```
-Browser (React SPA)
-  ↕ WebSocket
-Portal Server (Node.js, port 3847)
-  ↕ SDK (JSON-RPC)
-Copilot CLI (headless, port 3848)
+
+<details>
+<summary>ASCII version</summary>
+
 ```
+  📱 Browser / PWA          📱 Mobile
+        │                       │
+    ws:// (LAN)          wss:// (tunnel)
+        │                       │
+        ▼                       ▼
+  Portal Server :3847 ◄── 🌐 DevTunnel
+        │
+   SDK JSON-RPC
+        │
+        ▼
+  Copilot CLI :3848
+```
+</details>
 
 The portal connects to a headless Copilot CLI server running in the background. Messages are bidirectional — the CLI console and portal share the same sessions.
 
