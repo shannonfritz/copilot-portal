@@ -505,11 +505,14 @@ function SessionDrawer({
 
 					{/* Session usage stats */}
 					{sessionUsage && sessionUsage.requests > 0 && (
-						<div className="mb-3 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-							Tokens: {sessionUsage.inputTokens.toLocaleString()} ↑ {sessionUsage.outputTokens.toLocaleString()} ↓
-							{sessionUsage.reasoningTokens > 0 && ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}`}
-							{sessionUsage.cacheReadTokens > 0 && ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}`}
-							{` · Requests: ${sessionUsage.requests}`}
+						<div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+							<span className="flex-1">
+								Tokens: {sessionUsage.inputTokens.toLocaleString()} ↑ {sessionUsage.outputTokens.toLocaleString()} ↓
+								{sessionUsage.reasoningTokens > 0 && ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}`}
+								{sessionUsage.cacheReadTokens > 0 && ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}`}
+								{` · Requests: ${sessionUsage.requests}`}
+							</span>
+							<CopyButton text={`Tokens: ${sessionUsage.inputTokens.toLocaleString()} ↑ ${sessionUsage.outputTokens.toLocaleString()} ↓${sessionUsage.reasoningTokens > 0 ? ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}` : ''}${sessionUsage.cacheReadTokens > 0 ? ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}` : ''} · Requests: ${sessionUsage.requests}`} />
 						</div>
 					)}
 
