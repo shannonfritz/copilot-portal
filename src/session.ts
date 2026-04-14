@@ -26,7 +26,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info' | 'session_usage';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -107,6 +107,9 @@ export class SessionHandle {
 	private tokensSinceCompaction = 0;
 	private static readonly COMPACT_TOKEN_THRESHOLD = 120_000; // ~80% of 150k context window
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
+
+	// Accumulated session usage stats — broadcast on each assistant.usage event
+	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
 
 	// Per-connection tool tracking — reset on each attachListeners() call
 	private deltasSent = false;
@@ -1352,6 +1355,25 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
+	private onAssistantUsage(data: unknown): void {
+		const d = data as {
+			inputTokens?: number; outputTokens?: number; cacheReadTokens?: number;
+			cacheWriteTokens?: number; reasoningTokens?: number; cost?: number;
+			quotaSnapshots?: Record<string, { isUnlimitedEntitlement?: boolean; entitlementRequests: number; usedRequests: number; remainingPercentage: number; resetDate?: string }>;
+		};
+		this.sessionUsage.inputTokens += d.inputTokens ?? 0;
+		this.sessionUsage.outputTokens += d.outputTokens ?? 0;
+		this.sessionUsage.cacheReadTokens += d.cacheReadTokens ?? 0;
+		this.sessionUsage.cacheWriteTokens += d.cacheWriteTokens ?? 0;
+		this.sessionUsage.reasoningTokens += d.reasoningTokens ?? 0;
+		this.sessionUsage.requests += d.cost ?? 1;
+		this.broadcast({
+			type: 'session_usage',
+			usage: { ...this.sessionUsage },
+			quota: d.quotaSnapshots,
+		});
+	}
+
 	private onSubagentCompleted(data: unknown): void {
 		const d = data as { name?: string; toolCallId?: string };
 		this.log(`[Session] Subagent completed: ${d.name ?? 'unknown'}`);
@@ -1399,6 +1421,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'session.model_change':             (d) => this.onModelChange(d),
 		'subagent.completed':               (d) => this.onSubagentCompleted(d),
 		'assistant.turn_end':               () => this.onAssistantTurnEnd(),
+		'assistant.usage':                  (d) => this.onAssistantUsage(d),
 	};
 
 	private attachListeners(): void {

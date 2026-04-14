@@ -392,6 +392,8 @@ function SessionDrawer({
 	activeSessionId,
 	sessionSummary,
 	sessionStartTime,
+	sessionUsage,
+	sessionQuota,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -404,6 +406,8 @@ function SessionDrawer({
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
 	sessionStartTime?: string;
+	sessionUsage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null;
+	sessionQuota?: { unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
@@ -468,9 +472,12 @@ function SessionDrawer({
 							{sessionStartTime && (
 								<div>Started {new Date(sessionStartTime).toLocaleString()}</div>
 							)}
-							{quota && (
-								<div>Quota: {quota.used}/{quota.total} ({quota.remaining}% left)</div>
-							)}
+							{(sessionQuota ?? quota) && (() => {
+								const q = sessionQuota ?? quota;
+								if (!q) return null;
+								if (sessionQuota?.unlimited) return <div>Quota: Unlimited</div>;
+								return <div>Quota: {q.used}/{q.total} ({q.remaining}% left){q.resetDate ? ` · resets ${new Date(q.resetDate).toLocaleDateString()}` : ''}</div>;
+							})()}
 						</div>
 					</div>
 
@@ -494,6 +501,36 @@ function SessionDrawer({
 							</>
 						)}
 					</div>
+
+					{/* Session usage stats */}
+					{sessionUsage && sessionUsage.requests > 0 && (
+						<div className="mb-3 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+							<div className="flex justify-between">
+								<span>Tokens ↑</span>
+								<span>{(sessionUsage.inputTokens).toLocaleString()}</span>
+							</div>
+							<div className="flex justify-between">
+								<span>Tokens ↓</span>
+								<span>{(sessionUsage.outputTokens).toLocaleString()}</span>
+							</div>
+							{sessionUsage.cacheReadTokens > 0 && (
+								<div className="flex justify-between">
+									<span>Cached</span>
+									<span>{sessionUsage.cacheReadTokens.toLocaleString()}</span>
+								</div>
+							)}
+							{sessionUsage.reasoningTokens > 0 && (
+								<div className="flex justify-between">
+									<span>Reasoning</span>
+									<span>{sessionUsage.reasoningTokens.toLocaleString()}</span>
+								</div>
+							)}
+							<div className="flex justify-between" style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+								<span>Requests</span>
+								<span>{sessionUsage.requests}</span>
+							</div>
+						</div>
+					)}
 
 					{/* Model selector */}
 					<div className="relative">
@@ -619,6 +656,8 @@ export default function App() {
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
+	const [sessionUsage, setSessionUsage] = useState<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null>(null);
+	const [sessionQuota, setSessionQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [noSession, setNoSession] = useState(!hasSessionInUrl);
 	const noSessionRef = useRef(!hasSessionInUrl);
@@ -938,6 +977,16 @@ export default function App() {
 
 				if (event.type === 'model_changed') {
 					setActiveModel(event.model ?? null);
+					return;
+				}
+
+				if (event.type === 'session_usage') {
+					const e = event as { usage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number }; quota?: Record<string, { isUnlimitedEntitlement?: boolean; entitlementRequests: number; usedRequests: number; remainingPercentage: number; resetDate?: string }> };
+					if (e.usage) setSessionUsage(e.usage);
+					if (e.quota) {
+						const q = e.quota['chat'] ?? e.quota['premium_interactions'];
+						if (q) setSessionQuota({ unlimited: !!q.isUnlimitedEntitlement, used: q.usedRequests, total: q.entitlementRequests, remaining: q.remainingPercentage, resetDate: q.resetDate });
+					}
 					return;
 				}
 
@@ -1427,6 +1476,8 @@ export default function App() {
 		setActiveModel(null);
 		setSessionContext(null);
 		setActiveSessionSummary(null);
+		setSessionUsage(null);
+		setSessionQuota(null);
 		const params = new URLSearchParams(window.location.search);
 		params.set('session', sessionId);
 		params.delete('all');
@@ -2631,6 +2682,8 @@ export default function App() {
 					activeSessionId={activeSessionId}
 					sessionSummary={activeSessionSummary}
 					sessionStartTime={sessions.find(s => s.sessionId === activeSessionId)?.startTime}
+					sessionUsage={sessionUsage}
+					sessionQuota={sessionQuota}
 					/>
 				)}
 
