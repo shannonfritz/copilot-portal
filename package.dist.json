@@ -1,6 +1,6 @@
 {
   "name": "copilot-portal",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Mobile-friendly web portal for GitHub Copilot CLI",
   "author": "Shannon Fritz",
   "license": "MIT",
