@@ -506,30 +506,10 @@ function SessionDrawer({
 					{/* Session usage stats */}
 					{sessionUsage && sessionUsage.requests > 0 && (
 						<div className="mb-3 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-							<div className="flex justify-between">
-								<span>Tokens ↑</span>
-								<span>{(sessionUsage.inputTokens).toLocaleString()}</span>
-							</div>
-							<div className="flex justify-between">
-								<span>Tokens ↓</span>
-								<span>{(sessionUsage.outputTokens).toLocaleString()}</span>
-							</div>
-							{sessionUsage.cacheReadTokens > 0 && (
-								<div className="flex justify-between">
-									<span>Cached</span>
-									<span>{sessionUsage.cacheReadTokens.toLocaleString()}</span>
-								</div>
-							)}
-							{sessionUsage.reasoningTokens > 0 && (
-								<div className="flex justify-between">
-									<span>Reasoning</span>
-									<span>{sessionUsage.reasoningTokens.toLocaleString()}</span>
-								</div>
-							)}
-							<div className="flex justify-between" style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
-								<span>Requests</span>
-								<span>{sessionUsage.requests}</span>
-							</div>
+							Tokens: {sessionUsage.inputTokens.toLocaleString()} ↑ {sessionUsage.outputTokens.toLocaleString()} ↓
+							{sessionUsage.reasoningTokens > 0 && ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}`}
+							{sessionUsage.cacheReadTokens > 0 && ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}`}
+							{` · Requests: ${sessionUsage.requests}`}
 						</div>
 					)}
 
