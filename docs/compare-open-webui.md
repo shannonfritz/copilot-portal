@@ -114,6 +114,6 @@ They'd coexist as separate tools for separate purposes, like having both Slack a
 
 ## Summary
 
-Open WebUI is a **full AI platform** — a private ChatGPT for teams with knowledge bases, plugins, multi-model support, and enterprise features. Portal is a **developer tool** — a mobile remote control for Copilot CLI coding sessions.
+Open WebUI is a **general-purpose AI platform** designed for teams — knowledge bases, plugins, multi-model support, and enterprise features. Portal is a **focused developer tool** for Copilot CLI coding workflows — approval management, guides, token tracking, and mobile access.
 
 The overlap is minimal: both are self-hosted web UIs for AI. But Open WebUI is about conversations and knowledge, while Portal is about agent-driven coding workflows with tool approvals. Different audiences, different architectures, different goals.

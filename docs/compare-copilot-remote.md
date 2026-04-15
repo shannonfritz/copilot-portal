@@ -27,7 +27,7 @@ Same Copilot agent underneath, completely different presentation. The terminal a
 
 | Feature | Copilot Remote | Portal |
 |---|---|---|
-| **Primary interface** | Web terminals (xterm.js, 81KB component) | Chat UI (React, ~3000 lines) |
+| **Primary interface** | Web terminals (xterm.js) | Chat UI (React) |
 | **Chat UI** | Basic — markdown bubbles, input box (7KB) | Rich — tool summaries, reasoning, approval cards |
 | **Terminal** | Full xterm.js terminals, tiled grid | No terminal — chat only |
 | **AI agents** | Copilot CLI + Claude Code | Copilot CLI only |
@@ -80,8 +80,8 @@ Copilot CLI (single headless instance)
 - **Portal** uses the SDK — `@github/copilot-sdk` manages the connection. This provides higher-level abstractions but less raw control.
 
 ### Terminal vs Chat
-- **Copilot Remote** is terminal-first. The `TerminalView.tsx` component is 81KB — the project's center of gravity. They have a chat view (`ChatView.tsx`, 7KB) with basic markdown message bubbles, but it's secondary to the terminal experience. Recent development has focused on xterm.js scroll stabilization, PTY flow control, and tile rendering.
-- **Portal** is chat-only. No terminal emulation. The ~3000-line `App.tsx` renders structured SDK events as HTML — markdown with syntax highlighting, collapsible tool summaries, formatted approval cards, reasoning sections, prompt tray.
+- **Copilot Remote** is terminal-first. Their `TerminalView` component is the project's center of gravity, with significant engineering in xterm.js scroll stabilization, PTY flow control, and tile rendering. They also have a chat view with markdown message bubbles, but the terminal experience is the primary interface.
+- **Portal** is chat-only. No terminal emulation. The UI renders structured SDK events as HTML — markdown with syntax highlighting, collapsible tool summaries, formatted approval cards, reasoning sections, prompt tray.
 
 ### Multi-Agent
 - **Copilot Remote** is designed for running multiple agents simultaneously. The task queue auto-dispatches work. Swarm mode lets teammates add tasks.
@@ -135,4 +135,4 @@ Interesting question. They use different connection methods (ACP vs SDK), so the
 
 ## Summary
 
-Copilot Remote is **wider** — multiple agents, task queues, tiled terminals, Claude Code support. Portal is **deeper** — approval rules, guides, token tracking, built-in tunnel, security controls. Copilot Remote is for power users managing multiple AI agents. Portal is for developers who want a polished mobile experience for a single Copilot session with domain-specific guidance.
+Copilot Remote covers **more breadth** — multiple agents, task queues, tiled terminals, Claude Code support. Portal is **more specialized** — approval rules, guides, token tracking, built-in tunnel, security controls. Copilot Remote is well suited for managing multiple AI agents simultaneously. Portal is well suited for developers who want a polished mobile experience for focused Copilot sessions with domain-specific guidance.

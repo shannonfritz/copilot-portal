@@ -35,7 +35,7 @@ GitHub announced a first-party remote access feature for Copilot CLI (public pre
 | **QR code access** | ✅ With token, instant | ✅ Via Ctrl+E toggle |
 | **Add to Home Screen** | ✅ PWA with icon | ❌ GitHub Mobile app |
 | **Token tracking** | ✅ Per-session accumulation | ❌ Not in remote view |
-| **Custom UI** | ✅ Dark theme, tool summaries, reasoning | ❌ GitHub.com standard UI |
+| **Purpose-built UI** | ✅ Dark theme, tool summaries, reasoning | GitHub.com standard UI |
 | **Offline/local use** | ✅ Works without internet | ❌ Requires GitHub.com connection |
 | **Self-update** | ✅ Built-in | N/A (it's GitHub.com) |
 
@@ -93,7 +93,7 @@ Browser/Mobile ──▶ GitHub.com ──polls commands──▶ Copilot CLI
 
 ### Is Portal obsolete?
 
-**Not yet, but the gap narrowed significantly.** The core use case — accessing your CLI from another device — is now solved by GitHub natively. Portal's remaining value is in the extras:
+**The core use case overlaps, but the tools serve different needs.** Accessing your CLI from another device is now solved by GitHub natively. Portal's value is in the additional capabilities:
 
 1. **Guides & Prompts** — the entire guide system, import from gists, prompt tray. `/remote` has none of this.
 2. **Approval rules** — Allow Always patterns that persist. `/remote` is per-request only.
@@ -101,7 +101,7 @@ Browser/Mobile ──▶ GitHub.com ──polls commands──▶ Copilot CLI
 4. **Token tracking** — per-session usage stats with copy. Not in `/remote`.
 5. **Works anywhere** — no GitHub repo required, no org policy needed, works in any directory.
 6. **Data sovereignty** — session data stays on your machine. `/remote` streams everything through GitHub.
-7. **Custom UI** — dark theme, tool summaries, reasoning display, compact mobile layout.
+7. **Purpose-built UI** — dark theme optimized for mobile, tool summaries, reasoning display.
 
 If GitHub adds guides, approval rules, or session management to their remote UI, Portal's unique value shrinks further. Worth monitoring closely.
 

@@ -87,7 +87,7 @@ Actions (shell, files, search — scoped to your project)
 
 ### Community
 - **OpenClaw** has a massive ecosystem — 5,400+ skills, community dashboards, NVIDIA integration, Cloudflare Workers deployment, Chinese translations, etc.
-- **Portal** is a single-developer project focused on a specific use case.
+- **Portal** is focused on a specific use case — Copilot CLI coding workflows — with a streamlined implementation.
 
 ## Could They Work Together?
 
@@ -112,4 +112,4 @@ Portal's guides could also inform OpenClaw's SOUL.md (personality/instruction fi
 
 OpenClaw and Copilot Portal aren't competitors — they're different categories. OpenClaw is a **general-purpose AI platform** for life automation. Portal is a **developer tool** for Copilot CLI. The overlap is minimal: both run locally, both are open source, both provide mobile access to AI. But their goals, audiences, and architectures are fundamentally different.
 
-If anything, OpenClaw validates the broader trend that Portal is part of: people want to interact with AI from their phones and chat apps, not just from a terminal on their desk.
+Both projects validate the trend: people want to interact with AI from diverse interfaces — chat apps, web UIs, phones, desktops — not just a terminal on their desk.

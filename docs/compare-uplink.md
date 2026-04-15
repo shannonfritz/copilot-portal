@@ -21,7 +21,7 @@ Copilot CLI
 ```
 Preact PWA (browser)
   ↕ WebSocket (raw JSON-RPC 2.0)
-Bridge Server (Node.js, ~100 lines of relay logic)
+Bridge Server (Node.js, lightweight relay)
   ↕ stdio / NDJSON (raw ACP messages)
 Copilot CLI (copilot --acp --stdio)
 ```
@@ -29,7 +29,7 @@ Copilot CLI (copilot --acp --stdio)
 ### Key Difference
 Portal uses the **SDK as an abstraction layer** — the SDK manages sessions, events, permissions, and the connection to the CLI. Our server interprets SDK events and translates them to portal-specific WebSocket events.
 
-Uplink is a **"dumb pipe"** — the bridge just relays raw ACP messages between WebSocket and stdio. The PWA client does all the protocol work directly. Only 6 methods are intercepted server-side.
+Uplink uses a **minimal relay** — the bridge passes raw ACP messages between WebSocket and stdio. The PWA client does all the protocol work directly. Only 6 methods are intercepted server-side.
 
 ### Tradeoffs
 
