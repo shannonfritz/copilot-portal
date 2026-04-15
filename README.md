@@ -9,11 +9,17 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 
 ## Getting Started
 
-1. Unzip the release to a folder of your choice.
+1. Unzip the release to a folder (e.g. `C:\copilot-portal`).
 2. Run `start-portal.cmd` (Windows) or `sh start-portal.sh` (macOS/Linux).
-3. Scan the QR code from your phone, or open the URL in any browser.
+3. Press **`l`** to launch the portal in your browser.
 
-On first run, the script installs dependencies, signs you in to GitHub, and starts the CLI server automatically.
+On first run, the script will:
+- Install **Node.js** and **PowerShell 7** via winget if missing (restart terminal after install)
+- Install npm dependencies
+- Sign you in to **GitHub** (opens a browser for authentication)
+- Start the Copilot CLI server in the background
+
+> **Prerequisite:** You need a GitHub account with Copilot access. Check at [github.com/settings/copilot](https://github.com/settings/copilot).
 
 <a href="img/screenshot-sessions.png"><img src="img/screenshot-sessions.png" width="800" alt="Session picker"></a>
 
