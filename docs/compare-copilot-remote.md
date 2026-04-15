@@ -1,22 +1,27 @@
 # Copilot Remote vs Copilot Portal
 
-Comparison of [Copilot Remote](https://github.com/kubestellar/copilot-remote) and Copilot Portal — the two closest projects in the Copilot CLI remote access space.
+Comparison of [Copilot Remote](https://github.com/kubestellar/copilot-remote) and Copilot Portal — both provide web access to Copilot CLI, but through fundamentally different rendering approaches.
 
 ## What Is Copilot Remote?
 
-Copilot Remote is a **full-featured web dashboard** for managing Copilot CLI and Claude Code sessions. It provides tiled web terminals, an iMessage-style chat UI with ACP streaming, a task queue with auto-dispatch, and session management — all from your phone or LAN browser.
+Copilot Remote is a **web terminal relay** for Copilot CLI and Claude Code. It streams the raw terminal output (the same TUI you see in your terminal) into xterm.js in a browser. You see exactly what the CLI renders — colors, diffs, layouts — in tiled web terminals. It adds a task queue for dispatching work to multiple agents.
 
-Think of it as: **a mission control for multiple AI coding agents.**
+Think of it as: **your Copilot terminal, mirrored to a browser with multi-agent management.**
 
 ## What Is Copilot Portal?
 
-Portal is a **focused web UI for single-session Copilot CLI interaction**. It provides a chat interface, approval management, guides & prompts, session switching, and DevTunnel remote access.
+Portal is a **purpose-built web UI** that renders Copilot's responses as formatted HTML — markdown, syntax-highlighted code, collapsible tool summaries, structured approval cards. It's not a terminal mirror; it's a different interface for the same agent.
 
-Think of it as: **a mobile remote control for your Copilot session.**
+Think of it as: **a mobile-first chat app designed specifically for Copilot.**
 
-## This Is the Closest Comparison
+## The Core Difference
 
-Copilot Remote is the most similar project to Portal. Both are web UIs for Copilot CLI built with React and Node.js. But their scope and architecture differ significantly.
+This is the fundamental distinction:
+
+- **Copilot Remote** shows the **terminal TUI** in a browser (xterm.js rendering raw PTY output)
+- **Portal** renders **structured events** from the SDK as HTML (markdown, tool cards, approvals)
+
+Same Copilot agent underneath, completely different presentation. The terminal approach preserves fidelity; the HTML approach provides a richer mobile experience.
 
 ## Feature Comparison
 
@@ -74,8 +79,8 @@ Copilot CLI (single headless instance)
 - **Portal** uses the SDK — `@github/copilot-sdk` manages the connection. This provides higher-level abstractions but less raw control.
 
 ### Terminal vs Chat
-- **Copilot Remote** offers BOTH — an iMessage-style chat AND full xterm.js terminals you can tile and interact with directly.
-- **Portal** is chat-only — no terminal emulation. The UI is designed for structured interactions (messages, approvals, tool summaries), not raw terminal access.
+- **Copilot Remote** relays the raw Copilot TUI — you see exactly what the terminal renders, including its own markdown formatting, diffs, and interactive prompts. The development effort is focused on making xterm.js render smoothly (scroll stabilization, flow control, font sizing).
+- **Portal** never shows the terminal. It receives structured events from the SDK and renders them as HTML — markdown with syntax highlighting, collapsible tool summaries, formatted approval cards. The development effort is on the chat UX.
 
 ### Multi-Agent
 - **Copilot Remote** is designed for running multiple agents simultaneously. The task queue auto-dispatches work. Swarm mode lets teammates add tasks.
