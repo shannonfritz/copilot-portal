@@ -84,6 +84,8 @@ Import via **+ New → Import from URL** in the portal.
 
 ## Architecture
 
+The portal connects to a headless Copilot CLI server running in the background. Messages are bidirectional — the CLI console and portal share the same sessions.
+
 ```mermaid
 graph TD
     Browser["📱 Browser / PWA"] -->|"ws:// (LAN)"| Portal["Portal Server :3847"]
@@ -109,8 +111,6 @@ graph TD
   Copilot CLI :3848
 ```
 </details>
-
-The portal connects to a headless Copilot CLI server running in the background. Messages are bidirectional — the CLI console and portal share the same sessions.
 
 ## Configuration
 
