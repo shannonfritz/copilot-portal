@@ -69,6 +69,12 @@ Import via **+ New → Import from URL** in the portal.
 - Use Share → Add to Home Screen for a standalone app experience
 - Press **t** in the terminal for remote access via DevTunnel
 
+<p>
+<a href="img/screenshot-mobile1.png"><img src="img/screenshot-mobile1.png" width="260" alt="Mobile chat"></a>
+<a href="img/screenshot-mobile2.png"><img src="img/screenshot-mobile2.png" width="260" alt="Mobile approvals"></a>
+<a href="img/screenshot-mobile3.png"><img src="img/screenshot-mobile3.png" width="260" alt="Mobile session"></a>
+</p>
+
 ## Security
 
 - All API and WebSocket endpoints require a token (generated on first run, saved to `data/token.txt`)
