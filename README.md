@@ -15,6 +15,13 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 
 On first run, the script installs dependencies, signs you in to GitHub, and starts the CLI server automatically.
 
+<a href="img/screenshot-sessions.png"><img src="img/screenshot-sessions.png" width="800" alt="Session picker"></a>
+
+<p>
+<a href="img/screenshot-tools.png"><img src="img/screenshot-tools.png" width="395" alt="Tool summaries"></a>
+<a href="img/screenshot-approvals.png"><img src="img/screenshot-approvals.png" width="395" alt="Approval flow"></a>
+</p>
+
 ## Console Keys
 
 While the server is running, press a key in the terminal:
@@ -30,6 +37,8 @@ While the server is running, press a key in the terminal:
 
 **Security reset** (Shift+T) destroys the tunnel, rotates the access token, and disconnects all clients. Use if a URL was compromised. Press **q** for a new QR code, then **t** for a new tunnel.
 
+<a href="img/screenshot-console.png"><img src="img/screenshot-console.png" width="800" alt="Console keys"></a>
+
 ## Guides & Prompts
 
 Guides are markdown files that teach Copilot how to behave for a session. Prompts are canned queries that appear in a tray above the message box.
@@ -38,6 +47,11 @@ Guides are markdown files that teach Copilot how to behave for a session. Prompt
 - **+ New** — start from scratch, pick from example templates, or import from a GitHub Gist URL
 - Files live in `data/guides/` and `data/prompts/` — same filename pairs them
 - Prompts stack across multiple sources and persist per session
+
+<p>
+<a href="img/screenshot-guides.png"><img src="img/screenshot-guides.png" width="395" alt="Guides panel"></a>
+<a href="img/screenshot-prompts.png"><img src="img/screenshot-prompts.png" width="395" alt="Prompts tray"></a>
+</p>
 
 ### Importing
 
