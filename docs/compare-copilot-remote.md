@@ -27,10 +27,11 @@ Same Copilot agent underneath, completely different presentation. The terminal a
 
 | Feature | Copilot Remote | Portal |
 |---|---|---|
+| **Primary interface** | Web terminals (xterm.js, 81KB component) | Chat UI (React, ~3000 lines) |
+| **Chat UI** | Basic — markdown bubbles, input box (7KB) | Rich — tool summaries, reasoning, approval cards |
+| **Terminal** | Full xterm.js terminals, tiled grid | No terminal — chat only |
 | **AI agents** | Copilot CLI + Claude Code | Copilot CLI only |
 | **Protocol** | ACP streaming (direct) | SDK JSON-RPC (via copilot-sdk) |
-| **Chat UI** | iMessage-style bubbles with markdown | Chat with tool summaries, reasoning |
-| **Terminal** | Full xterm.js terminals, tiled grid | No terminal — chat UI only |
 | **Multi-agent** | Yes — tiled terminals, side-by-side | No — one session at a time |
 | **Task queue** | Job queue with auto-dispatch to idle agents | None |
 | **Recurring tasks** | Scheduled tasks on intervals | None |
@@ -79,8 +80,8 @@ Copilot CLI (single headless instance)
 - **Portal** uses the SDK — `@github/copilot-sdk` manages the connection. This provides higher-level abstractions but less raw control.
 
 ### Terminal vs Chat
-- **Copilot Remote** relays the raw Copilot TUI — you see exactly what the terminal renders, including its own markdown formatting, diffs, and interactive prompts. The development effort is focused on making xterm.js render smoothly (scroll stabilization, flow control, font sizing).
-- **Portal** never shows the terminal. It receives structured events from the SDK and renders them as HTML — markdown with syntax highlighting, collapsible tool summaries, formatted approval cards. The development effort is on the chat UX.
+- **Copilot Remote** is terminal-first. The `TerminalView.tsx` component is 81KB — the project's center of gravity. They have a chat view (`ChatView.tsx`, 7KB) with basic markdown message bubbles, but it's secondary to the terminal experience. Recent development has focused on xterm.js scroll stabilization, PTY flow control, and tile rendering.
+- **Portal** is chat-only. No terminal emulation. The ~3000-line `App.tsx` renders structured SDK events as HTML — markdown with syntax highlighting, collapsible tool summaries, formatted approval cards, reasoning sections, prompt tray.
 
 ### Multi-Agent
 - **Copilot Remote** is designed for running multiple agents simultaneously. The task queue auto-dispatches work. Swarm mode lets teammates add tasks.
