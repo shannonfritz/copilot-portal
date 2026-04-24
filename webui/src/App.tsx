@@ -5,6 +5,59 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
 
+function CopyableTable({ children }: { children: React.ReactNode }) {
+	const tableRef = useRef<HTMLTableElement>(null);
+	const [copied, setCopied] = useState(false);
+	const copyTable = async () => {
+		const table = tableRef.current;
+		if (!table) return;
+		const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1500); };
+		const cleanHtml = table.outerHTML.replace(/\sstyle="[^"]*"/g, '').replace(/\sclass="[^"]*"/g, '');
+		if (navigator.clipboard?.write) {
+			try {
+				await navigator.clipboard.write([new ClipboardItem({
+					'text/html': new Blob([cleanHtml], { type: 'text/html' }),
+					'text/plain': new Blob([table.innerText], { type: 'text/plain' }),
+				})]);
+				done();
+				return;
+			} catch { /* fall through */ }
+		}
+		const el = document.createElement('div');
+		el.contentEditable = 'true';
+		el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;color:#000;background:#fff';
+		el.innerHTML = cleanHtml;
+		document.body.appendChild(el);
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		const sel = window.getSelection();
+		sel?.removeAllRanges();
+		sel?.addRange(range);
+		document.execCommand('copy');
+		sel?.removeAllRanges();
+		document.body.removeChild(el);
+		done();
+	};
+	return (
+		<div className="code-scroll" style={{ margin: '0.5em 0', position: 'relative' }}>
+			<table ref={tableRef} style={{ borderCollapse: 'collapse', minWidth: '100%' }}>{children}</table>
+			<button
+				type="button"
+				data-copy-button
+				onClick={copyTable}
+				className="rounded p-0.5 transition-opacity"
+				style={{ position: 'absolute', top: 4, right: 4, opacity: copied ? 0.8 : 0.3, color: 'inherit' }}
+				title="Copy table"
+			>
+				{copied
+					? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+					: <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+				}
+			</button>
+		</div>
+	);
+}
+
 // pre and table need React wrappers for the .code-scroll div — CSS alone can't inject a parent element.
 // p, th, and a need inline styles to unconditionally beat Tailwind Typography's generated rules.
 // Everything else (ul, ol, blockquote, headings, etc.) is handled by styles.css .prose rules.
@@ -17,11 +70,7 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 			<pre style={{ margin: 0 }}>{children}</pre>
 		</div>
 	),
-	table: ({ children }) => (
-		<div className="code-scroll" style={{ margin: '0.5em 0' }}>
-			<table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>{children}</table>
-		</div>
-	),
+	table: ({ children }) => <CopyableTable>{children}</CopyableTable>,
 	th: ({ children }) => (
 		<th style={{ textAlign: 'left', background: 'var(--subtle-bg)', fontWeight: 600 }}>{children}</th>
 	),
@@ -230,7 +279,9 @@ function CopyRichButton({ htmlRef, plainText }: { htmlRef: React.RefObject<HTMLD
 
 		// Strip dark-theme colors so paste into OneNote/Word/Teams looks clean.
 		// Keep structure (bold, lists, headings, code blocks) but remove color/background styles.
+		// Also remove table copy buttons (data-copy-button) from the output.
 		const cleanHtml = html
+			.replace(/<button[^>]*data-copy-button[^>]*>[\s\S]*?<\/button>/g, '') // strip table copy buttons
 			.replace(/\sstyle="[^"]*"/g, '') // strip all inline styles
 			.replace(/\sclass="[^"]*"/g, ''); // strip Tailwind classes
 
