@@ -130,6 +130,37 @@ async deselectAgent(): Promise<void>
 4. WebSocket broadcast on agent change
 5. Session picker annotation (optional)
 
+## Multi-Agent: /fleet and Squad
+
+Copilot CLI has two approaches to multi-agent work. Portal doesn't need to specifically support either — both flow through standard session events.
+
+### /fleet (built-in)
+
+`/fleet` is Copilot CLI's native parallel execution command (April 2026). The orchestrator splits a task into independent subtasks, runs subagents in parallel, coordinates dependencies, and synthesizes results.
+
+- **Ephemeral** — no persistent state between sessions
+- **Built-in** — no install, just `/fleet <task>` in any session
+- **Monitor** — `/tasks` shows subagent progress
+
+### Squad (third-party agent)
+
+[Squad](https://github.com/bradygaster/squad) is a custom agent (`--agent squad`) that provides persistent, named specialist teams. Unlike `/fleet`, Squad agents have identities, accumulated knowledge, and decision logs committed to git.
+
+- **Persistent** — team state in `.squad/`, knowledge compounds across sessions
+- **Installed** — `npm install -g @bradygaster/squad-cli && squad init`
+- **Activated** — `copilot --agent squad` or via Portal's agent picker
+
+### Portal Compatibility
+
+Portal already handles subagent events from the SDK:
+- `subagent.started` — shows subagent name in tool display
+- `subagent.completed` — marks completion
+- `subagent.failed` — shows failure
+
+Both `/fleet` and Squad generate these events. No special Portal support is needed — once the agent picker is built, users can select Squad (or any custom agent) and the multi-agent output renders naturally in the chat UI.
+
+**Squad specifically:** A user would install Squad CLI, run `squad init` in their repo, then in Portal select the "squad" agent from the picker. The Squad coordinator's output — team proposals, parallel agent work, decision logging — all flows through as normal Copilot responses and tool calls.
+
 ## Relationship to Guides
 
 ### The Landscape
