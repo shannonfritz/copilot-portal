@@ -221,18 +221,35 @@ function CopyButton({ text }: { text: string }) {
 	);
 }
 
-function CopyRichButton({ htmlRef }: { htmlRef: React.RefObject<HTMLDivElement | null> }) {
+function CopyRichButton({ htmlRef, plainText }: { htmlRef: React.RefObject<HTMLDivElement | null>; plainText?: string }) {
 	const [copied, setCopied] = useState(false);
-	const copy = () => {
+	const copy = async () => {
 		const html = htmlRef.current?.innerHTML;
 		if (!html) return;
 		const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1500); };
-		// Mirror what the browser does on manual select+copy: put rendered HTML into
-		// an offscreen contenteditable element, select it, then execCommand('copy').
+
+		// Strip dark-theme colors so paste into OneNote/Word/Teams looks clean.
+		// Keep structure (bold, lists, headings, code blocks) but remove color/background styles.
+		const cleanHtml = html
+			.replace(/\sstyle="[^"]*"/g, '') // strip all inline styles
+			.replace(/\sclass="[^"]*"/g, ''); // strip Tailwind classes
+
+		// Try Clipboard API first (needs HTTPS or localhost) — writes both rich + plain text
+		if (navigator.clipboard?.write) {
+			try {
+				const items: Record<string, Blob> = { 'text/html': new Blob([cleanHtml], { type: 'text/html' }) };
+				if (plainText) items['text/plain'] = new Blob([plainText], { type: 'text/plain' });
+				await navigator.clipboard.write([new ClipboardItem(items)]);
+				done();
+				return;
+			} catch { /* fall through to execCommand */ }
+		}
+
+		// Fallback: offscreen contenteditable + execCommand
 		const el = document.createElement('div');
 		el.contentEditable = 'true';
 		el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
-		el.innerHTML = html;
+		el.innerHTML = cleanHtml;
 		document.body.appendChild(el);
 		const range = document.createRange();
 		range.selectNodeContents(el);
@@ -277,7 +294,7 @@ function AssistantMessageBlock({ content, timestamp, bytes }: { content: string;
 					</span>
 				)}
 				<div className="flex items-center gap-1">
-					<CopyRichButton htmlRef={htmlRef} />
+					<CopyRichButton htmlRef={htmlRef} plainText={content} />
 					<CopyButton text={content} />
 				</div>
 			</div>
