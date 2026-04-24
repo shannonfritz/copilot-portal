@@ -122,6 +122,35 @@ async deselectAgent(): Promise<void>
 
 5. **Drawer handle space:** The handle is already compact. Adding agent name + session ID might be tight on mobile. May need to show agent OR session ID, not both, based on screen width.
 
+## Working Directory Dependency
+
+Agents discover their `.agent.md` files relative to the session's working directory. Portal currently sets all new sessions to `data/workspaces/default` (Portal's own directory), which means:
+
+- Repo-scoped agents (`.github/agents/`) won't be found
+- Squad's `.squad/` state won't be found
+- `/fleet` operates on the wrong files
+
+### Current State
+
+- **Shared mode** (connecting to existing CLI server) — CWD comes from where the CLI was started. Usually correct.
+- **New sessions via Portal UI** — get Portal's workspace path. Wrong for project work.
+- **Resumed sessions** — preserve their original CWD. Correct.
+
+### SDK Capabilities
+
+- `SessionConfig.workingDirectory` — set CWD at session creation ✅
+- No SDK method to change CWD after creation (the CLI's `/cwd` slash command is TUI-only, not an RPC call)
+
+### Required for Agent Support
+
+Before the agent picker is fully useful, Portal needs a way to set the working directory when creating a session. Options:
+
+1. **Text input** — type or paste a path when creating a new session
+2. **Recent directories** — remember previously used CWDs
+3. **Auto-detect** — if the CLI server was started from a project directory, use that as default
+
+This is a prerequisite for agents but also improves Portal generally — it's been on the roadmap as "Working Directory Selection."
+
 ## Implementation Order
 
 1. Server endpoints (pass-through to SDK)
