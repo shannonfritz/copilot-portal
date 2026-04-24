@@ -828,12 +828,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		};
 		this.broadcast(event);
 		return new Promise((resolve, reject) => {
+			// Long timeout — user may be thinking, away from keyboard, or composing a detailed response.
+			// 30 minutes matches CLI behavior of waiting patiently.
 			const timeout = setTimeout(() => {
 				if (this.pendingInputs.has(requestId)) {
 					this.pendingInputs.delete(requestId);
 					reject(new Error('Input timed out'));
 				}
-			}, 5 * 60 * 1000);
+			}, 30 * 60 * 1000);
 			this.pendingInputs.set(requestId, { resolve, reject, event, timeout });
 		});
 	}

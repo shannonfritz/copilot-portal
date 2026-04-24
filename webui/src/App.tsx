@@ -3164,16 +3164,18 @@ export default function App() {
 								)}
 								{(pendingInput.allowFreeform !== false || !pendingInput.choices?.length) && (
 									<div className="flex gap-2">
-										<input
-											className="flex-1 rounded-lg border px-3 py-2 text-sm"
-											style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+										<textarea
+											className="flex-1 rounded-lg border px-3 py-2 text-sm resize-none"
+											style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)', minHeight: 40, maxHeight: 200 }}
 											placeholder="Type your answer…"
 											value={freeformAnswer}
 											onChange={(e) => setFreeformAnswer(e.target.value)}
-											onKeyDown={(e) => { if (e.key === 'Enter') respondInput(freeformAnswer, true); }}
+											onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); respondInput(freeformAnswer, true); } }}
+											onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; }}
+											rows={1}
 											autoFocus
 										/>
-										<button className="rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={() => respondInput(freeformAnswer, true)} type="button">Send</button>
+										<button className="self-end rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={() => respondInput(freeformAnswer, true)} type="button">Send</button>
 									</div>
 								)}
 							</div>
