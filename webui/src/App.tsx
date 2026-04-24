@@ -246,9 +246,10 @@ function CopyRichButton({ htmlRef, plainText }: { htmlRef: React.RefObject<HTMLD
 		}
 
 		// Fallback: offscreen contenteditable + execCommand
+		// Force light-theme colors so paste into OneNote/Word doesn't carry dark theme
 		const el = document.createElement('div');
 		el.contentEditable = 'true';
-		el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+		el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;color:#000;background:#fff';
 		el.innerHTML = cleanHtml;
 		document.body.appendChild(el);
 		const range = document.createRange();
