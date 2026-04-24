@@ -132,15 +132,59 @@ async deselectAgent(): Promise<void>
 
 ## Relationship to Guides
 
-Agents and guides serve related but distinct purposes:
+### The Landscape
 
-| | Agents | Guides |
+GitHub's `agents.md` is the native, first-class way to customize Copilot's behavior. It's more powerful than Guides in some ways (tool restrictions, persona enforcement, auto-discovery, IDE integration) but Guides offer capabilities agents don't have.
+
+### Comparison
+
+| | Agents (`.agent.md`) | Guides (Portal) |
 |---|---|---|
-| **Where they live** | `.github/agents/`, `~/.copilot/agents/` | `data/guides/` |
-| **Who manages them** | User/repo outside Portal | Portal UI (create, edit, import) |
-| **What they control** | Tools, persona, system prompt | Domain context, behavioral rules |
-| **Scope** | Session-level (one active at a time) | Additive (applied as file-read context) |
-| **Switching** | Dropdown, instant | Apply button, loads content |
-| **Portal editable** | No (read-only, managed outside) | Yes (full editor) |
+| **Where they live** | `.github/agents/`, `~/.copilot/agents/` | `data/guides/`, importable from gists |
+| **Integration level** | System prompt (deep, enforced) | File-read context (advisory) |
+| **Tool control** | ✅ Specify available tools per agent | ❌ No tool restrictions |
+| **Boundaries** | ✅ Enforced (never/ask-first/always) | Advisory (guidance, not enforced) |
+| **Persona** | ✅ YAML frontmatter, auto-discovered | Informal, in markdown body |
+| **IDE support** | VS Code + CLI + any Copilot client | Portal only |
+| **Repo-scoped** | ✅ Committed in `.github/agents/`, shared with team | Local to Portal install (`data/`) |
+| **Multiple specialists** | One active per session, switchable | Additive — multiple can be applied (stacked) |
+| **Companion prompts** | ❌ None | ✅ Prompt tray with stacking |
+| **Self-updating** | ❌ Static files | ✅ `[DISCOVER]`/`[ASK]` patterns |
+| **In-UI editing** | ❌ Edit on disk | ✅ Full editor in Portal |
+| **Import/sharing** | Commit the file to repo | ✅ Import from GitHub Gists |
+| **Requires git repo** | ✅ Yes (for repo-scoped) | ❌ Works in any directory |
 
-They complement each other: an agent defines *what Copilot can do* (tools, persona); a guide adds *domain knowledge* (CRM fields, coding conventions, workflow steps).
+### How They Complement Each Other
+
+**Agents define *what Copilot can do*** — tools, persona, boundaries. An agent says "I'm a test engineer, I can write to `tests/` but never touch `src/`, I use Jest."
+
+**Guides add *domain knowledge and workflows*** — CRM field mappings, API patterns, business rules, self-updating context. A guide says "here's how our customer database works, here are the product IDs, here's how to look up a contact."
+
+**Prompts provide *quick-start queries*** — canned questions and tasks that are useful regardless of which agent is active. Prompts are unique to Portal and have no agents.md equivalent.
+
+### Stacking Behavior
+
+Guides can be stacked — applying multiple guides merges their context. This is powerful but has ordering implications: later guides can override earlier ones. This is different from agents, where only one is active at a time.
+
+A typical workflow might be:
+1. **Select agent**: `@api-agent` (defines tools, persona, boundaries)
+2. **Apply guide**: `crm-guide.md` (adds domain context about the CRM system)
+3. **Load prompts**: `crm-prompts.md` (quick-start queries for common CRM tasks)
+
+Each layer adds context without replacing the others.
+
+### Portal's Role Going Forward
+
+Portal should **embrace agents as the primary behavior customization** and position Guides as complementary:
+
+- **Agent picker** in the session drawer — first-class access to the agents ecosystem
+- **Guides** for domain context, self-updating workflows, and anything that needs Portal's editor/import features
+- **Prompts** remain Portal-exclusive — quick-start queries for any agent or guide
+
+The goal is not to recreate agents.md in Portal, but to make Portal the best place to *use* agents while adding value they don't provide (prompts, editing, import, token tracking, mobile access).
+
+### Migration Consideration
+
+Some existing Guides could be converted to agents.md for better native integration. A guide that primarily defines persona and boundaries ("always use TypeScript", "never modify production configs") would be better as an agent. A guide that provides domain data ("here are the CRM fields and their meanings") stays as a guide.
+
+Portal could potentially offer a "convert to agent" feature that generates an `.agent.md` file from a guide — but this is future work.
