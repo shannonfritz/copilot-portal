@@ -46,7 +46,7 @@ function CopyableTable({ children }: { children: React.ReactNode }) {
 				data-copy-button
 				onClick={copyTable}
 				className="rounded p-0.5 transition-opacity"
-				style={{ position: 'absolute', top: 0, right: 4, opacity: copied ? 0.8 : 0.3, color: 'inherit', lineHeight: 1, padding: '2px' }}
+				style={{ position: 'absolute', top: 2, right: 4, opacity: copied ? 0.8 : 0.3, color: 'inherit', lineHeight: 1, padding: '2px' }}
 				title="Copy table"
 			>
 				{copied
