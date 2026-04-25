@@ -157,6 +157,7 @@ function launch(cliUrl?: string) {
 	child.on('exit', (code) => {
 		if (code === RESTART_CODE) {
 			console.log('\n[Launcher] Restarting server...\n');
+			process.stdout.write('\x1b]0;Copilot Portal\x07');
 			// Don't stop CLI server on restart — it stays running
 			launch(cliUrl);
 		} else {
