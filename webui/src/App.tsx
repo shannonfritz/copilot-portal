@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
+import { BUILTIN_PRESETS, deriveTheme, applyTheme, clearThemeOverrides } from './theme';
 
 function CopyableTable({ children }: { children: React.ReactNode }) {
 	const tableRef = useRef<HTMLTableElement>(null);
@@ -660,18 +661,34 @@ export default function App() {
 	const isAgentActive = isStopping || isStreaming || isThinking || toolEvents.some(te => te.type === 'tool_start');
 	const [showPicker, setShowPicker] = useState(!hasSessionInUrl);
 	const [showQR, setShowQR] = useState(false);
-	const [theme, setThemeState] = useState<'dark' | 'light'>(() => {
-		const saved = localStorage.getItem('portal_theme');
-		if (saved === 'light' || saved === 'dark') return saved;
-		return 'dark';
+	const [showThemePicker, setShowThemePicker] = useState(false);
+	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string }>>(() => {
+		try { return JSON.parse(localStorage.getItem('portal_custom_themes') ?? '[]'); } catch { return []; }
 	});
-	useEffect(() => {
-		document.documentElement.setAttribute('data-theme', theme === 'dark' ? '' : theme);
-		localStorage.setItem('portal_theme', theme);
-		// Update browser/mobile status bar color to match theme
+	const [activeThemeId, setActiveThemeId] = useState<string>(() => localStorage.getItem('portal_theme') ?? 'dark');
+	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string } | null>(null);
+
+	const allPresets = [...BUILTIN_PRESETS, ...customThemes];
+	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
+
+	const applyPreset = useCallback((preset: { id: string; base: string; accent: string }) => {
+		clearThemeOverrides();
+		if (preset.id === 'dark') {
+			document.documentElement.removeAttribute('data-theme');
+		} else if (preset.id === 'light') {
+			document.documentElement.setAttribute('data-theme', 'light');
+		} else {
+			document.documentElement.removeAttribute('data-theme');
+			applyTheme(deriveTheme(preset.base, preset.accent));
+		}
+		setActiveThemeId(preset.id);
+		localStorage.setItem('portal_theme', preset.id);
 		const meta = document.querySelector('meta[name="theme-color"]');
-		if (meta) meta.setAttribute('content', theme === 'light' ? '#f0f0f0' : '#1e1e1e');
-	}, [theme]);
+		if (meta) meta.setAttribute('content', preset.base);
+	}, []);
+
+	// Apply theme on mount
+	useEffect(() => { applyPreset(activePreset); }, []);
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -2715,27 +2732,64 @@ export default function App() {
 								</svg>
 							)}
 						</button>
+						<div className="relative">
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
 							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-							onClick={() => setThemeState(t => t === 'dark' ? 'light' : 'dark')}
+							onClick={() => setShowThemePicker(v => !v)}
 							type="button"
-							title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+							title={`Theme: ${activePreset.name}`}
 						>
-							{theme === 'dark' ? (
-								<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-									<circle cx="12" cy="12" r="5" />
-									<line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-									<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-									<line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-									<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-								</svg>
-							) : (
-								<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-									<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-								</svg>
-							)}
+							<span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: activePreset.accent, border: '1px solid var(--border)', flexShrink: 0 }} />
 						</button>
+						{showThemePicker && (
+							<div className="absolute right-0 top-10 z-50 rounded-xl p-3 shadow-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 220 }} onClick={e => e.stopPropagation()}>
+								<div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Theme</div>
+								<div className="flex flex-col gap-1 mb-2">
+									{allPresets.map(p => (
+										<button key={p.id} type="button" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-left" style={{ background: p.id === activeThemeId ? 'var(--primary-tint)' : 'transparent', border: p.id === activeThemeId ? '1px solid var(--primary)' : '1px solid transparent' }}
+											onClick={() => { applyPreset(p); }}>
+											<span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: p.accent, border: '1px solid var(--border)' }} />
+											<span>{p.name}</span>
+											{!('builtIn' in p && p.builtIn) && (
+												<button type="button" className="ml-auto text-xs" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); localStorage.setItem('portal_custom_themes', JSON.stringify(updated)); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }}>✕</button>
+											)}
+										</button>
+									))}
+								</div>
+								{editingTheme ? (
+									<div className="border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+										<input className="w-full rounded px-2 py-1 text-sm mb-2" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="Theme name" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} />
+										<div className="flex items-center gap-2 mb-1">
+											<label className="text-xs" style={{ color: 'var(--text-muted)', width: 50 }}>Base</label>
+											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} style={{ width: 32, height: 24, border: 'none', padding: 0, cursor: 'pointer' }} />
+											<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{editingTheme.base}</span>
+										</div>
+										<div className="flex items-center gap-2 mb-2">
+											<label className="text-xs" style={{ color: 'var(--text-muted)', width: 50 }}>Accent</label>
+											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} style={{ width: 32, height: 24, border: 'none', padding: 0, cursor: 'pointer' }} />
+											<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{editingTheme.accent}</span>
+										</div>
+										<div className="flex gap-2 justify-end">
+											<button type="button" className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
+											<button type="button" className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} disabled={!editingTheme.name.trim()} onClick={() => {
+												const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+												if (!id) return;
+												const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent };
+												const updated = [...customThemes.filter(t => t.id !== id), newTheme];
+												setCustomThemes(updated);
+												localStorage.setItem('portal_custom_themes', JSON.stringify(updated));
+												applyPreset(newTheme);
+												setEditingTheme(null);
+											}}>Save</button>
+										</div>
+									</div>
+								) : (
+									<button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-center" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent })}>+ New Theme</button>
+								)}
+							</div>
+						)}
+						</div>
 						<div
 							className="size-2 rounded-full"
 							style={{
