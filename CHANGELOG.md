@@ -2,6 +2,96 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.5.6
+
+### Session Usage Tracking
+- Live token stats in session drawer: input/output tokens, reasoning, cached, requests
+- Copy button to share usage stats
+- Quota display: detects unlimited plans, shows reset date
+- Shows "tbd" before first message (avoids misleading data from quota API)
+
+### Update Reliability
+- Re-poll updates 15s after reconnect (fixes race condition on server restart)
+
+### Other
+- Actionable notifications persist until dismissed (with ✕ button)
+- Compact single-line usage stats display
+- GitHub username links to Copilot settings page
+
+## v0.5.5
+
+### Security Headers
+- Content-Security-Policy: script-src 'self', connect-src ws:/wss:, img-src data:, frame-ancestors 'none'
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: DENY
+- Referrer-Policy: no-referrer (prevents token leaking in referrer)
+- HSTS: enabled over tunnel (HTTPS only)
+- Cache-Control: no-store on API responses
+- Moved service worker registration out of inline script for CSP compliance
+
+### Notifications
+- Actionable notifications (e.g. Reload) persist until dismissed
+- Added dismiss button for persistent notifications
+
+### Other
+- README rewritten with Mermaid architecture diagram
+- Fixed browser warnings (deprecated meta tag, no-op service worker)
+- Added id/name to message textarea
+
+## v0.5.3
+
+### Guide Import from GitHub Gists
+- Import from URL option in +New dropdown
+- Paste a gist URL, preview discovered items, select and add to portal
+- Supports single pairs, prompts-only, and multi-item collections
+- File convention: name_guide.md / name_prompts.md
+- Import metadata tracked in data/imports.json
+
+### UI Polish
+- Two-row command key layout (Access / Server)
+- Picker: back-highlight, import highlight, stable delete row height
+- Import panel: fixed height, scrollable preview
+- Removed cancel link from thinking indicator
+- Multi-line prompt examples in dev guide
+
+### Portal Tour
+- Updated for import, tunnels, PWA, Add to Home Screen
+- New prompts for import and tunnel topics
+
+## v0.5.2
+
+### Tunnel Improvements
+- Auto-restart tunnel after server restart (wasRunning flag)
+- Immediate feedback on [t] press with double-press guard
+- [q] shows both local and tunnel URLs when tunnel is running
+
+### Update Flow
+- Single Update button handles both portal and package updates
+- Reload button on stale build notification (essential for PWA)
+- Streamlined restart/reload flow: Update → Restart → Reload
+
+### Console
+- Two-row command key layout grouped by purpose (Access / Server)
+
+## v0.5.1
+
+### DevTunnel Integration
+- [t] Tunnel toggle: start/stop a DevTunnel for remote access
+- [T] Security reset: destroys tunnel, rotates token, disconnects all clients
+- Config persistence in data/tunnel.json
+- Token + QR code printed on tunnel start with security warnings
+
+### PWA Support
+- Manifest, service worker, and icons for Add to Home Screen
+- Standalone mode (no browser chrome) on iOS and Android
+- Subtle install hint banner on 2nd+ mobile visit
+- Token persists in URL for iOS PWA compatibility
+
+### Fixes
+- WebSocket uses wss:// over HTTPS (fixes tunnel connections)
+- Removed server-side token gate on HTML page (APIs still authenticated)
+- JSON MIME type for manifest serving
+
 ## v0.5.0
 
 ### Guides & Prompts Redesign
