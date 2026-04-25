@@ -2458,7 +2458,9 @@ export default function App() {
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 									<span className="flex-1">{p.name}</span>
 									{!('builtIn' in p && p.builtIn) && (
-										<button type="button" className="text-xs px-1" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">✕</button>
+										<button type="button" className="ml-auto rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">
+											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+										</button>
 									)}
 								</button>
 							))}
