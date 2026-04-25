@@ -696,28 +696,42 @@ export default function App() {
 		if (meta) meta.setAttribute('content', preset.base);
 	}, []);
 
-	// Load themes from server on mount, apply saved active theme
+	// Load themes from server on mount, apply saved active theme (per-session if available)
 	useEffect(() => {
-		apiFetch('/api/themes').then(r => r.json()).then((data: { themes?: typeof customThemes; active?: string; defaultTheme?: string }) => {
-			if (data.themes?.length) setCustomThemes(data.themes);
-			if (data.defaultTheme) setDefaultThemeId(data.defaultTheme);
-			const savedActive = data.active ?? localStorage.getItem('portal_theme') ?? data.defaultTheme ?? 'dark';
-			const all = [...BUILTIN_PRESETS, ...(data.themes ?? [])];
-			const preset = all.find(p => p.id === savedActive) ?? BUILTIN_PRESETS[0];
+		const sessionId = new URLSearchParams(window.location.search).get('session');
+		Promise.all([
+			apiFetch('/api/themes').then(r => r.json()),
+			sessionId ? apiFetch(`/api/session-theme/${encodeURIComponent(sessionId)}`).then(r => r.json()) : Promise.resolve({ themeId: null }),
+		]).then(([themesData, sessionData]: [{ themes?: typeof customThemes; active?: string; defaultTheme?: string }, { themeId?: string | null }]) => {
+			if (themesData.themes?.length) setCustomThemes(themesData.themes);
+			if (themesData.defaultTheme) setDefaultThemeId(themesData.defaultTheme);
+			// Per-session theme takes priority, then global active, then default
+			const defId = themesData.defaultTheme ?? 'dark';
+			const themeId = sessionData.themeId ?? themesData.active ?? localStorage.getItem('portal_theme') ?? defId;
+			const all = [...BUILTIN_PRESETS, ...(themesData.themes ?? [])];
+			const preset = all.find(p => p.id === themeId) ?? BUILTIN_PRESETS[0];
 			applyPreset(preset);
 		}).catch(() => {
 			applyPreset(activePreset);
 		});
 	}, []);
 	// Load and apply theme for a specific session (or fall back to default)
+	// Fetches fresh data from server to avoid stale closure issues
 	const loadSessionTheme = useCallback((sessionId: string) => {
-		apiFetch(`/api/session-theme/${encodeURIComponent(sessionId)}`).then(r => r.json()).then((data: { themeId?: string | null }) => {
-			const themeId = data.themeId ?? defaultThemeId;
-			const all = [...BUILTIN_PRESETS, ...customThemes];
+		Promise.all([
+			apiFetch(`/api/session-theme/${encodeURIComponent(sessionId)}`).then(r => r.json()),
+			apiFetch('/api/themes').then(r => r.json()),
+		]).then(([sessionData, themesData]: [{ themeId?: string | null }, { themes?: ThemePreset[]; defaultTheme?: string }]) => {
+			const customs = themesData.themes ?? [];
+			const defId = themesData.defaultTheme ?? 'dark';
+			const themeId = sessionData.themeId ?? defId;
+			const all = [...BUILTIN_PRESETS, ...customs];
 			const preset = all.find(p => p.id === themeId) ?? BUILTIN_PRESETS[0];
+			setCustomThemes(customs);
+			setDefaultThemeId(defId);
 			applyPreset(preset);
 		}).catch(() => {});
-	}, [defaultThemeId, customThemes, applyPreset]);
+	}, [applyPreset]);
 
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -1603,7 +1617,7 @@ export default function App() {
 		wsRef.current = null;
 		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		connect();
-	}, [connect]);
+	}, [connect, loadSessionTheme]);
 
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
