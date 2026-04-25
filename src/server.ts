@@ -569,6 +569,34 @@ export class PortalServer {
 			return;
 		}
 
+		// Themes — server-stored so they sync across devices
+		if (url.pathname === '/api/themes' && method === 'GET') {
+			try {
+				const themesFile = path.join(this.dataDir, 'themes.json');
+				if (fs.existsSync(themesFile)) {
+					const data = JSON.parse(fs.readFileSync(themesFile, 'utf8'));
+					this.sendJson(res, 200, data);
+				} else {
+					this.sendJson(res, 200, { themes: [], active: 'dark' });
+				}
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+		if (url.pathname === '/api/themes' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const data = JSON.parse(body);
+				const themesFile = path.join(this.dataDir, 'themes.json');
+				fs.writeFileSync(themesFile, JSON.stringify(data, null, 2) + '\n');
+				this.sendJson(res, 200, { ok: true });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/restart' && method === 'POST') {
 			// Check for active turns across all sessions
 			const activeSessions = this.pool.getActiveTurnSessions();

@@ -662,14 +662,22 @@ export default function App() {
 	const [showPicker, setShowPicker] = useState(!hasSessionInUrl);
 	const [showQR, setShowQR] = useState(false);
 	const [showThemePicker, setShowThemePicker] = useState(false);
-	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string; text?: string }>>(() => {
-		try { return JSON.parse(localStorage.getItem('portal_custom_themes') ?? '[]'); } catch { return []; }
-	});
+	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string; text?: string }>>([]);
 	const [activeThemeId, setActiveThemeId] = useState<string>(() => localStorage.getItem('portal_theme') ?? 'dark');
 	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string; text: string } | null>(null);
 
 	const allPresets = [...BUILTIN_PRESETS, ...customThemes];
 	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
+
+	// Save themes to server whenever they change
+	const saveThemesToServer = useCallback((themes: typeof customThemes, active: string) => {
+		apiFetch('/api/themes', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ themes, active }),
+		}).catch(() => {});
+		localStorage.setItem('portal_theme', active);
+	}, []);
 
 	const applyPreset = useCallback((preset: { id: string; base: string; accent: string; text?: string }) => {
 		clearThemeOverrides();
@@ -687,8 +695,18 @@ export default function App() {
 		if (meta) meta.setAttribute('content', preset.base);
 	}, []);
 
-	// Apply theme on mount
-	useEffect(() => { applyPreset(activePreset); }, []);
+	// Load themes from server on mount, apply saved active theme
+	useEffect(() => {
+		apiFetch('/api/themes').then(r => r.json()).then((data: { themes?: typeof customThemes; active?: string }) => {
+			if (data.themes?.length) setCustomThemes(data.themes);
+			const savedActive = data.active ?? localStorage.getItem('portal_theme') ?? 'dark';
+			const all = [...BUILTIN_PRESETS, ...(data.themes ?? [])];
+			const preset = all.find(p => p.id === savedActive) ?? BUILTIN_PRESETS[0];
+			applyPreset(preset);
+		}).catch(() => {
+			applyPreset(activePreset);
+		});
+	}, []);
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -2428,6 +2446,7 @@ export default function App() {
 								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId && !editingTheme ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId && !editingTheme ? 'var(--primary)' : 'var(--border)'}` }}
 									onClick={() => {
 										applyPreset(p);
+										if (!editingTheme) saveThemesToServer(customThemes, p.id);
 										if (editingTheme) {
 											// Copy this preset's colors into the editor
 											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
@@ -2439,7 +2458,7 @@ export default function App() {
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 									<span className="flex-1">{p.name}</span>
 									{!('builtIn' in p && p.builtIn) && (
-										<button type="button" className="text-xs px-1" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); localStorage.setItem('portal_custom_themes', JSON.stringify(updated)); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">✕</button>
+										<button type="button" className="text-xs px-1" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">✕</button>
 									)}
 								</button>
 							))}
@@ -2476,7 +2495,7 @@ export default function App() {
 										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
 										const updated = [...customThemes.filter(t => t.id !== id), newTheme];
 										setCustomThemes(updated);
-										localStorage.setItem('portal_custom_themes', JSON.stringify(updated));
+										saveThemesToServer(updated, id);
 										applyPreset(newTheme);
 										setEditingTheme(null);
 									}}>Save</button>
