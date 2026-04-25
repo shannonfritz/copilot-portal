@@ -190,6 +190,33 @@ Both `/fleet` and Squad generate these events. No special Portal support is need
 
 **Squad specifically:** A user would install Squad CLI, run `squad init` in their repo, then in Portal select the "squad" agent from the picker. The Squad coordinator's output — team proposals, parallel agent work, decision logging — all flows through as normal Copilot responses and tool calls.
 
+## Lessons from Squad Uplink
+
+[Squad Uplink](https://github.com/swigerb/squad-uplink) is a fork of Portal that adds deep Squad integration. It was built on Portal's foundation by Brian Swiger, who added Squad-specific APIs, a team state panel, retro themes, and live file watching — all in about 12 hours. It validates Portal's architecture but highlights gaps that, if filled in Portal itself, would eliminate the need to fork.
+
+### What Squad Uplink adds (and what Portal could generalize)
+
+| Squad Uplink feature | What it does | Portal equivalent (to build) |
+|---|---|---|
+| **Auto-inject team context** | Injects team roster + decisions as first message in every session | **Startup guide** — auto-apply a guide when a session starts, optionally tied to the active agent |
+| **Live .squad/ file watching** | `fs.watch()` on `.squad/`, broadcasts changes via WebSocket, panel auto-refreshes | **Workspace file watcher** — generalized file watching for guides, agents, or any workspace files |
+| **Auto-generated prompts** | Parses agent charters into one-click prompts automatically | **Agent-to-prompts** — when an agent is selected, auto-generate prompts from its charter/instructions |
+| **Squad panel** | Shows team roster, decisions log, .squad/ file browser | **Agent state tab** — show agent-related files in the session drawer or guides panel |
+| **Retro themes** | 8 switchable terminal themes | Could add theme support, but not a priority |
+
+### Priority for eliminating the need to fork
+
+1. **Agent picker + CWD** — lets Squad users select the agent and discover `.squad/` files without forking
+2. **Auto-apply guide on agent select** — replaces auto-inject by associating a guide with an agent
+3. **Auto-generate prompts from agent** — replaces charter-to-prompt parsing by reading the agent's instructions
+4. **File watching** (nice-to-have) — live updates when workspace files change externally
+
+Items 1-3 would cover the core functionality that drove the fork. Item 4 is polish that benefits everyone, not just Squad users.
+
+### Design principle
+
+Rather than adding Squad-specific code, Portal should add **generalized features** that happen to serve Squad's use case. Auto-apply, file watching, and agent-to-prompts are useful for any custom agent — not just Squad.
+
 ## Relationship to Guides
 
 ### The Landscape
