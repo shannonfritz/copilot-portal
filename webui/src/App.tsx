@@ -4,7 +4,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import type { ComponentProps } from 'react';
-import { BUILTIN_PRESETS, deriveTheme, applyTheme, clearThemeOverrides } from './theme';
+import { BUILTIN_PRESETS, deriveTheme, applyTheme, clearThemeOverrides, isDark } from './theme';
 
 function CopyableTable({ children }: { children: React.ReactNode }) {
 	const tableRef = useRef<HTMLTableElement>(null);
@@ -662,16 +662,16 @@ export default function App() {
 	const [showPicker, setShowPicker] = useState(!hasSessionInUrl);
 	const [showQR, setShowQR] = useState(false);
 	const [showThemePicker, setShowThemePicker] = useState(false);
-	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string }>>(() => {
+	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string; text?: string }>>(() => {
 		try { return JSON.parse(localStorage.getItem('portal_custom_themes') ?? '[]'); } catch { return []; }
 	});
 	const [activeThemeId, setActiveThemeId] = useState<string>(() => localStorage.getItem('portal_theme') ?? 'dark');
-	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string } | null>(null);
+	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string; text: string } | null>(null);
 
 	const allPresets = [...BUILTIN_PRESETS, ...customThemes];
 	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
 
-	const applyPreset = useCallback((preset: { id: string; base: string; accent: string }) => {
+	const applyPreset = useCallback((preset: { id: string; base: string; accent: string; text?: string }) => {
 		clearThemeOverrides();
 		if (preset.id === 'dark') {
 			document.documentElement.removeAttribute('data-theme');
@@ -679,7 +679,7 @@ export default function App() {
 			document.documentElement.setAttribute('data-theme', 'light');
 		} else {
 			document.documentElement.removeAttribute('data-theme');
-			applyTheme(deriveTheme(preset.base, preset.accent));
+			applyTheme(deriveTheme(preset.base, preset.accent, preset.text));
 		}
 		setActiveThemeId(preset.id);
 		localStorage.setItem('portal_theme', preset.id);
@@ -2430,10 +2430,10 @@ export default function App() {
 										applyPreset(p);
 										if (editingTheme) {
 											// Copy this preset's colors into the editor
-											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent });
+											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
 										} else if (!('builtIn' in p && p.builtIn)) {
 											// Edit existing custom theme
-											setEditingTheme({ name: p.name, base: p.base, accent: p.accent });
+											setEditingTheme({ name: p.name, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
 										}
 									}}>
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
@@ -2450,28 +2450,28 @@ export default function App() {
 									<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Name</label>
 									<input className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="My theme" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} autoFocus />
 								</div>
-								<div className="flex gap-4 mb-3">
-									<div className="flex-1 min-w-0">
-										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Base</label>
-										<div className="flex items-center gap-2">
-											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
-											<input className="min-w-0 w-full rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.base} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, base: e.target.value }); } }} />
+								{(['base', 'accent', 'text'] as const).map(field => {
+									const label = field === 'base' ? 'Base' : field === 'accent' ? 'Accent' : 'Text';
+									const val = editingTheme[field];
+									const updateField = (hex: string, live: boolean) => {
+										const t = { ...editingTheme, [field]: hex };
+										setEditingTheme(t);
+										if (live) { clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }
+									};
+									return (
+										<div key={field} className="flex items-center gap-2 mb-2">
+											<label className="text-xs font-medium shrink-0" style={{ color: 'var(--text-muted)', width: 44 }}>{label}</label>
+											<input type="color" value={val || (field === 'text' ? (isDark(editingTheme.base) ? '#cccccc' : '#1f1f1f') : '#000000')} onChange={e => updateField(e.target.value, true)} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+											<input className="min-w-0 flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder={field === 'text' ? 'auto' : ''} value={val} onChange={e => updateField(e.target.value, /^#[0-9a-fA-F]{6}$/.test(e.target.value))} />
 										</div>
-									</div>
-									<div className="flex-1 min-w-0">
-										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Accent</label>
-										<div className="flex items-center gap-2">
-											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
-											<input className="min-w-0 w-full rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.accent} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, accent: e.target.value }); } }} />
-										</div>
-									</div>
-								</div>
+									);
+								})}
 								<div className="flex gap-2 justify-end">
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
 										const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 										if (!id) return;
-										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent };
+										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
 										const updated = [...customThemes.filter(t => t.id !== id), newTheme];
 										setCustomThemes(updated);
 										localStorage.setItem('portal_custom_themes', JSON.stringify(updated));
@@ -2481,7 +2481,7 @@ export default function App() {
 								</div>
 							</div>
 						) : (
-							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent })}>+ New Theme</button>
+							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent, text: '' })}>+ New Theme</button>
 						)}
 					</div>
 				</div>

@@ -86,6 +86,7 @@ export interface ThemePreset {
 	name: string;
 	base: string;
 	accent: string;
+	text?: string;
 	builtIn?: boolean;
 }
 
@@ -93,11 +94,16 @@ export interface ThemeVariables {
 	[key: string]: string;
 }
 
-/** Derive a full set of CSS variables from base + accent colors */
-export function deriveTheme(base: string, accent: string): ThemeVariables {
+/** Derive a full set of CSS variables from base + accent + optional text colors */
+export function deriveTheme(base: string, accent: string, textColor?: string): ThemeVariables {
 	const dark = isDark(base);
 	const contrastColor = dark ? '#ffffff' : '#000000';
 	const status = dark ? STATUS_DARK : STATUS_LIGHT;
+
+	// Text colors: use provided textColor or auto-derive from base
+	const text = textColor ?? (dark ? '#cccccc' : '#1f1f1f');
+	const textMuted = textColor ? mixColors(base, text, 0.5) : (dark ? '#858585' : '#666666');
+	const textBright = textColor ? adjustBrightness(text, dark ? 15 : -15) : contrastColor;
 
 	// Ensure status colors have enough contrast against the base
 	const error = ensureContrast(status.error, base);
@@ -114,9 +120,9 @@ export function deriveTheme(base: string, accent: string): ThemeVariables {
 		'--bg': base,
 		'--surface': adjustBrightness(base, dark ? 5 : -3),
 		'--border': adjustBrightness(base, dark ? 15 : -12),
-		'--text': dark ? '#cccccc' : '#1f1f1f',
-		'--text-muted': dark ? '#858585' : '#666666',
-		'--text-bright': contrastColor,
+		'--text': text,
+		'--text-muted': textMuted,
+		'--text-bright': textBright,
 		'--primary': accent,
 		'--primary-hover': adjustBrightness(accent, dark ? 10 : -10),
 		'--error': error,
