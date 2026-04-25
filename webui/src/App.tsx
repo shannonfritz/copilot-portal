@@ -2459,8 +2459,10 @@ export default function App() {
 									}}>
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 									<span className="flex-1">{p.name}</span>
-									<button type="button" className="shrink-0 p-0.5" style={{ opacity: p.id === defaultThemeId ? 1 : 0.25, color: p.id === defaultThemeId ? 'var(--warning)' : 'var(--text-muted)' }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
-										{p.id === defaultThemeId ? '★' : '☆'}
+									<button type="button" className="shrink-0 rounded p-1" style={{ opacity: p.id === defaultThemeId ? 0.9 : 0.4 }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
+										<svg className="size-4" viewBox="0 0 24 24" fill={p.id === defaultThemeId ? 'var(--warning)' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+											<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+										</svg>
 									</button>
 									{!('builtIn' in p && p.builtIn) && (
 										<button type="button" className="ml-auto rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">
