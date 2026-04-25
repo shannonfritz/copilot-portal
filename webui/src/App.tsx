@@ -2740,7 +2740,10 @@ export default function App() {
 							type="button"
 							title={`Theme: ${activePreset.name}`}
 						>
-							<span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: activePreset.accent, border: '1px solid var(--border)', flexShrink: 0 }} />
+							<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+								<circle cx="12" cy="12" r="10" />
+								<path d="M12 2a7 7 0 000 20" fill="currentColor" opacity="0.3" />
+							</svg>
 						</button>
 						{showThemePicker && (
 							<div className="absolute right-0 top-10 z-50 rounded-xl p-3 shadow-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 220 }} onClick={e => e.stopPropagation()}>
