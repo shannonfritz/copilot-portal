@@ -665,7 +665,7 @@ export default function App() {
 	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string; text?: string }>>([]);
 	const [activeThemeId, setActiveThemeId] = useState<string>(() => localStorage.getItem('portal_theme') ?? 'dark');
 	const [defaultThemeId, setDefaultThemeId] = useState<string>('dark');
-	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string; text: string } | null>(null);
+	const [editingTheme, setEditingTheme] = useState<{ editId: string; name: string; base: string; accent: string; text: string } | null>(null);
 
 	const allPresets = [...BUILTIN_PRESETS, ...customThemes];
 	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
@@ -2464,48 +2464,100 @@ export default function App() {
 					onClick={() => { setShowThemePicker(false); setEditingTheme(null); if (editingTheme) applyPreset(activePreset); }}
 				>
 					<div
-						className="w-full max-w-sm rounded-2xl p-4"
-						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+						className="w-full max-w-sm rounded-2xl p-4 overflow-y-auto"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: 'calc(100vh - 5rem)' }}
 						onClick={(e) => e.stopPropagation()}
 					>
 						<h2 className="font-semibold mb-3">Theme</h2>
 						<div className="flex flex-col gap-1 mb-3">
-							{allPresets.map(p => (
-								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId && !editingTheme ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId && !editingTheme ? 'var(--primary)' : 'var(--border)'}` }}
-									onClick={() => {
-										applyPreset(p);
-										if (!editingTheme) {
-											saveThemesToServer(customThemes, p.id);
-											// Save per-session theme
-											if (activeSessionId) {
-												apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
-													method: 'POST', headers: { 'Content-Type': 'application/json' },
-													body: JSON.stringify({ themeId: p.id }),
-												}).catch(() => {});
-											}
-										}
-										if (editingTheme) {
-											// Copy this preset's colors into the editor
-											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
-										} else if (!('builtIn' in p && p.builtIn)) {
-											// Edit existing custom theme
-											setEditingTheme({ name: p.name, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
-										}
-									}}>
-									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
-									<span className="flex-1">{p.name}</span>
-									<button type="button" className="shrink-0 rounded p-1" style={{ opacity: p.id === defaultThemeId ? 0.9 : 0.4 }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
-										<svg className="size-4" viewBox="0 0 24 24" fill={p.id === defaultThemeId ? 'var(--warning)' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-											<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-										</svg>
-									</button>
-									{!('builtIn' in p && p.builtIn) && (
-										<button type="button" className="ml-auto rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">
-											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+							{allPresets.map(p => {
+								const isActive = p.id === activeThemeId && !editingTheme;
+								const isEditing = editingTheme?.editId === p.id;
+								const isCustom = !('builtIn' in p && p.builtIn);
+								return (
+									<div key={p.id}>
+										<button type="button" className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: isActive ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}` }}
+											onClick={() => {
+												if (isEditing) return;
+												applyPreset(p);
+												saveThemesToServer(customThemes, p.id);
+												if (activeSessionId) {
+													apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+														method: 'POST', headers: { 'Content-Type': 'application/json' },
+														body: JSON.stringify({ themeId: p.id }),
+													}).catch(() => {});
+												}
+											}}>
+											<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
+											<span className="flex-1">{p.name}</span>
+											<button type="button" className="shrink-0 rounded p-1" style={{ opacity: p.id === defaultThemeId ? 0.9 : 0.4 }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
+												<svg className="size-4" viewBox="0 0 24 24" fill={p.id === defaultThemeId ? 'var(--warning)' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+												</svg>
+											</button>
+											{isCustom && (
+												<button type="button" className="shrink-0 rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => {
+													e.stopPropagation();
+													if (isEditing) { setEditingTheme(null); applyPreset(activePreset); }
+													else setEditingTheme({ editId: p.id, name: p.name, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
+												}} title="Edit theme">
+													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+												</button>
+											)}
+											{isCustom && (
+												<button type="button" className="shrink-0 rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); if (isEditing) setEditingTheme(null); }} title="Delete theme">
+													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+												</button>
+											)}
 										</button>
-									)}
-								</button>
-							))}
+										{isEditing && editingTheme && (
+											<div className="rounded-xl p-3 mt-1" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+												<div className="mb-3">
+													<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Name</label>
+													<input className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="My theme" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} autoFocus />
+												</div>
+												{(['base', 'accent', 'text'] as const).map(field => {
+													const label = field === 'base' ? 'Base' : field === 'accent' ? 'Accent' : 'Text';
+													const val = editingTheme[field];
+													const updateField = (hex: string, live: boolean) => {
+														const t = { ...editingTheme, [field]: hex };
+														setEditingTheme(t);
+														if (live) { clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }
+													};
+													return (
+														<div key={field} className="flex items-center gap-2 mb-2">
+															<label className="text-xs font-medium shrink-0" style={{ color: 'var(--text-muted)', width: 44 }}>{label}</label>
+															<input type="color" value={val || (field === 'text' ? (isDark(editingTheme.base) ? '#cccccc' : '#1f1f1f') : '#000000')} onChange={e => updateField(e.target.value, true)} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+															<input className="min-w-0 flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder={field === 'text' ? 'auto' : ''} value={val} onChange={e => updateField(e.target.value, /^#[0-9a-fA-F]{6}$/.test(e.target.value))} />
+														</div>
+													);
+												})}
+												<div className="flex gap-2 justify-end">
+													<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { const rp = generateRandomPalette(); const t = { ...editingTheme, ...rp }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }}>🎲 Surprise me</button>
+													<div className="flex-1" />
+													<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
+													<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
+														const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+														if (!id) return;
+														const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
+														const updated = [...customThemes.filter(t => t.id !== p.id && t.id !== id), newTheme];
+														setCustomThemes(updated);
+														saveThemesToServer(updated, id);
+														applyPreset(newTheme);
+														setEditingTheme(null);
+														if (activeSessionId) {
+															apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+																method: 'POST', headers: { 'Content-Type': 'application/json' },
+																body: JSON.stringify({ themeId: id }),
+															}).catch(() => {});
+														}
+													}}>Save</button>
+												</div>
+											</div>
+										)}
+									</div>
+								);
+							})}
 						</div>
 						{activeThemeId !== defaultThemeId && !editingTheme && (
 							<button type="button" className="w-full rounded-xl px-3 py-2 text-xs mb-3" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => {
@@ -2520,7 +2572,7 @@ export default function App() {
 								}
 							}}>Use Default (★ {allPresets.find(p => p.id === defaultThemeId)?.name ?? 'Dark'})</button>
 						)}
-						{editingTheme ? (
+						{editingTheme?.editId === '__new__' ? (
 							<div className="rounded-xl p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 								<div className="mb-3">
 									<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Name</label>
@@ -2543,7 +2595,7 @@ export default function App() {
 									);
 								})}
 								<div className="flex gap-2 justify-end">
-									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { const p = generateRandomPalette(); const t = { ...editingTheme, ...p }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }}>🎲 Surprise me</button>
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { const rp = generateRandomPalette(); const t = { ...editingTheme, ...rp }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }}>🎲 Surprise me</button>
 									<div className="flex-1" />
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
@@ -2555,11 +2607,17 @@ export default function App() {
 										saveThemesToServer(updated, id);
 										applyPreset(newTheme);
 										setEditingTheme(null);
+										if (activeSessionId) {
+											apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+												method: 'POST', headers: { 'Content-Type': 'application/json' },
+												body: JSON.stringify({ themeId: id }),
+											}).catch(() => {});
+										}
 									}}>Save</button>
 								</div>
 							</div>
-						) : (
-							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent, text: '' })}>+ New Theme</button>
+						) : !editingTheme && (
+							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ editId: '__new__', name: '', base: activePreset.base, accent: activePreset.accent, text: '' })}>+ New Theme</button>
 						)}
 					</div>
 				</div>
