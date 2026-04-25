@@ -178,3 +178,46 @@ export const BUILTIN_PRESETS: ThemePreset[] = [
 	{ id: 'dark', name: 'Dark', base: '#1e1e1e', accent: '#4fc3f7', builtIn: true },
 	{ id: 'light', name: 'Light', base: '#f0f0f0', accent: '#0969da', builtIn: true },
 ];
+
+/** Convert HSL (h: 0-360, s: 0-100, l: 0-100) to hex */
+function hslToHex(h: number, s: number, l: number): string {
+	h = ((h % 360) + 360) % 360;
+	s /= 100; l /= 100;
+	const a = s * Math.min(l, 1 - l);
+	const f = (n: number) => {
+		const k = (n + h / 30) % 12;
+		return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+	};
+	return rgbToHex(f(0), f(8), f(4));
+}
+
+/** Generate a random harmonious theme palette */
+export function generateRandomPalette(): { base: string; accent: string; text: string } {
+	const baseHue = Math.random() * 360;
+	const isDarkTheme = Math.random() > 0.35; // slight bias toward dark
+	const baseSat = 10 + Math.random() * 25; // subtle saturation in the base
+	const baseLight = isDarkTheme ? 10 + Math.random() * 12 : 88 + Math.random() * 8;
+
+	// Pick a harmony strategy
+	const strategies = ['complementary', 'analogous', 'triadic', 'split'] as const;
+	const strategy = strategies[Math.floor(Math.random() * strategies.length)];
+	let accentHue: number;
+	switch (strategy) {
+		case 'complementary': accentHue = baseHue + 180; break;
+		case 'analogous': accentHue = baseHue + 30 + Math.random() * 30; break;
+		case 'triadic': accentHue = baseHue + (Math.random() > 0.5 ? 120 : 240); break;
+		case 'split': accentHue = baseHue + (Math.random() > 0.5 ? 150 : 210); break;
+	}
+	const accentSat = 55 + Math.random() * 30;
+	const accentLight = isDarkTheme ? 55 + Math.random() * 20 : 35 + Math.random() * 20;
+
+	// Text: tinted toward the base hue for cohesion
+	const textSat = 5 + Math.random() * 10;
+	const textLight = isDarkTheme ? 70 + Math.random() * 15 : 15 + Math.random() * 15;
+
+	return {
+		base: hslToHex(baseHue, baseSat, baseLight),
+		accent: hslToHex(accentHue, accentSat, accentLight),
+		text: hslToHex(baseHue, textSat, textLight),
+	};
+}
