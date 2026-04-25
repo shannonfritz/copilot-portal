@@ -1,13 +1,31 @@
 # Theme System Design
 
-Global theme support with preset picker, custom theme editor, and auto-derived colors.
+Global theme support with preset picker, custom theme editor, auto-derived colors, and per-session overrides.
 
-## Current State
+## Implementation Progress
 
-- Dark and Light themes via CSS custom properties (`[data-theme="light"]`)
-- 25 CSS variables define a complete theme
-- Sun/moon toggle in header bar
-- Theme persists in localStorage
+### Done
+- Theme derivation engine: `deriveTheme(base, accent, text?)` generates 25+ CSS variables
+- WCAG contrast checking: body text, user bubbles, status colors all shift for readability
+- Dark and Light built-in presets via CSS `[data-theme="light"]`
+- `--button-contrast` and `--primary-contrast` for text on colored backgrounds
+- Half-moon icon in header opens theme picker (full-screen overlay panel)
+- Custom theme editor with three color pickers (Base, Accent, Text)
+- Live preview as you drag color pickers
+- "🎲 Surprise me" random palette generator (complementary, analogous, triadic, split-complementary)
+- Edit existing custom themes by clicking them
+- Copy preset colors into editor by clicking a preset while editing
+- Server API endpoints (`GET/POST /api/themes`) for cross-device storage
+
+### Bug / Not Working Yet
+- Server save not persisting (themes.json not being created — likely auth/timing issue)
+- Custom themes lost on page reload
+- `<meta theme-color>` not updating for custom themes on mobile
+
+### Not Started
+- Default theme selection (star)
+- Per-session theme override
+- Session drawer theme picker
 
 ## Design
 
@@ -140,21 +158,46 @@ Only base + accent + name are stored. All other values are computed at runtime.
 └─────────────────────────────┘
 ```
 
-### Future: Per-Session Themes
+### Default Theme (Star)
 
-The global theme is the default. Later, sessions can override:
-- Store `themeId` per session (alongside model, agent)
-- On session switch, apply session theme or fall back to global
-- Agent configs could specify a preferred theme
+In the theme picker, each theme has a ☆/★ icon. Click to set it as the **default**:
+- One theme is always starred (default: Dark)
+- The default applies to all sessions that don't have an override
+- Starred theme is stored server-side
+- Built-in themes (Dark, Light) can be starred too
 
-## Implementation Order
+### Per-Session Theme Override
 
-1. Color derivation utilities (luminance, contrast, lighten/darken, derive full palette from base+accent)
-2. Replace sun/moon toggle with theme picker popover (Dark, Light presets)
-3. Add "+ New Theme" with inline editor (two color pickers + name)
-4. Live preview via CSS variable injection
-5. Save/delete custom themes in localStorage
-6. Per-session override (future)
+In the session drawer (next to model selector), a theme dropdown:
+- Shows current theme (inherited from default, or overridden)
+- Selecting a theme overrides the default for this session only
+- **"Use Default"** button clears the override → falls back to the starred default
+- Override stored per-session on the server (like approval rules)
+
+### Behavior on Session Switch
+
+1. Load the session's theme override (if any)
+2. If no override → apply the starred default
+3. Theme transitions smoothly (CSS variables update, no flash)
+
+### Behavior on Theme Edit
+
+- Editing a theme that's currently the default → all sessions using the default update live
+- Editing a theme that's overridden on specific sessions → those sessions update live
+- Deleting a theme that sessions reference → they fall back to default
+
+## Implementation Order (Revised)
+
+1. ~~Color derivation utilities~~ ✅
+2. ~~Theme picker overlay with presets~~ ✅
+3. ~~Custom theme editor (base + accent + text)~~ ✅
+4. ~~Live preview~~ ✅
+5. ~~Surprise Me palette generator~~ ✅
+6. ~~WCAG contrast safety~~ ✅
+7. Fix server save/load bug
+8. Default theme selection (star icon)
+9. Per-session theme in session drawer
+10. Agent-preferred theme (future)
 
 ## Open Questions
 
