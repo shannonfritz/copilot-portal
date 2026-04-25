@@ -2425,8 +2425,17 @@ export default function App() {
 						<h2 className="font-semibold mb-3">Theme</h2>
 						<div className="flex flex-col gap-1 mb-3">
 							{allPresets.map(p => (
-								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId ? 'var(--primary)' : 'var(--border)'}` }}
-									onClick={() => applyPreset(p)}>
+								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId && !editingTheme ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId && !editingTheme ? 'var(--primary)' : 'var(--border)'}` }}
+									onClick={() => {
+										applyPreset(p);
+										if (editingTheme) {
+											// Copy this preset's colors into the editor
+											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent });
+										} else if (!('builtIn' in p && p.builtIn)) {
+											// Edit existing custom theme
+											setEditingTheme({ name: p.name, base: p.base, accent: p.accent });
+										}
+									}}>
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 									<span className="flex-1">{p.name}</span>
 									{!('builtIn' in p && p.builtIn) && (
