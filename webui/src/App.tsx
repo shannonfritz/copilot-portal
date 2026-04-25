@@ -664,17 +664,18 @@ export default function App() {
 	const [showThemePicker, setShowThemePicker] = useState(false);
 	const [customThemes, setCustomThemes] = useState<Array<{ id: string; name: string; base: string; accent: string; text?: string }>>([]);
 	const [activeThemeId, setActiveThemeId] = useState<string>(() => localStorage.getItem('portal_theme') ?? 'dark');
+	const [defaultThemeId, setDefaultThemeId] = useState<string>('dark');
 	const [editingTheme, setEditingTheme] = useState<{ name: string; base: string; accent: string; text: string } | null>(null);
 
 	const allPresets = [...BUILTIN_PRESETS, ...customThemes];
 	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
 
 	// Save themes to server whenever they change
-	const saveThemesToServer = useCallback((themes: typeof customThemes, active: string) => {
+	const saveThemesToServer = useCallback((themes: typeof customThemes, active: string, defTheme?: string) => {
 		apiFetch('/api/themes', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ themes, active }),
+			body: JSON.stringify({ themes, active, defaultTheme: defTheme }),
 		}).catch(() => {});
 		localStorage.setItem('portal_theme', active);
 	}, []);
@@ -697,9 +698,10 @@ export default function App() {
 
 	// Load themes from server on mount, apply saved active theme
 	useEffect(() => {
-		apiFetch('/api/themes').then(r => r.json()).then((data: { themes?: typeof customThemes; active?: string }) => {
+		apiFetch('/api/themes').then(r => r.json()).then((data: { themes?: typeof customThemes; active?: string; defaultTheme?: string }) => {
 			if (data.themes?.length) setCustomThemes(data.themes);
-			const savedActive = data.active ?? localStorage.getItem('portal_theme') ?? 'dark';
+			if (data.defaultTheme) setDefaultThemeId(data.defaultTheme);
+			const savedActive = data.active ?? localStorage.getItem('portal_theme') ?? data.defaultTheme ?? 'dark';
 			const all = [...BUILTIN_PRESETS, ...(data.themes ?? [])];
 			const preset = all.find(p => p.id === savedActive) ?? BUILTIN_PRESETS[0];
 			applyPreset(preset);
@@ -2457,6 +2459,9 @@ export default function App() {
 									}}>
 									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 									<span className="flex-1">{p.name}</span>
+									<button type="button" className="shrink-0 p-0.5" style={{ opacity: p.id === defaultThemeId ? 1 : 0.25, color: p.id === defaultThemeId ? 'var(--warning)' : 'var(--text-muted)' }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
+										{p.id === defaultThemeId ? '★' : '☆'}
+									</button>
 									{!('builtIn' in p && p.builtIn) && (
 										<button type="button" className="ml-auto rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">
 											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
