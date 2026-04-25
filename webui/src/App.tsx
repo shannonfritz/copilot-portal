@@ -2153,7 +2153,7 @@ export default function App() {
 								{confirmOverwrite && (
 									<div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--warning-tint)', border: '1px solid var(--warning)' }}>
 										<span className="flex-1 text-xs" style={{ color: 'var(--warning)' }}>"{newGuideName}" already exists. Overwrite?</span>
-										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: '#111' }} onClick={() => { setConfirmOverwrite(false); doAddGuide(); }}>Overwrite</button>
+										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: 'var(--button-contrast)' }} onClick={() => { setConfirmOverwrite(false); doAddGuide(); }}>Overwrite</button>
 										<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmOverwrite(false)}>Cancel</button>
 									</div>
 								)}
@@ -2213,7 +2213,7 @@ export default function App() {
 											}
 										}} type="button">{editingGuide ? 'Cancel Edit' : 'Edit'}</button>
 										{editingGuide && (
-											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--success)', color: '#111' }} onClick={async () => {
+											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--success)', color: 'var(--button-contrast)' }} onClick={async () => {
 												try {
 													const newName = editingName ?? editingGuide.id;
 													const renamed = newName !== viewingGuide.id;
@@ -2277,7 +2277,7 @@ export default function App() {
 								{pendingDiscard && (
 									<div className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--warning-tint)', border: '1px solid var(--warning)' }}>
 										<span className="flex-1 text-xs" style={{ color: 'var(--warning)' }}>You have unsaved changes.</span>
-										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: '#111' }} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action(); }}>Discard</button>
+										<button type="button" className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--warning)', color: 'var(--button-contrast)' }} onClick={() => { const action = pendingDiscard; setPendingDiscard(null); action(); }}>Discard</button>
 										<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setPendingDiscard(null)}>Keep Editing</button>
 									</div>
 								)}
@@ -2837,7 +2837,7 @@ export default function App() {
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
-									style={{ background: 'var(--success)', color: '#111' }}
+									style={{ background: 'var(--success)', color: 'var(--button-contrast)' }}
 									onClick={() => restartServer()}
 								>
 									Restart
@@ -3095,7 +3095,7 @@ export default function App() {
 								<button
 									type="button"
 									className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
-									style={{ background: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)', color: '#111' }}
+									style={{ background: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)', color: 'var(--button-contrast)' }}
 									onClick={notification.action.onClick}
 								>{notification.action.label}</button>
 							)}

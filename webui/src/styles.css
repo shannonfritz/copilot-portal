@@ -35,12 +35,13 @@ button { cursor: pointer; }
 	/* Scrollbar */
 	--scrollbar: rgba(255,255,255,0.15);
 	--scrollbar-code: rgba(255,255,255,0.25);
+	--button-contrast: #111;
 }
 
 [data-theme="light"] {
-	--bg: #ffffff;
-	--surface: #f5f5f5;
-	--border: #e0e0e0;
+	--bg: #f0f0f0;
+	--surface: #ffffff;
+	--border: #d8d8d8;
 	--text: #1f1f1f;
 	--text-muted: #666666;
 	--text-bright: #000000;
@@ -66,6 +67,7 @@ button { cursor: pointer; }
 	--code-fg: #1f2328;
 	--scrollbar: rgba(0,0,0,0.15);
 	--scrollbar-code: rgba(0,0,0,0.20);
+	--button-contrast: #fff;
 }
 
 * {
