@@ -168,16 +168,19 @@ In the theme picker, each theme has a ☆/★ icon. Click to set it as the **def
 
 ### Per-Session Theme Override
 
-In the session drawer (next to model selector), a theme dropdown:
-- Shows current theme (inherited from default, or overridden)
-- Selecting a theme overrides the default for this session only
-- **"Use Default"** button clears the override → falls back to the starred default
-- Override stored per-session on the server (like approval rules)
+The existing theme picker in the header is session-aware:
+- Selecting a theme applies it to the **current session**
+- Switching sessions loads that session's theme (or the default)
+- All theme actions stay in one place — no session drawer UI needed
+
+Storage:
+- Per-session theme stored server-side (like approval rules, keyed by session ID)
+- Default (starred) theme stored in `data/themes.json`
 
 ### Behavior on Session Switch
 
-1. Load the session's theme override (if any)
-2. If no override → apply the starred default
+1. Load the session's theme preference (if any)
+2. If no preference → apply the starred default
 3. Theme transitions smoothly (CSS variables update, no flash)
 
 ### Behavior on Theme Edit
@@ -196,7 +199,7 @@ In the session drawer (next to model selector), a theme dropdown:
 6. ~~WCAG contrast safety~~ ✅
 7. Fix server save/load bug
 8. Default theme selection (star icon)
-9. Per-session theme in session drawer
+9. Per-session theme (picker sets theme for current session)
 10. Agent-preferred theme (future)
 
 ## Open Questions
