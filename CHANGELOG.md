@@ -2,6 +2,29 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.5.8
+
+### Theme System
+- Custom theme editor with base, accent, and text color pickers
+- WCAG contrast auto-fix: text colors shift for readability (4.5:1 ratio)
+- "Surprise me" random palette generator (complementary, analogous, triadic, split-complementary)
+- Per-session themes: each session can have its own theme
+- Starred default: one theme is the global fallback for all sessions
+- Server-side sync: themes persist across devices via `data/themes.json`
+- Inline editing: pencil icon expands editor within the theme row
+- Header layout matches Sessions/Guides panels (+ New, Use Default)
+
+### Copy Formatting
+- Strip dark theme colors from copied HTML
+- Per-table copy button (top-right corner)
+- Clipboard API with text/html + text/plain
+- Force light colors on execCommand fallback (LAN IP access)
+
+### ask_user Improvements
+- Multi-line textarea with auto-grow (was single-line input)
+- Shift+Enter for new lines, Enter sends
+- 30-minute timeout (was 5 minutes)
+
 ## v0.5.6
 
 ### Session Usage Tracking
