@@ -146,6 +146,7 @@ export function deriveTheme(base: string, accent: string, textColor?: string): T
 		'--scrollbar': `rgba(${hexToRgb(contrastColor).join(',')},0.15)`,
 		'--scrollbar-code': `rgba(${hexToRgb(contrastColor).join(',')},${dark ? 0.25 : 0.20})`,
 		'--button-contrast': dark ? '#111111' : '#ffffff',
+		'--primary-contrast': isDark(accent) ? '#ffffff' : '#111111',
 	};
 }
 

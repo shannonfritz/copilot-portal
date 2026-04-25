@@ -36,6 +36,7 @@ button { cursor: pointer; }
 	--scrollbar: rgba(255,255,255,0.15);
 	--scrollbar-code: rgba(255,255,255,0.25);
 	--button-contrast: #111;
+	--primary-contrast: #fff;
 }
 
 [data-theme="light"] {
@@ -68,6 +69,7 @@ button { cursor: pointer; }
 	--scrollbar: rgba(0,0,0,0.15);
 	--scrollbar-code: rgba(0,0,0,0.20);
 	--button-contrast: #fff;
+	--primary-contrast: #fff;
 }
 
 * {

@@ -1907,7 +1907,7 @@ export default function App() {
 								<button
 									type="button"
 									className="rounded-lg px-3 py-1.5 text-sm font-medium"
-									style={{ background: 'var(--primary)', color: 'white' }}
+									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 									onClick={() => {
 										setShowNewGuide(true);
 										setSelectedExample('');
@@ -1986,7 +1986,7 @@ export default function App() {
 												<button
 													type="button"
 													className="rounded-lg px-3 py-1.5 text-xs font-medium"
-													style={{ background: 'var(--primary)', color: 'white', opacity: importUrl && !importLoading ? 1 : 0.5 }}
+													style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: importUrl && !importLoading ? 1 : 0.5 }}
 													disabled={!importUrl || importLoading}
 													onClick={async () => {
 														setImportLoading(true);
@@ -2064,7 +2064,7 @@ export default function App() {
 												<button
 													type="button"
 													className="rounded-lg px-3 py-1.5 text-xs font-medium"
-													style={{ background: 'var(--primary)', color: 'white' }}
+													style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 													onClick={async () => {
 														const selected = importItems.filter(it => it.selected);
 														const gistMatch = importUrl.match(/gist\.github\.com\/[\w-]+\/([a-f0-9]+)/);
@@ -2157,7 +2157,7 @@ export default function App() {
 									<button
 										type="button"
 										className="rounded-lg px-3 py-1.5 text-xs font-medium"
-										style={{ background: 'var(--primary)', color: 'white', opacity: newGuideName && (newGuideCheck || newPromptsCheck) ? 1 : 0.5 }}
+										style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: newGuideName && (newGuideCheck || newPromptsCheck) ? 1 : 0.5 }}
 										disabled={!newGuideName || (!newGuideCheck && !newPromptsCheck)}
 										onClick={() => {
 											if (!newGuideName) return;
@@ -2196,7 +2196,7 @@ export default function App() {
 									)}
 									<div className="flex gap-1">
 										{!editingGuide && (
-											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={async () => {
+											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }} onClick={async () => {
 												const vi = viewingGuide;
 												setviewingGuide(null);
 												setshowGuides(false);
@@ -2468,7 +2468,7 @@ export default function App() {
 								})}
 								<div className="flex gap-2 justify-end">
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
-									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
 										const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 										if (!id) return;
 										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
@@ -2614,7 +2614,7 @@ export default function App() {
 								</button>
 								<button
 									className="rounded-lg px-3 py-1.5 text-sm font-medium"
-									style={{ background: 'var(--primary)', color: 'white' }}
+									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 									onClick={newSession}
 									type="button"
 								>
@@ -2901,7 +2901,7 @@ export default function App() {
 								<button
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
-									style={{ background: 'var(--primary)', color: 'white' }}
+									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 									onClick={async () => {
 										setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
 										try {
@@ -3025,7 +3025,7 @@ export default function App() {
 								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
 								style={
 									msg.role === 'user'
-										? { background: 'var(--primary)', color: 'var(--button-contrast)', borderRadius: '18px 18px 4px 18px' }
+										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 4px 18px' }
 										: {
 												background: 'var(--surface)',
 												border: isIntermediate ? '1.5px dashed var(--border)' : '1px solid var(--border)',
@@ -3295,7 +3295,7 @@ export default function App() {
 											rows={1}
 											autoFocus
 										/>
-										<button className="self-end rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'white' }} onClick={() => respondInput(freeformAnswer, true)} type="button">Send</button>
+										<button className="self-end rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }} onClick={() => respondInput(freeformAnswer, true)} type="button">Send</button>
 									</div>
 								)}
 							</div>
