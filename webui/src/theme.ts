@@ -146,7 +146,15 @@ export function deriveTheme(base: string, accent: string, textColor?: string): T
 		'--scrollbar': `rgba(${hexToRgb(contrastColor).join(',')},0.15)`,
 		'--scrollbar-code': `rgba(${hexToRgb(contrastColor).join(',')},${dark ? 0.25 : 0.20})`,
 		'--button-contrast': dark ? '#111111' : '#ffffff',
-		'--primary-contrast': isDark(accent) ? '#ffffff' : '#111111',
+		'--primary-contrast': (() => {
+			// Try to use the text color on accent backgrounds, fall back to black/white if contrast is insufficient
+			if (textColor) {
+				const textLum = luminance(...hexToRgb(textColor));
+				const accentLum = luminance(...hexToRgb(accent));
+				if (contrastRatio(textLum, accentLum) >= 4.5) return textColor;
+			}
+			return isDark(accent) ? '#ffffff' : '#111111';
+		})(),
 	};
 }
 
