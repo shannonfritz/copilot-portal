@@ -2451,18 +2451,18 @@ export default function App() {
 									<input className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="My theme" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} autoFocus />
 								</div>
 								<div className="flex gap-4 mb-3">
-									<div className="flex-1">
+									<div className="flex-1 min-w-0">
 										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Base</label>
 										<div className="flex items-center gap-2">
-											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded" style={{ width: 40, height: 32, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
-											<input className="flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.base} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, base: e.target.value }); } }} />
+											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+											<input className="min-w-0 w-full rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.base} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, base: e.target.value }); } }} />
 										</div>
 									</div>
-									<div className="flex-1">
+									<div className="flex-1 min-w-0">
 										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Accent</label>
 										<div className="flex items-center gap-2">
-											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded" style={{ width: 40, height: 32, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
-											<input className="flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.accent} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, accent: e.target.value }); } }} />
+											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded shrink-0" style={{ width: 32, height: 28, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+											<input className="min-w-0 w-full rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.accent} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, accent: e.target.value }); } }} />
 										</div>
 									</div>
 								</div>
