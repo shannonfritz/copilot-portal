@@ -668,6 +668,9 @@ export default function App() {
 	useEffect(() => {
 		document.documentElement.setAttribute('data-theme', theme === 'dark' ? '' : theme);
 		localStorage.setItem('portal_theme', theme);
+		// Update browser/mobile status bar color to match theme
+		const meta = document.querySelector('meta[name="theme-color"]');
+		if (meta) meta.setAttribute('content', theme === 'light' ? '#f0f0f0' : '#1e1e1e');
 	}, [theme]);
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
