@@ -2467,7 +2467,7 @@ export default function App() {
 									);
 								})}
 								<div className="flex gap-2 justify-end">
-									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)', color: 'var(--accent)' }} onClick={() => { const p = generateRandomPalette(); const t = { ...editingTheme, ...p }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }}>🎲 Surprise me</button>
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { const p = generateRandomPalette(); const t = { ...editingTheme, ...p }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent, t.text || undefined)); }}>🎲 Surprise me</button>
 									<div className="flex-1" />
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
 									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
