@@ -37,6 +37,37 @@ button { cursor: pointer; }
 	--scrollbar-code: rgba(255,255,255,0.25);
 }
 
+[data-theme="light"] {
+	--bg: #ffffff;
+	--surface: #f5f5f5;
+	--border: #e0e0e0;
+	--text: #1f1f1f;
+	--text-muted: #666666;
+	--text-bright: #000000;
+	--primary: #0969da;
+	--primary-hover: #0550ae;
+	--error: #cf222e;
+	--success: #1a7f37;
+	--tool-call: #6e5e08;
+	--purple: #8250df;
+	--accent: #0969da;
+	--warning: #9a6700;
+	--shield: #bf8700;
+	--error-tint: rgba(207,34,46,0.08);
+	--success-tint: rgba(26,127,55,0.08);
+	--tool-call-tint: rgba(110,94,8,0.08);
+	--primary-tint: rgba(9,105,218,0.08);
+	--warning-tint: rgba(154,103,0,0.10);
+	--muted-tint: rgba(128,128,160,0.06);
+	--overlay: rgba(0,0,0,0.3);
+	--subtle-bg: rgba(0,0,0,0.04);
+	--code-inline: #953800;
+	--code-bg: #f6f8fa;
+	--code-fg: #1f2328;
+	--scrollbar: rgba(0,0,0,0.15);
+	--scrollbar-code: rgba(0,0,0,0.20);
+}
+
 * {
 	box-sizing: border-box;
 }
