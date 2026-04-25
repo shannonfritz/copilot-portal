@@ -3025,7 +3025,7 @@ export default function App() {
 								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
 								style={
 									msg.role === 'user'
-										? { background: 'var(--primary)', color: 'white', borderRadius: '18px 18px 4px 18px' }
+										? { background: 'var(--primary)', color: 'var(--button-contrast)', borderRadius: '18px 18px 4px 18px' }
 										: {
 												background: 'var(--surface)',
 												border: isIntermediate ? '1.5px dashed var(--border)' : '1px solid var(--border)',
