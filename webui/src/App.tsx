@@ -2410,6 +2410,74 @@ export default function App() {
 				</div>
 			)}
 
+			{/* Theme Picker */}
+			{showThemePicker && (
+				<div
+					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
+					style={{ background: 'var(--overlay)' }}
+					onClick={() => { setShowThemePicker(false); setEditingTheme(null); if (editingTheme) applyPreset(activePreset); }}
+				>
+					<div
+						className="w-full max-w-sm rounded-2xl p-4"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+						onClick={(e) => e.stopPropagation()}
+					>
+						<h2 className="font-semibold mb-3">Theme</h2>
+						<div className="flex flex-col gap-1 mb-3">
+							{allPresets.map(p => (
+								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId ? 'var(--primary)' : 'var(--border)'}` }}
+									onClick={() => applyPreset(p)}>
+									<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
+									<span className="flex-1">{p.name}</span>
+									{!('builtIn' in p && p.builtIn) && (
+										<button type="button" className="text-xs px-1" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); localStorage.setItem('portal_custom_themes', JSON.stringify(updated)); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }} title="Delete theme">✕</button>
+									)}
+								</button>
+							))}
+						</div>
+						{editingTheme ? (
+							<div className="rounded-xl p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								<div className="mb-3">
+									<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Name</label>
+									<input className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="My theme" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} autoFocus />
+								</div>
+								<div className="flex gap-4 mb-3">
+									<div className="flex-1">
+										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Base</label>
+										<div className="flex items-center gap-2">
+											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded" style={{ width: 40, height: 32, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+											<input className="flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.base} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, base: e.target.value }); } }} />
+										</div>
+									</div>
+									<div className="flex-1">
+										<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Accent</label>
+										<div className="flex items-center gap-2">
+											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} className="rounded" style={{ width: 40, height: 32, border: '1px solid var(--border)', padding: 2, cursor: 'pointer', background: 'var(--surface)' }} />
+											<input className="flex-1 rounded px-2 py-1 text-xs font-mono" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }} value={editingTheme.accent} onChange={e => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); } else { setEditingTheme({ ...editingTheme, accent: e.target.value }); } }} />
+										</div>
+									</div>
+								</div>
+								<div className="flex gap-2 justify-end">
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white', opacity: editingTheme.name.trim() ? 1 : 0.5 }} disabled={!editingTheme.name.trim()} onClick={() => {
+										const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+										if (!id) return;
+										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent };
+										const updated = [...customThemes.filter(t => t.id !== id), newTheme];
+										setCustomThemes(updated);
+										localStorage.setItem('portal_custom_themes', JSON.stringify(updated));
+										applyPreset(newTheme);
+										setEditingTheme(null);
+									}}>Save</button>
+								</div>
+							</div>
+						) : (
+							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent })}>+ New Theme</button>
+						)}
+					</div>
+				</div>
+			)}
+
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
@@ -2745,53 +2813,6 @@ export default function App() {
 								<path d="M12 2a7 7 0 000 20" fill="currentColor" opacity="0.3" />
 							</svg>
 						</button>
-						{showThemePicker && (
-							<div className="absolute right-0 top-10 z-50 rounded-xl p-3 shadow-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 220 }} onClick={e => e.stopPropagation()}>
-								<div className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Theme</div>
-								<div className="flex flex-col gap-1 mb-2">
-									{allPresets.map(p => (
-										<button key={p.id} type="button" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-left" style={{ background: p.id === activeThemeId ? 'var(--primary-tint)' : 'transparent', border: p.id === activeThemeId ? '1px solid var(--primary)' : '1px solid transparent' }}
-											onClick={() => { applyPreset(p); }}>
-											<span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: p.accent, border: '1px solid var(--border)' }} />
-											<span>{p.name}</span>
-											{!('builtIn' in p && p.builtIn) && (
-												<button type="button" className="ml-auto text-xs" style={{ color: 'var(--error)', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); localStorage.setItem('portal_custom_themes', JSON.stringify(updated)); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); }}>✕</button>
-											)}
-										</button>
-									))}
-								</div>
-								{editingTheme ? (
-									<div className="border-t pt-2" style={{ borderColor: 'var(--border)' }}>
-										<input className="w-full rounded px-2 py-1 text-sm mb-2" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }} placeholder="Theme name" value={editingTheme.name} onChange={e => setEditingTheme({ ...editingTheme, name: e.target.value })} />
-										<div className="flex items-center gap-2 mb-1">
-											<label className="text-xs" style={{ color: 'var(--text-muted)', width: 50 }}>Base</label>
-											<input type="color" value={editingTheme.base} onChange={e => { const t = { ...editingTheme, base: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} style={{ width: 32, height: 24, border: 'none', padding: 0, cursor: 'pointer' }} />
-											<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{editingTheme.base}</span>
-										</div>
-										<div className="flex items-center gap-2 mb-2">
-											<label className="text-xs" style={{ color: 'var(--text-muted)', width: 50 }}>Accent</label>
-											<input type="color" value={editingTheme.accent} onChange={e => { const t = { ...editingTheme, accent: e.target.value }; setEditingTheme(t); clearThemeOverrides(); document.documentElement.removeAttribute('data-theme'); applyTheme(deriveTheme(t.base, t.accent)); }} style={{ width: 32, height: 24, border: 'none', padding: 0, cursor: 'pointer' }} />
-											<span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{editingTheme.accent}</span>
-										</div>
-										<div className="flex gap-2 justify-end">
-											<button type="button" className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => { setEditingTheme(null); applyPreset(activePreset); }}>Cancel</button>
-											<button type="button" className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'white' }} disabled={!editingTheme.name.trim()} onClick={() => {
-												const id = editingTheme.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-												if (!id) return;
-												const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent };
-												const updated = [...customThemes.filter(t => t.id !== id), newTheme];
-												setCustomThemes(updated);
-												localStorage.setItem('portal_custom_themes', JSON.stringify(updated));
-												applyPreset(newTheme);
-												setEditingTheme(null);
-											}}>Save</button>
-										</div>
-									</div>
-								) : (
-									<button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-center" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ name: '', base: activePreset.base, accent: activePreset.accent })}>+ New Theme</button>
-								)}
-							</div>
-						)}
 						</div>
 						<div
 							className="size-2 rounded-full"
