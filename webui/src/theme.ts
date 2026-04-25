@@ -100,14 +100,9 @@ export function deriveTheme(base: string, accent: string, textColor?: string): T
 	const contrastColor = dark ? '#ffffff' : '#000000';
 	const status = dark ? STATUS_DARK : STATUS_LIGHT;
 
-	// Text colors: use provided textColor if it has sufficient contrast, otherwise auto-derive
+	// Text colors: use provided textColor, shifting it for contrast if needed
 	const autoText = dark ? '#cccccc' : '#1f1f1f';
-	const text = (() => {
-		if (!textColor) return autoText;
-		const textLum = luminance(...hexToRgb(textColor));
-		const baseLum = luminance(...hexToRgb(base));
-		return contrastRatio(textLum, baseLum) >= 4.5 ? textColor : autoText;
-	})();
+	const text = textColor ? ensureContrast(textColor, base, 4.5) : autoText;
 	const textMuted = textColor ? mixColors(base, text, 0.5) : (dark ? '#858585' : '#666666');
 	const textBright = textColor ? adjustBrightness(text, dark ? 15 : -15) : contrastColor;
 
@@ -153,11 +148,10 @@ export function deriveTheme(base: string, accent: string, textColor?: string): T
 		'--scrollbar-code': `rgba(${hexToRgb(contrastColor).join(',')},${dark ? 0.25 : 0.20})`,
 		'--button-contrast': dark ? '#111111' : '#ffffff',
 		'--primary-contrast': (() => {
-			// Try to use the text color on accent backgrounds, fall back to black/white if contrast is insufficient
+			// Try to use the text color on accent backgrounds, shifting for contrast if needed
 			if (textColor) {
-				const textLum = luminance(...hexToRgb(textColor));
-				const accentLum = luminance(...hexToRgb(accent));
-				if (contrastRatio(textLum, accentLum) >= 4.5) return textColor;
+				const shifted = ensureContrast(textColor, accent, 4.5);
+				return shifted;
 			}
 			return isDark(accent) ? '#ffffff' : '#111111';
 		})(),
