@@ -4,6 +4,7 @@ import qrcode from 'qrcode-terminal';
 import { exec, spawnSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
+process.title = 'Copilot Portal';
 
 if (args.includes('--help') || args.includes('-h')) {
 	console.log(`Usage: node dist/server.js [options]

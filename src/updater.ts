@@ -203,6 +203,7 @@ export class UpdateChecker {
 			if (updatable.length > 0) {
 				await runCommand(`npm install --no-fund --no-audit ${updatable.join(' ')}`, PROJECT_ROOT);
 				this.log(`[Update] npm install complete`);
+				process.title = 'Copilot Portal';
 			}
 
 			// 2. Rebuild the server and UI (skip if no build script — e.g. release packages ship pre-built)
@@ -210,6 +211,7 @@ export class UpdateChecker {
 			if (pkg.scripts?.build) {
 				await runCommand('npm run build', PROJECT_ROOT);
 				this.log(`[Update] Rebuild complete`);
+				process.title = 'Copilot Portal';
 			} else {
 				this.log(`[Update] No build script — skipping rebuild (pre-built release)`);
 			}
