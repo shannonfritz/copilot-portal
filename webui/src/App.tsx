@@ -671,13 +671,12 @@ export default function App() {
 	const activePreset = allPresets.find(p => p.id === activeThemeId) ?? BUILTIN_PRESETS[0];
 
 	// Save themes to server whenever they change
-	const saveThemesToServer = useCallback((themes: typeof customThemes, active: string, defTheme?: string) => {
+	const saveThemesToServer = useCallback((themes: typeof customThemes, defTheme?: string) => {
 		apiFetch('/api/themes', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ themes, active, defaultTheme: defTheme }),
+			body: JSON.stringify({ themes, defaultTheme: defTheme }),
 		}).catch(() => {});
-		localStorage.setItem('portal_theme', active);
 	}, []);
 
 	const applyPreset = useCallback((preset: { id: string; base: string; accent: string; text?: string }) => {
@@ -691,23 +690,21 @@ export default function App() {
 			applyTheme(deriveTheme(preset.base, preset.accent, preset.text));
 		}
 		setActiveThemeId(preset.id);
-		localStorage.setItem('portal_theme', preset.id);
 		const meta = document.querySelector('meta[name="theme-color"]');
 		if (meta) meta.setAttribute('content', preset.base);
 	}, []);
 
-	// Load themes from server on mount, apply saved active theme (per-session if available)
+	// Load themes from server on mount — per-session override or starred default
 	useEffect(() => {
 		const sessionId = new URLSearchParams(window.location.search).get('session');
 		Promise.all([
 			apiFetch('/api/themes').then(r => r.json()),
 			sessionId ? apiFetch(`/api/session-theme/${encodeURIComponent(sessionId)}`).then(r => r.json()) : Promise.resolve({ themeId: null }),
-		]).then(([themesData, sessionData]: [{ themes?: typeof customThemes; active?: string; defaultTheme?: string }, { themeId?: string | null }]) => {
+		]).then(([themesData, sessionData]: [{ themes?: typeof customThemes; defaultTheme?: string }, { themeId?: string | null }]) => {
 			if (themesData.themes?.length) setCustomThemes(themesData.themes);
 			if (themesData.defaultTheme) setDefaultThemeId(themesData.defaultTheme);
-			// Per-session theme takes priority, then global active, then default
 			const defId = themesData.defaultTheme ?? 'dark';
-			const themeId = sessionData.themeId ?? themesData.active ?? localStorage.getItem('portal_theme') ?? defId;
+			const themeId = sessionData.themeId ?? defId;
 			const all = [...BUILTIN_PRESETS, ...(themesData.themes ?? [])];
 			const preset = all.find(p => p.id === themeId) ?? BUILTIN_PRESETS[0];
 			applyPreset(preset);
@@ -2503,7 +2500,6 @@ export default function App() {
 											onClick={() => {
 												if (isEditing) return;
 												applyPreset(p);
-												saveThemesToServer(customThemes, p.id);
 												if (activeSessionId) {
 													apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
 														method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2513,7 +2509,7 @@ export default function App() {
 											}}>
 											<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: p.base, border: '2px solid ' + p.accent, flexShrink: 0 }} />
 											<span className="flex-1">{p.name}</span>
-											<button type="button" className="shrink-0 rounded p-1" style={{ opacity: p.id === defaultThemeId ? 0.9 : 0.4 }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, activeThemeId, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
+											<button type="button" className="shrink-0 rounded p-1" style={{ opacity: p.id === defaultThemeId ? 0.9 : 0.4 }} onClick={(e) => { e.stopPropagation(); setDefaultThemeId(p.id); saveThemesToServer(customThemes, p.id); }} title={p.id === defaultThemeId ? 'Default theme' : 'Set as default'}>
 												<svg className="size-4" viewBox="0 0 24 24" fill={p.id === defaultThemeId ? 'var(--warning)' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 													<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
 												</svg>
@@ -2528,7 +2524,7 @@ export default function App() {
 												</button>
 											)}
 											{isCustom && (
-												<button type="button" className="shrink-0 rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); const newActive = activeThemeId === p.id ? 'dark' : activeThemeId; saveThemesToServer(updated, newActive); if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); if (isEditing) setEditingTheme(null); }} title="Delete theme">
+												<button type="button" className="shrink-0 rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); if (defaultThemeId === p.id) { setDefaultThemeId('dark'); saveThemesToServer(updated, 'dark'); } else { saveThemesToServer(updated, defaultThemeId); } if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); if (isEditing) setEditingTheme(null); }} title="Delete theme">
 													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
 												</button>
 											)}
@@ -2565,7 +2561,7 @@ export default function App() {
 														const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
 														const updated = [...customThemes.filter(t => t.id !== p.id && t.id !== id), newTheme];
 														setCustomThemes(updated);
-														saveThemesToServer(updated, id);
+														saveThemesToServer(updated, defaultThemeId);
 														applyPreset(newTheme);
 														setEditingTheme(null);
 														if (activeSessionId) {
@@ -2614,7 +2610,7 @@ export default function App() {
 										const newTheme = { id, name: editingTheme.name, base: editingTheme.base, accent: editingTheme.accent, ...(editingTheme.text ? { text: editingTheme.text } : {}) };
 										const updated = [...customThemes.filter(t => t.id !== id), newTheme];
 										setCustomThemes(updated);
-										saveThemesToServer(updated, id);
+										saveThemesToServer(updated, defaultThemeId);
 										applyPreset(newTheme);
 										setEditingTheme(null);
 										if (activeSessionId) {
