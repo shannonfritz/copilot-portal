@@ -2468,7 +2468,30 @@ export default function App() {
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: 'calc(100vh - 5rem)' }}
 						onClick={(e) => e.stopPropagation()}
 					>
-						<h2 className="font-semibold mb-3">Theme</h2>
+						<div className="mb-3 flex items-center justify-between">
+							<h2 className="font-semibold">Theme</h2>
+							<div className="flex items-center gap-2">
+								{activeThemeId !== defaultThemeId && !editingTheme && (
+									<button type="button" className="rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => {
+										const all = [...BUILTIN_PRESETS, ...customThemes];
+										const def = all.find(p => p.id === defaultThemeId) ?? BUILTIN_PRESETS[0];
+										applyPreset(def);
+										if (activeSessionId) {
+											apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+												method: 'POST', headers: { 'Content-Type': 'application/json' },
+												body: JSON.stringify({ themeId: null }),
+											}).catch(() => {});
+										}
+									}}>Use Default</button>
+								)}
+								<button
+									className="rounded-lg px-3 py-1.5 text-sm font-medium"
+									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+									onClick={() => setEditingTheme({ editId: '__new__', name: '', base: activePreset.base, accent: activePreset.accent, text: '' })}
+									type="button"
+								>+ New</button>
+							</div>
+						</div>
 						<div className="flex flex-col gap-1 mb-3">
 							{allPresets.map(p => {
 								const isActive = p.id === activeThemeId && !editingTheme;
@@ -2559,20 +2582,7 @@ export default function App() {
 								);
 							})}
 						</div>
-						{activeThemeId !== defaultThemeId && !editingTheme && (
-							<button type="button" className="w-full rounded-xl px-3 py-2 text-xs mb-3" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => {
-								const all = [...BUILTIN_PRESETS, ...customThemes];
-								const def = all.find(p => p.id === defaultThemeId) ?? BUILTIN_PRESETS[0];
-								applyPreset(def);
-								if (activeSessionId) {
-									apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
-										method: 'POST', headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({ themeId: null }),
-									}).catch(() => {});
-								}
-							}}>Use Default (★ {allPresets.find(p => p.id === defaultThemeId)?.name ?? 'Dark'})</button>
-						)}
-						{editingTheme?.editId === '__new__' ? (
+						{editingTheme?.editId === '__new__' && (
 							<div className="rounded-xl p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 								<div className="mb-3">
 									<label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-muted)' }}>Name</label>
@@ -2616,8 +2626,6 @@ export default function App() {
 									}}>Save</button>
 								</div>
 							</div>
-						) : !editingTheme && (
-							<button type="button" className="w-full rounded-xl px-3 py-2 text-sm" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => setEditingTheme({ editId: '__new__', name: '', base: activePreset.base, accent: activePreset.accent, text: '' })}>+ New Theme</button>
 						)}
 					</div>
 				</div>
