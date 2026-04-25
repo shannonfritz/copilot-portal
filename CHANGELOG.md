@@ -14,16 +14,25 @@ All notable changes to Copilot Portal are documented here.
 - Inline editing: pencil icon expands editor within the theme row
 - Header layout matches Sessions/Guides panels (+ New, Use Default)
 
-### Copy Formatting
-- Strip dark theme colors from copied HTML
-- Per-table copy button (top-right corner)
-- Clipboard API with text/html + text/plain
-- Force light colors on execCommand fallback (LAN IP access)
+## v0.5.7
+
+### Copy Improvements
+- Copy formatted strips dark theme colors (clean paste into OneNote/Word/Teams)
+- Clipboard API with both text/html and text/plain (paste vs paste-as-plain-text)
+- Per-table copy button (top-right corner, stripped from message-level copy)
+- Light theme forced on execCommand fallback (LAN IP access)
 
 ### ask_user Improvements
-- Multi-line textarea with auto-grow (was single-line input)
-- Shift+Enter for new lines, Enter sends
-- 30-minute timeout (was 5 minutes)
+- Multi-line freeform input (textarea with auto-grow, Shift+Enter for new lines)
+- Timeout increased from 5 minutes to 30 minutes
+
+### Console
+- Console title preserved after npm install/build during updates
+- Title reset on server restart
+
+### Documentation
+- Agent integration design doc (agents vs guides, /fleet, Squad, CWD dependency)
+- Comparison docs for cli-tunnel, Termote, Copilot Remote, Open WebUI, OpenClaw, /remote
 
 ## v0.5.6
 
