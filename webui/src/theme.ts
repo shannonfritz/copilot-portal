@@ -100,8 +100,14 @@ export function deriveTheme(base: string, accent: string, textColor?: string): T
 	const contrastColor = dark ? '#ffffff' : '#000000';
 	const status = dark ? STATUS_DARK : STATUS_LIGHT;
 
-	// Text colors: use provided textColor or auto-derive from base
-	const text = textColor ?? (dark ? '#cccccc' : '#1f1f1f');
+	// Text colors: use provided textColor if it has sufficient contrast, otherwise auto-derive
+	const autoText = dark ? '#cccccc' : '#1f1f1f';
+	const text = (() => {
+		if (!textColor) return autoText;
+		const textLum = luminance(...hexToRgb(textColor));
+		const baseLum = luminance(...hexToRgb(base));
+		return contrastRatio(textLum, baseLum) >= 4.5 ? textColor : autoText;
+	})();
 	const textMuted = textColor ? mixColors(base, text, 0.5) : (dark ? '#858585' : '#666666');
 	const textBright = textColor ? adjustBrightness(text, dark ? 15 : -15) : contrastColor;
 
