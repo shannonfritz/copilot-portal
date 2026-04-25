@@ -597,6 +597,31 @@ export class PortalServer {
 			return;
 		}
 
+		// Per-session theme — GET returns theme ID for a session, POST sets it
+		const sessionThemeMatch = url.pathname.match(/^\/api\/session-theme\/(.+)$/);
+		if (sessionThemeMatch && method === 'GET') {
+			const sid = decodeURIComponent(sessionThemeMatch[1]);
+			const themesFile = path.join(this.dataDir, 'session-themes.json');
+			try {
+				const data = fs.existsSync(themesFile) ? JSON.parse(fs.readFileSync(themesFile, 'utf8')) : {};
+				this.sendJson(res, 200, { themeId: data[sid] ?? null });
+			} catch { this.sendJson(res, 200, { themeId: null }); }
+			return;
+		}
+		if (sessionThemeMatch && method === 'POST') {
+			const sid = decodeURIComponent(sessionThemeMatch[1]);
+			try {
+				const body = await this.readBody(req);
+				const { themeId } = JSON.parse(body) as { themeId: string | null };
+				const themesFile = path.join(this.dataDir, 'session-themes.json');
+				const data = fs.existsSync(themesFile) ? JSON.parse(fs.readFileSync(themesFile, 'utf8')) : {};
+				if (themeId) data[sid] = themeId; else delete data[sid];
+				fs.writeFileSync(themesFile, JSON.stringify(data, null, 2) + '\n');
+				this.sendJson(res, 200, { ok: true });
+			} catch (e) { this.sendJson(res, 500, { error: String(e) }); }
+			return;
+		}
+
 		if (url.pathname === '/api/restart' && method === 'POST') {
 			// Check for active turns across all sessions
 			const activeSessions = this.pool.getActiveTurnSessions();

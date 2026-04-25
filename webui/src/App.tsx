@@ -709,6 +709,16 @@ export default function App() {
 			applyPreset(activePreset);
 		});
 	}, []);
+	// Load and apply theme for a specific session (or fall back to default)
+	const loadSessionTheme = useCallback((sessionId: string) => {
+		apiFetch(`/api/session-theme/${encodeURIComponent(sessionId)}`).then(r => r.json()).then((data: { themeId?: string | null }) => {
+			const themeId = data.themeId ?? defaultThemeId;
+			const all = [...BUILTIN_PRESETS, ...customThemes];
+			const preset = all.find(p => p.id === themeId) ?? BUILTIN_PRESETS[0];
+			applyPreset(preset);
+		}).catch(() => {});
+	}, [defaultThemeId, customThemes, applyPreset]);
+
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -1580,6 +1590,8 @@ export default function App() {
 		setActiveSessionSummary(null);
 		setSessionUsage(null);
 		setSessionQuota(null);
+		// Load the theme for the new session
+		loadSessionTheme(sessionId);
 		const params = new URLSearchParams(window.location.search);
 		params.set('session', sessionId);
 		params.delete('all');
@@ -2448,7 +2460,16 @@ export default function App() {
 								<button key={p.id} type="button" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left" style={{ background: p.id === activeThemeId && !editingTheme ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${p.id === activeThemeId && !editingTheme ? 'var(--primary)' : 'var(--border)'}` }}
 									onClick={() => {
 										applyPreset(p);
-										if (!editingTheme) saveThemesToServer(customThemes, p.id);
+										if (!editingTheme) {
+											saveThemesToServer(customThemes, p.id);
+											// Save per-session theme
+											if (activeSessionId) {
+												apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+													method: 'POST', headers: { 'Content-Type': 'application/json' },
+													body: JSON.stringify({ themeId: p.id }),
+												}).catch(() => {});
+											}
+										}
 										if (editingTheme) {
 											// Copy this preset's colors into the editor
 											setEditingTheme({ ...editingTheme, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
@@ -2472,6 +2493,19 @@ export default function App() {
 								</button>
 							))}
 						</div>
+						{activeThemeId !== defaultThemeId && !editingTheme && (
+							<button type="button" className="w-full rounded-xl px-3 py-2 text-xs mb-3" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={() => {
+								const all = [...BUILTIN_PRESETS, ...customThemes];
+								const def = all.find(p => p.id === defaultThemeId) ?? BUILTIN_PRESETS[0];
+								applyPreset(def);
+								if (activeSessionId) {
+									apiFetch(`/api/session-theme/${encodeURIComponent(activeSessionId)}`, {
+										method: 'POST', headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({ themeId: null }),
+									}).catch(() => {});
+								}
+							}}>Use Default (★ {allPresets.find(p => p.id === defaultThemeId)?.name ?? 'Dark'})</button>
+						)}
 						{editingTheme ? (
 							<div className="rounded-xl p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 								<div className="mb-3">
