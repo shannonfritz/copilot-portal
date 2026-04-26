@@ -2,6 +2,27 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.5.9
+
+### Critical Fix
+- **Tool execution broken on SDK 0.3.0** — SDK changed approval response format from `'approved'` to `'approve-once'` and `'denied-interactively-by-user'` to `'reject'`. All tool approvals were silently failing. Fixed.
+
+### Working Directory
+- **Staged session creation** — "+ New" opens a draft with folder browser to set CWD before creating
+- **Folder browser** — navigate directories, breadcrumb path, drive letter support (Windows), create new folders
+- **Change CWD on existing sessions** — click the path in the drawer to browse and apply a new working directory
+- **CWD preserved on session switch** — fixed critical bug where `resumeSession()` was resetting all session CWDs to Portal's install directory on every reconnect
+
+### Tool Error Surfacing
+- Failed tool boxes show red with the actual error message (not just "failed")
+- Failed tools persist after turn end — no auto-collapse so errors can be reviewed
+- Server console logs tool failures with ⚠ indicator
+
+### Security
+- Path traversal blocked in folder creation (`.` and `..` rejected)
+- CWD paths validated (must exist, must be a directory)
+- Symlinks filtered from folder browser listings
+
 ## v0.5.8
 
 ### Theme System
