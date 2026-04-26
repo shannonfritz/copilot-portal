@@ -989,8 +989,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onToolExecutionComplete(data: unknown): void {
 		this.toolsInFlight = Math.max(0, this.toolsInFlight - 1);
-		const d = data as { toolCallId?: string; success?: boolean };
+		const d = data as { toolCallId?: string; success?: boolean; error?: { message?: string } };
 		this.log(`[Session] Tool complete (${this.toolsInFlight} remaining): ${d.toolCallId}`);
+		if (d.success === false && d.error?.message) {
+			this.log(`[Session] ⚠ Tool failed: ${d.error.message}`);
+		}
 		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
 		// Clear CLI input pending when any tool completes (ask_user resolved)
 		if (this.cliInputPending) {
