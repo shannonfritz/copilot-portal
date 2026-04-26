@@ -507,10 +507,10 @@ export class PortalServer {
 			try {
 				// No path on Windows → list drive letters
 				if (!browsePath && process.platform === 'win32') {
-					const { execSync } = require('child_process') as typeof import('child_process');
-					const drives = execSync('wmic logicaldisk get name', { encoding: 'utf8' })
-						.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:$/.test(l))
-						.sort();
+					const drives: string[] = [];
+					for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+						try { fs.accessSync(letter + ':\\'); drives.push(letter + ':'); } catch {}
+					}
 					this.sendJson(res, 200, { path: '', exists: true, isDir: true, folders: drives, isDriveList: true });
 					return;
 				}
