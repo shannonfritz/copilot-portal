@@ -1441,6 +1441,17 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (handler) handler(event.data, gen);
 		});
 	}
+	/** Disconnect the underlying SDK session (for CWD change). */
+	async disconnectSession(): Promise<void> {
+		await this.session.disconnect();
+	}
+
+	/** Replace the underlying SDK session after a reconnect (for CWD change). */
+	replaceSession(newSession: CopilotSession): void {
+		this.sessionGeneration++;
+		this.session = newSession;
+		this.attachListeners();
+	}
 }
 
 /** Manages multiple CopilotSession instances under a single CopilotClient (one auth). */
@@ -1506,6 +1517,26 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
+
+	/** Change the working directory for an active session (disconnect + resume). */
+	async changeCwd(sessionId: string, newCwd: string): Promise<{ context?: { cwd: string; gitRoot?: string; repository?: string; branch?: string } }> {
+		const handle = this.pool.get(sessionId);
+		if (!handle) throw new Error(`Session not found: ${sessionId}`);
+		this.log(`[Pool] Changing CWD for ${sessionId.slice(0, 8)} to ${newCwd}`);
+		const model = handle.currentModel ?? undefined;
+		await handle.disconnectSession();
+		const newSession = await this.client.resumeSession(sessionId, {
+			workingDirectory: newCwd,
+			model,
+			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
+			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
+		});
+		handle.replaceSession(newSession);
+		this.log(`[Pool] CWD changed for ${sessionId.slice(0, 8)}`);
+		const sessions = await this.client.listSessions();
+		const meta = sessions.find(s => s.sessionId === sessionId);
+		return { context: meta?.context };
+	}
 
 	async getLastSessionId(): Promise<string | null> {
 		// In shared mode, prefer the CLI's foreground session
@@ -1728,11 +1759,12 @@ export class SessionPool {
 	}
 
 	/** Creates a new session and adds it to the pool. */
-	async create(): Promise<SessionHandle> {
-		this.log('[Pool] Creating new session...');
+	async create(workingDirectory?: string): Promise<SessionHandle> {
+		const cwd = workingDirectory || this.workspacePath;
+		this.log(`[Pool] Creating new session (cwd: ${cwd})...`);
 		let handle!: SessionHandle;
 		const session = await this.client.createSession({
-			workingDirectory: this.workspacePath,
+			workingDirectory: cwd,
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});

@@ -456,7 +456,11 @@ export class PortalServer {
 		if (url.pathname === '/api/sessions' && method === 'GET') {
 			try {
 				const sessions = await this.pool.listSessions();
-				this.sendJson(res, 200, sessions.map(s => ({ ...s, shielded: this.shields[s.sessionId] ?? false })));
+				this.sendJson(res, 200, sessions.map(s => ({
+					...s,
+					shielded: this.shields[s.sessionId] ?? false,
+					context: s.context,
+				})));
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
@@ -497,17 +501,33 @@ export class PortalServer {
 			return;
 		}
 
+		const cwdMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/cwd$/);
+		if (cwdMatch && method === 'POST') {
+			const sessionId = cwdMatch[1];
+			try {
+				const body = await this.readBody(req);
+				const { workingDirectory } = JSON.parse(body) as { workingDirectory: string };
+				if (!workingDirectory) { this.sendJson(res, 400, { error: 'workingDirectory required' }); return; }
+				const result = await this.pool.changeCwd(sessionId, workingDirectory);
+				this.sendJson(res, 200, result);
+				this.log(`[API] CWD changed for ${sessionId.slice(0, 8)} → ${workingDirectory}`);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
-			const { sessionId } = JSON.parse(body || '{}') as { sessionId?: string };
+			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };
 			try {
 				if (sessionId) {
 					// Pre-warm: connect to the session so it's ready when client navigates
 					await this.pool.connect(sessionId);
 					this.sendJson(res, 200, { sessionId });
 				} else {
-					const handle = await this.pool.create();
+					const handle = await this.pool.create(workingDirectory);
 					const newId = handle.sessionId;
 					// Broadcast so other clients' pickers update
 					const sessions = await this.pool.listSessions().catch(() => []);
@@ -1119,10 +1139,10 @@ export class PortalServer {
 	}
 
 	/** List sessions (for console CLI launcher) */
-	async listSessions(): Promise<Array<{ sessionId: string; summary?: string }>> {
+	async listSessions(): Promise<Array<{ sessionId: string; summary?: string; context?: { cwd: string; gitRoot?: string; repository?: string; branch?: string } }>> {
 		try {
 			const sessions = await this.pool.listSessions();
-			return sessions.map(s => ({ sessionId: s.sessionId, summary: s.summary }));
+			return sessions.map(s => ({ sessionId: s.sessionId, summary: s.summary, context: s.context }));
 		} catch { return []; }
 	}
 
