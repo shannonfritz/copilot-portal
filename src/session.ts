@@ -663,7 +663,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log(`[Session] Auto-denying approval ${id}`);
 			clearTimeout(p.timeout);
 			this.pendingApprovals.delete(id);
-			p.resolve({ kind: 'denied-interactively-by-user' });
+			p.resolve({ kind: 'reject' });
 		}
 		for (const [id, p] of this.pendingInputs) {
 			this.log(`[Session] Auto-cancelling input ${id}`);
@@ -679,7 +679,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		clearTimeout(p.timeout);
 		this.pendingApprovals.delete(requestId);
 		if (this.activeApprovalId === requestId) this.activeApprovalId = null;
-		p.resolve(approved ? { kind: 'approved' } : { kind: 'denied-interactively-by-user' });
+		p.resolve(approved ? { kind: 'approve-once' } : { kind: 'reject' });
 		this.log(`[Session] Approval ${approved ? 'granted' : 'denied'}: ${requestId}`);
 		this.pendingCompletionCount++; // expect one permission.completed for this resolved approval
 		this.broadcast({ type: 'approval_resolved', requestId });
@@ -720,7 +720,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// approveAll mode — instant approval, no UI
 		if (this.getApproveAll()) {
 			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
-			return Promise.resolve({ kind: 'approved' });
+			return Promise.resolve({ kind: 'approve-once' });
 		}
 		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string; warning?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;
@@ -732,7 +732,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const matchingRule = this.rulesStore?.matchesRequest(this.sessionId, req) ?? null;
 		if (matchingRule) {
 			this.log(`[Session] Auto-approved by rule "${matchingRule.pattern}": ${requestId}`);
-			return Promise.resolve({ kind: 'approved' });
+			return Promise.resolve({ kind: 'approve-once' });
 		}
 
 		const event: PortalEvent = {
@@ -745,7 +745,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				if (this.pendingApprovals.has(requestId)) {
 					this.pendingApprovals.delete(requestId);
 					if (this.activeApprovalId === requestId) this.activeApprovalId = null;
-					resolve({ kind: 'denied-interactively-by-user' });
+					resolve({ kind: 'reject' });
 					this.pendingCompletionCount++; // expect one permission.completed for this timed-out approval
 					this.broadcastNextApproval();
 				}
@@ -767,7 +767,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				clearTimeout(p.timeout);
 				this.pendingApprovals.delete(id);
 				if (this.activeApprovalId === id) this.activeApprovalId = null;
-				p.resolve({ kind: 'approved' });
+				p.resolve({ kind: 'approve-once' });
 				this.broadcast({ type: 'approval_resolved', requestId: id });
 			}
 		}
@@ -804,7 +804,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				clearTimeout(p.timeout);
 				this.pendingApprovals.delete(id);
 				if (this.activeApprovalId === id) this.activeApprovalId = null;
-				p.resolve({ kind: 'approved' });
+				p.resolve({ kind: 'approve-once' });
 				this.broadcast({ type: 'approval_resolved', requestId: id });
 			}
 			this.broadcastNextApproval();
