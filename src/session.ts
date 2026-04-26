@@ -88,8 +88,6 @@ export class SessionHandle {
 	private reconnectFn: ((id: string, model?: string) => Promise<CopilotSession>) | null = null;
 	/** The model currently in use by the CLI session — passed to resumeSession on reconnect so portal sends use the same model. */
 	currentModel: string | null = null;
-	/** Overridden context after CWD change — SDK metadata doesn't update on resume. */
-	contextOverride: { cwd: string; gitRoot?: string; repository?: string; branch?: string } | null = null;
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
@@ -1443,17 +1441,6 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (handler) handler(event.data, gen);
 		});
 	}
-	/** Disconnect the underlying SDK session (for CWD change). */
-	async disconnectSession(): Promise<void> {
-		await this.session.disconnect();
-	}
-
-	/** Replace the underlying SDK session after a reconnect (for CWD change). */
-	replaceSession(newSession: CopilotSession): void {
-		this.sessionGeneration++;
-		this.session = newSession;
-		this.attachListeners();
-	}
 }
 
 /** Manages multiple CopilotSession instances under a single CopilotClient (one auth). */
@@ -1519,29 +1506,6 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
-
-	/** Change the working directory for an active session (disconnect + resume). */
-	async changeCwd(sessionId: string, newCwd: string): Promise<{ context?: { cwd: string; gitRoot?: string; repository?: string; branch?: string } }> {
-		const handle = this.pool.get(sessionId);
-		if (!handle) throw new Error(`Session not found: ${sessionId}`);
-		this.log(`[Pool] Changing CWD for ${sessionId.slice(0, 8)} to ${newCwd}`);
-		const model = handle.currentModel ?? undefined;
-		await handle.disconnectSession();
-		const newSession = await this.client.resumeSession(sessionId, {
-			workingDirectory: newCwd,
-			model,
-			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
-			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
-		});
-		handle.replaceSession(newSession);
-		this.log(`[Pool] CWD changed for ${sessionId.slice(0, 8)}`);
-		// SDK metadata doesn't update CWD on resume — fetch what it has and override the cwd
-		const sessions = await this.client.listSessions();
-		const meta = sessions.find(s => s.sessionId === sessionId);
-		const context = { ...(meta?.context ?? { cwd: newCwd }), cwd: newCwd };
-		handle.contextOverride = context;
-		return { context };
-	}
 
 	async getLastSessionId(): Promise<string | null> {
 		// In shared mode, prefer the CLI's foreground session
