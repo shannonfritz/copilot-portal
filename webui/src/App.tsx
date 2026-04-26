@@ -1752,7 +1752,7 @@ export default function App() {
 		const params = new URLSearchParams(window.location.search);
 		params.delete('session');
 		window.history.replaceState(null, '', `?${params.toString()}`);
-	}, []);
+	}, [portalInfo?.defaultCwd]);
 
 	/** Actually create the session from draft config and navigate to it. */
 	const createDraftSession = useCallback(async (firstPrompt?: string) => {
