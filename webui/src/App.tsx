@@ -477,11 +477,12 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 	useEffect(() => { fetchFolders(value || ''); }, []);
 
 	const segments = browsePath.split(/[\\/]/).filter(Boolean);
-	// On Windows, first segment is like "C:" — rebuild as drive paths
+	// Detect OS path separator from the server-resolved path
+	const sep = browsePath.includes('\\') ? '\\' : '/';
 	const breadcrumbs: { label: string; path: string }[] = [];
 	for (let i = 0; i < segments.length; i++) {
-		const p = segments.slice(0, i + 1).join('\\');
-		breadcrumbs.push({ label: segments[i], path: i === 0 ? p + '\\' : p });
+		const p = segments.slice(0, i + 1).join(sep);
+		breadcrumbs.push({ label: segments[i], path: i === 0 && sep === '\\' ? p + sep : p });
 	}
 
 	return (
@@ -493,7 +494,7 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 				</button>
 				{breadcrumbs.map((b, i) => (
 					<span key={i} className="flex items-center gap-0.5">
-						<span style={{ color: 'var(--text-muted)' }}>/</span>
+						<span style={{ color: 'var(--text-muted)' }}>{sep}</span>
 						<button type="button" className="rounded px-1 py-0.5 font-mono hover:underline" style={{ color: i === breadcrumbs.length - 1 ? 'var(--text)' : 'var(--accent)' }} onClick={() => fetchFolders(b.path)}>
 							{b.label}
 						</button>
@@ -512,7 +513,7 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 							await apiFetch('/api/browse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parentPath: browsePath, name }) });
 							setCreatingFolder(false);
 							setNewFolderName('');
-							fetchFolders(browsePath + '\\' + name);
+							fetchFolders(browsePath + sep + name);
 						} catch { setError('Failed to create folder'); }
 					}}>
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
@@ -533,7 +534,7 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 					<div className="px-3 py-2 italic" style={{ color: 'var(--text-muted)' }}>No subfolders</div>
 				)}
 				{folders.map(f => (
-					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(browsePath + '\\' + f); }}>
+					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(browsePath + sep + f); }}>
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
 							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 						</svg>
