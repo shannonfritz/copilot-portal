@@ -1747,6 +1747,9 @@ export default function App() {
 		noSessionRef.current = false;
 		setNoSession(false);
 		setShowPicker(false);
+		// Clear draft mode if switching to an existing session
+		draftRef.current = false;
+		setDraftSession(null);
 		setMessages([]);
 		setStreamingContent('');
 		setIsStreaming(false);
