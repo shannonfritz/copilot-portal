@@ -88,6 +88,8 @@ export class SessionHandle {
 	private reconnectFn: ((id: string, model?: string) => Promise<CopilotSession>) | null = null;
 	/** The model currently in use by the CLI session — passed to resumeSession on reconnect so portal sends use the same model. */
 	currentModel: string | null = null;
+	/** Overridden context after CWD change — SDK metadata doesn't update on resume. */
+	contextOverride: { cwd: string; gitRoot?: string; repository?: string; branch?: string } | null = null;
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
@@ -1533,9 +1535,12 @@ export class SessionPool {
 		});
 		handle.replaceSession(newSession);
 		this.log(`[Pool] CWD changed for ${sessionId.slice(0, 8)}`);
+		// SDK metadata doesn't update CWD on resume — fetch what it has and override the cwd
 		const sessions = await this.client.listSessions();
 		const meta = sessions.find(s => s.sessionId === sessionId);
-		return { context: meta?.context };
+		const context = { ...(meta?.context ?? { cwd: newCwd }), cwd: newCwd };
+		handle.contextOverride = context;
+		return { context };
 	}
 
 	async getLastSessionId(): Promise<string | null> {

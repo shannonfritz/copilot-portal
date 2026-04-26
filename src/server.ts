@@ -26,7 +26,6 @@ export class PortalServer {
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
-	private cwdOverrides: Record<string, { cwd: string; gitRoot?: string; repository?: string; branch?: string }> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
 	private updater: UpdateChecker;
 	private failedAuth = new Map<string, { count: number; resetTime: number }>();
@@ -161,7 +160,9 @@ export class PortalServer {
 			if (!cancelled && ws.readyState === WebSocket.OPEN) {
 				const sessions = await this.pool.listSessions().catch(() => []);
 				const meta = sessions.find(s => s.sessionId === sessionId);
-				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: this.cwdOverrides[sessionId] ?? meta?.context ?? null, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, serverBuild: __BUILD__ }));
+				const effectiveContext = handle.contextOverride ?? meta?.context ?? null;
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: effectiveContext, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, serverBuild: __BUILD__ }));
+				this.log(`[WS] session_switched context for ${sessionId.slice(0,8)}: cwd=${effectiveContext?.cwd ?? 'null'}`);
 
 				// For brand-new sessions the CLI subprocess may not have written cwd yet —
 				// retry once after a short delay and push an update if context arrives.
@@ -510,7 +511,6 @@ export class PortalServer {
 				const { workingDirectory } = JSON.parse(body) as { workingDirectory: string };
 				if (!workingDirectory) { this.sendJson(res, 400, { error: 'workingDirectory required' }); return; }
 				const result = await this.pool.changeCwd(sessionId, workingDirectory);
-				if (result.context) this.cwdOverrides[sessionId] = result.context;
 				this.sendJson(res, 200, result);
 				// Broadcast context update so other clients and future reconnects pick it up
 				if (result.context) {
