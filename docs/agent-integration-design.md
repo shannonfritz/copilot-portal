@@ -124,32 +124,37 @@ async deselectAgent(): Promise<void>
 
 ## Working Directory Dependency
 
-Agents discover their `.agent.md` files relative to the session's working directory. Portal currently sets all new sessions to `data/workspaces/default` (Portal's own directory), which means:
+Agents discover their `.agent.md` files relative to the session's working directory.
 
-- Repo-scoped agents (`.github/agents/`) won't be found
-- Squad's `.squad/` state won't be found
-- `/fleet` operates on the wrong files
-
-### Current State
-
-- **Shared mode** (connecting to existing CLI server) — CWD comes from where the CLI was started. Usually correct.
-- **New sessions via Portal UI** — get Portal's workspace path. Wrong for project work.
-- **Resumed sessions** — preserve their original CWD. Correct.
-
-### SDK Capabilities
+### SDK Behavior (verified April 2026)
 
 - `SessionConfig.workingDirectory` — set CWD at session creation ✅
-- No SDK method to change CWD after creation (the CLI's `/cwd` slash command is TUI-only, not an RPC call)
+- `ResumeSessionConfig.workingDirectory` — **changes CWD on resume** ✅
+  - This is NOT documented but empirically confirmed to work
+  - The CLI's `/cwd` command does 5 internal operations (`process.chdir`, `updateOptions`,
+    `updatePrimaryDirectory`, callback, `setRootPath`). `resumeSession` appears to handle
+    this via a different code path but achieves the same effect.
+- **Critical bug found:** `resumeSession()` without `workingDirectory` defaults to
+  `process.cwd()`, silently resetting the session's CWD to Portal's install directory.
+  Fixed by always passing the session's original CWD when resuming.
+- `SessionMetadata.context.cwd` — reports the CWD but is NOT updated by `resumeSession`.
+  Portal must track CWD overrides if changing mid-session.
 
-### Required for Agent Support
+### Current State (post-fix)
 
-Before the agent picker is fully useful, Portal needs a way to set the working directory when creating a session. Options:
+- **New sessions via Portal UI** — staged creation with CWD input in drawer
+- **Resumed sessions** — original CWD preserved (passed explicitly to `resumeSession`)
+- **Mid-session CWD change** — possible via `resumeSession({ workingDirectory })`,
+  but metadata won't reflect it. Portal can track the override.
+- **Shared mode** — CWD comes from where the CLI was started
 
-1. **Text input** — type or paste a path when creating a new session
-2. **Recent directories** — remember previously used CWDs
-3. **Auto-detect** — if the CLI server was started from a project directory, use that as default
+### Implementation (done)
 
-This is a prerequisite for agents but also improves Portal generally — it's been on the roadmap as "Working Directory Selection."
+- `POST /api/sessions` accepts `{ workingDirectory }` for new sessions
+- `SessionPool.create(cwd?)` passes CWD to SDK
+- `_doConnect()` fetches session's CWD from metadata and passes to `resumeSession`
+- Draft mode UI: "+ New" opens drawer with editable CWD, "Create Session" button
+- `GET /api/sessions` includes `context` (cwd, git info) in response
 
 ## Implementation Order
 
