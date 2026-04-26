@@ -994,7 +994,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (d.success === false && d.error?.message) {
 			this.log(`[Session] ⚠ Tool failed: ${d.error.message}`);
 		}
-		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: d.success ? 'success' : 'failed' });
+		const errorMsg = d.success === false ? (d.error?.message ?? 'failed') : undefined;
+		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: errorMsg ?? 'success' });
 		// Clear CLI input pending when any tool completes (ask_user resolved)
 		if (this.cliInputPending) {
 			this.cliInputPending = null;

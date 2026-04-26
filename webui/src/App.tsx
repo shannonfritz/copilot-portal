@@ -408,7 +408,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		</div>
 	);
 	const isComplete = tc.type === 'tool_complete';
-	const isFailed = isComplete && tc.content === 'failed';
+	const isFailed = isComplete && tc.content !== 'success';
 	const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
 	const borderColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
 	const bgColor = isFailed ? 'var(--error-tint)' : isComplete ? 'var(--success-tint)' : 'var(--tool-call-tint)';
@@ -1494,7 +1494,7 @@ export default function App() {
 						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, intentionSummary: intention, content: event.content, timestamp: Date.now() }]);
 					}
 				} else if (event.type === 'tool_complete') {
-					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const } : te));
+					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const, content: event.content } : te));
 					const completedId = event.toolCallId;
 					// Check if all tools for any message are now complete → delay then collapse
 					setMessages(prev => {
@@ -1505,7 +1505,12 @@ export default function App() {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
 							return te?.type === 'tool_complete' || tcId === completedId;
 						});
-						if (allDone) {
+						// Check if any tool failed — keep failed tools visible (don't collapse)
+						const hasFailed = parentMsg.toolCallIds.some(tcId => {
+							const te = allToolEvents.find(t => t.toolCallId === tcId);
+							return te?.type === 'tool_complete' && te?.content !== 'success';
+						});
+						if (allDone && !hasFailed) {
 							const msgId = parentMsg.id;
 							const toolCallIds = parentMsg.toolCallIds;
 							// Show green for 2s before collapsing
@@ -1537,8 +1542,8 @@ export default function App() {
 						setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
 					}
 				} else if (event.type === 'idle') {
-					// Any remaining tool events not yet collapsed into per-message summaries
-					const remainingTools = buildToolSummary(toolEventsRef.current);
+					// Any remaining tool events not yet collapsed — exclude failed ones (they stay visible)
+					const remainingTools = buildToolSummary(toolEventsRef.current.filter(te => !(te.type === 'tool_complete' && te.content !== 'success')));
 					// Commit any buffered message as the final reply
 					if (pendingMsgRef.current) {
 						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
@@ -1576,7 +1581,8 @@ export default function App() {
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
 					isCliTurnRef.current = false;
-					setToolEvents([]);
+					// Keep failed tool events visible — only clear successful ones
+					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success'));
 					if (isStoppingRef.current) {
 						// Don't clear isStopping immediately — wait 800ms in case more events arrive.
 						// If they do, delta/thinking handlers will cancel this timer.
