@@ -1,5 +1,78 @@
 # Agent Integration Design
 
+## How Agents Work — Conceptual Overview
+
+### The Session Model
+
+A **session** owns the context: conversation history, working directory, tools, permissions, and model. The **agent** is the methodology layer on top — it defines *how* the session responds, not *what* it knows.
+
+Think of the session as the office (desk, files, tools) and the agent as who's sitting at the desk. You can swap who's working, or call in a specialist, but the desk stays the same.
+
+### Types of Customization
+
+| Layer | Files | Auto-loaded? | Scope |
+|-------|-------|-------------|-------|
+| **Custom Instructions** | `AGENTS.md`, `.github/copilot-instructions.md` | Yes, from CWD | Shapes the default agent's behavior |
+| **Custom Agents** | `.github/agents/*.agent.md`, `~/.copilot/agents/*.agent.md` | Discovered, not activated | Selectable personas with own instructions + tool restrictions |
+| **Skills** | Directories of tools/prompts | Configured via `skillDirectories` | Reusable capabilities available to all agents |
+| **MCP Servers** | `.mcp.json` | Discovered from CWD | External tool providers |
+
+### Agent Lifecycle in a Session
+
+1. **Session starts** → default Copilot agent is active. Custom instructions (`AGENTS.md`) are auto-loaded from CWD.
+2. **Agents discovered** → `.agent.md` files found in CWD and `~/.copilot/agents/` are available but not active.
+3. **User selects agent** → `agent.select('code-reviewer')` swaps the methodology. Same session, same history, different persona going forward.
+4. **Agent delegates** → the active agent can spawn **subagents** via the `task` tool or `/fleet` for parallel work. Subagents are ephemeral — they run in a separate context, do their job, and return results.
+5. **User deselects** → `agent.deselect()` returns to the default agent with all history intact.
+
+### Subagents vs. Agent Selection
+
+| | Selected Agent | Subagent |
+|---|---|---|
+| **Lifetime** | Persists until changed | One turn only |
+| **Context** | Full session history | Snapshot of context |
+| **Who decides** | User selects | Active agent spawns |
+| **Effect** | Replaces the session's methodology | Temporary specialist for a task |
+| **Examples** | "I'm doing code review" → select reviewer | "Review this and update docs" → spawns reviewer + docs-writer |
+
+### Built-in vs. Custom Agents
+
+The CLI has **built-in agent types** for the `task` tool:
+- `explore` — lightweight research
+- `task` — run commands, check results
+- `code-review` — review code changes
+- `general-purpose` — full capability
+
+These are generic. **Custom agents** (`.agent.md` files) are project-specific — they know your codebase, conventions, and processes. A custom `release-manager.agent.md` for Portal would know the exact packaging steps, changelog format, and release process.
+
+### How This Relates to Portal's Guides
+
+Portal's Guides serve a similar purpose to custom instructions — they inject context into the session. The differences:
+
+| | Guides | Agents |
+|---|---|---|
+| **Format** | Portal's `data/guides/` | `.agent.md` in repo or `~/.copilot/agents/` |
+| **Portability** | Portal-only | Works in CLI, VS Code, any Copilot client |
+| **Tool restrictions** | No | Yes — can limit which tools the agent uses |
+| **Discovery** | Portal UI | CLI auto-discovers from CWD |
+| **Selection** | Manual apply in Portal | `agent.select()` or CWD-based |
+
+Guides are quick, session-scoped context. Agents are ecosystem-wide personas. Both are valuable — guides for ad-hoc context, agents for repeatable workflows.
+
+### CWD is the Key
+
+Most agent/skill/MCP discovery is CWD-based. Setting the right working directory at session creation unlocks:
+- Auto-loaded instructions (`AGENTS.md`, `copilot-instructions.md`)
+- Available custom agents (`.github/agents/`)
+- MCP server discovery (`.mcp.json`)
+- Squad state (`.squad/`)
+
+Portal's folder browser and staged session creation (v0.5.10) make CWD selection deliberate, which is the prerequisite for all of this.
+
+---
+
+## Portal Integration Design
+
 Support for Copilot CLI custom agents in the Portal UI.
 
 ## Background
