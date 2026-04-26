@@ -1730,6 +1730,11 @@ export default function App() {
 
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
+		// Disconnect existing WS — draft mode has no active session
+		const ws = wsRef.current;
+		if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.close(); }
+		wsRef.current = null;
+		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		// Enter draft mode — session is created when user sends first message or clicks Create
 		setDraftSession({ cwd: portalInfo?.defaultCwd ?? '' });
 		setMessages([]);
