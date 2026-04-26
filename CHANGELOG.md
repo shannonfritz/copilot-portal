@@ -2,15 +2,21 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.5.9
+## v0.5.10
 
-### Critical Fix
-- **Tool execution broken on SDK 0.3.0** — SDK changed approval response format from `'approved'` to `'approve-once'` and `'denied-interactively-by-user'` to `'reject'`. All tool approvals were silently failing. Fixed.
+### ⚠️ Update Required — Tool Execution Fix
+v0.5.8 shipped with a breaking incompatibility: the Copilot SDK v0.3.0 (released April 24) changed the tool approval response format from `'approved'` to `'approve-once'`. Portal was still returning the old format, causing every tool approval to silently fail with `unexpected user permission response`. Portal now auto-detects the correct format from the SDK at startup.
+
+### Per-Session Themes
+- Each session can have its own theme (or fall back to the starred default)
+- Starred default is the single global fallback — no more confusing active vs default
+- Theme picker header matches Sessions/Guides layout (+ New, Use Default)
+- Inline theme editor with pencil icon
 
 ### Working Directory
 - **Staged session creation** — "+ New" opens a draft with folder browser to set CWD before creating
 - **Folder browser** — navigate directories, breadcrumb path, drive letter support (Windows), create new folders
-- **Change CWD on existing sessions** — click the path in the drawer to browse and apply a new working directory
+- **Change CWD on existing sessions** — click the path in the drawer to browse and apply
 - **CWD preserved on session switch** — fixed critical bug where `resumeSession()` was resetting all session CWDs to Portal's install directory on every reconnect
 
 ### Tool Error Surfacing
