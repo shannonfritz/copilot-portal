@@ -1646,6 +1646,7 @@ export default function App() {
 	// Also sends a heartbeat ping to detect stale connections that still report OPEN.
 	useEffect(() => {
 		const checkConnection = () => {
+			if (draftRef.current || noSessionRef.current) return;
 			if (Date.now() - lastConnectTime.current < 1500) return;
 			const ws = wsRef.current;
 			if (!ws) return;
@@ -1669,6 +1670,7 @@ export default function App() {
 		// Retry every 2s if still not connected — iOS needs ~3 attempts before succeeding.
 		// Skip if already CONNECTING to avoid cycling through open/close/open rapidly.
 		const retryInterval = setInterval(() => {
+			if (draftRef.current || noSessionRef.current) return;
 			const state = wsRef.current?.readyState;
 			if (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING) connect();
 		}, 2000);
