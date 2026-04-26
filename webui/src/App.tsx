@@ -576,6 +576,7 @@ function SessionDrawer({
 	draft,
 	onDraftCwdChange,
 	onCreateDraft,
+	onChangeCwd,
 }: {
 	open: boolean;
 	onToggle: () => void;
