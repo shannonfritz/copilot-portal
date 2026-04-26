@@ -1665,8 +1665,13 @@ export class SessionPool {
 		this.log(`[Pool] Connecting: ${sessionId.slice(0, 8)}...`);
 		// Repair any orphaned tool_use events before the SDK loads the session
 		await this.repairOrphanedTools(sessionId);
+		// Fetch the session's original CWD — resumeSession defaults to process.cwd() if not specified
+		const allSessions = await this.client.listSessions();
+		const meta = allSessions.find(s => s.sessionId === sessionId);
+		const sessionCwd = meta?.context?.cwd;
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
+			workingDirectory: sessionCwd,
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
@@ -1674,6 +1679,7 @@ export class SessionPool {
 			session,
 			this.log,
 			(id, model) => this.client.resumeSession(id, {
+				workingDirectory: sessionCwd,
 				model: model ?? handle.currentModel ?? undefined,
 				onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 				onUserInputRequest: (req) => handle.handleUserInputRequest(req),

@@ -505,6 +505,7 @@ export class PortalServer {
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
 			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };
+			this.log(`[API] POST /api/sessions body: sessionId=${sessionId ?? 'none'}, workingDirectory=${workingDirectory ?? 'none'}`);
 			try {
 				if (sessionId) {
 					// Pre-warm: connect to the session so it's ready when client navigates
