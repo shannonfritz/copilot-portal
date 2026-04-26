@@ -3124,8 +3124,9 @@ export default function App() {
 						</button>
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)', opacity: draftSession ? 0.35 : 1 }}
 							onClick={() => {
+								if (draftSession) return;
 								const opening = !showGuides;
 								setshowGuides(opening);
 								if (opening) apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
@@ -3141,8 +3142,8 @@ export default function App() {
 						</button>
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: approveAll ? 'var(--success-tint)' : rules.length > 0 ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined }}
-							onClick={() => setShowRules(v => !v)}
+							style={{ background: approveAll ? 'var(--success-tint)' : rules.length > 0 ? 'var(--primary-tint)' : 'var(--bg)', border: `1px solid ${approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : 'var(--border)'}`, color: approveAll ? 'var(--success)' : rules.length > 0 ? 'var(--primary)' : undefined, opacity: draftSession ? 0.35 : 1 }}
+							onClick={() => { if (!draftSession) setShowRules(v => !v); }}
 							type="button"
 							title={approveAll ? 'Auto-approve all (yolo) enabled' : `Always-allow rules (${rules.length})`}
 						>
@@ -3172,8 +3173,8 @@ export default function App() {
 						<div className="relative">
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-							onClick={() => setShowThemePicker(v => !v)}
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)', opacity: draftSession ? 0.35 : 1 }}
+							onClick={() => { if (!draftSession) setShowThemePicker(v => !v); }}
 							type="button"
 							title={`Theme: ${activePreset.name}`}
 						>
