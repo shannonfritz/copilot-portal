@@ -1166,7 +1166,16 @@ export default function App() {
 					const newId = event.sessionId ?? null;
 					activeSessionIdRef.current = newId;
 					setActiveSessionId(newId);
-					setSessionContext((event as { context?: SessionContext | null }).context ?? null);
+					// Use pending CWD from draft creation if SDK metadata isn't ready yet
+					let ctx = (event as { context?: SessionContext | null }).context ?? null;
+					if (!ctx) {
+						const pendingCwd = sessionStorage.getItem('portal_pending_cwd');
+						if (pendingCwd) {
+							ctx = { cwd: pendingCwd };
+							sessionStorage.removeItem('portal_pending_cwd');
+						}
+					}
+					setSessionContext(ctx);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
 					// Restore prompts for this session
@@ -1778,8 +1787,11 @@ export default function App() {
 			const params = new URLSearchParams(window.location.search);
 			params.set('session', sessionId);
 			if (firstPrompt) {
-				// Store the prompt to send after reconnect
 				sessionStorage.setItem('portal_pending_prompt', firstPrompt);
+			}
+			// Store CWD so the new page load can show it immediately (SDK metadata takes time)
+			if (draftSession.cwd.trim()) {
+				sessionStorage.setItem('portal_pending_cwd', draftSession.cwd.trim());
 			}
 			window.location.search = params.toString();
 		} catch {
