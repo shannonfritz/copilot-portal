@@ -884,6 +884,7 @@ export default function App() {
 	const [sessionQuota, setSessionQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [draftSession, setDraftSession] = useState<{ cwd: string } | null>(null);
+	const draftRef = useRef(false);
 	const [noSession, setNoSession] = useState(!hasSessionInUrl);
 	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -1601,7 +1602,7 @@ export default function App() {
 	}, []);
 
 	useEffect(() => {
-		if (noSessionRef.current) {
+		if (noSessionRef.current || draftRef.current) {
 			// Start in no-session mode — open management WS for live broadcasts
 			const token = getToken();
 			if (token) {
@@ -1736,6 +1737,7 @@ export default function App() {
 		wsRef.current = null;
 		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		// Enter draft mode — session is created when user sends first message or clicks Create
+		draftRef.current = true;
 		setDraftSession({ cwd: portalInfo?.defaultCwd ?? '' });
 		setMessages([]);
 		setStreamingContent('');
@@ -1768,6 +1770,7 @@ export default function App() {
 			const res = await apiFetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 			const { sessionId } = await res.json() as { sessionId: string };
 			setDraftSession(null);
+			draftRef.current = false;
 			noSessionRef.current = false;
 			setNoSession(false);
 			const params = new URLSearchParams(window.location.search);
