@@ -450,6 +450,80 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 	);
 }
 
+function FolderBrowser({ value, onChange }: { value: string; onChange: (path: string) => void }) {
+	const [browsePath, setBrowsePath] = useState(value || '');
+	const [folders, setFolders] = useState<string[]>([]);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [isValid, setIsValid] = useState(true);
+
+	const fetchFolders = useCallback((p: string) => {
+		setLoading(true);
+		setError(null);
+		apiFetch(`/api/browse?path=${encodeURIComponent(p)}`).then(r => r.json()).then((data: { path: string; exists: boolean; isDir: boolean; folders: string[]; error?: string }) => {
+			setBrowsePath(data.path);
+			setFolders(data.folders);
+			setIsValid(data.exists && data.isDir);
+			setError(data.error ?? (!data.exists ? 'Path does not exist' : !data.isDir ? 'Not a directory' : null));
+			if (data.exists && data.isDir) onChange(data.path);
+			setLoading(false);
+		}).catch(() => { setLoading(false); setError('Failed to browse'); });
+	}, [onChange]);
+
+	// Fetch on mount
+	useEffect(() => { fetchFolders(value || ''); }, []);
+
+	const segments = browsePath.split(/[\\/]/).filter(Boolean);
+	// On Windows, first segment is like "C:" — rebuild as drive paths
+	const breadcrumbs: { label: string; path: string }[] = [];
+	for (let i = 0; i < segments.length; i++) {
+		const p = segments.slice(0, i + 1).join('\\');
+		breadcrumbs.push({ label: segments[i], path: i === 0 ? p + '\\' : p });
+	}
+
+	return (
+		<div className="rounded-lg text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+			{/* Breadcrumb path */}
+			<div className="flex items-center gap-0.5 px-3 py-2 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
+				<button type="button" className="rounded px-1 py-0.5 font-mono hover:underline" style={{ color: 'var(--accent)' }} onClick={() => fetchFolders('')} title="Root">
+					<svg className="size-3 inline-block mr-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10" /></svg>
+				</button>
+				{breadcrumbs.map((b, i) => (
+					<span key={i} className="flex items-center gap-0.5">
+						<span style={{ color: 'var(--text-muted)' }}>/</span>
+						<button type="button" className="rounded px-1 py-0.5 font-mono hover:underline" style={{ color: i === breadcrumbs.length - 1 ? 'var(--text)' : 'var(--accent)' }} onClick={() => fetchFolders(b.path)}>
+							{b.label}
+						</button>
+					</span>
+				))}
+				{loading && <span className="ml-1" style={{ color: 'var(--text-muted)' }}>…</span>}
+			</div>
+			{/* Folder list */}
+			<div className="max-h-40 overflow-y-auto">
+				{error && <div className="px-3 py-2 italic" style={{ color: 'var(--error)' }}>{error}</div>}
+				{!error && folders.length === 0 && !loading && (
+					<div className="px-3 py-2 italic" style={{ color: 'var(--text-muted)' }}>No subfolders</div>
+				)}
+				{folders.map(f => (
+					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => fetchFolders(browsePath + '\\' + f)}>
+						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
+							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+						</svg>
+						<span className="font-mono" style={{ color: 'var(--text)' }}>{f}</span>
+					</button>
+				))}
+			</div>
+			{/* Selected path display */}
+			{isValid && !error && (
+				<div className="px-3 py-2 flex items-center gap-2" style={{ borderTop: '1px solid var(--border)' }}>
+					<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2"><path d="M20 6L9 17l-5-5" /></svg>
+					<span className="font-mono truncate" style={{ color: 'var(--text-muted)' }}>{browsePath}</span>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function SessionDrawer({
 	open,
 	onToggle,
@@ -560,21 +634,14 @@ function SessionDrawer({
 
 					{/* cwd / branch */}
 					{draft ? (
-						<div className="mb-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-							<label className="flex items-center gap-2 mb-1.5" style={{ color: 'var(--text-muted)' }}>
+						<div className="mb-3">
+							<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
 								<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 									<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 								</svg>
 								Working Directory
 							</label>
-							<input
-								className="w-full bg-transparent border-none outline-none font-mono text-xs py-1"
-								style={{ color: 'var(--text)', borderBottom: '1px solid var(--border)' }}
-								value={draft.cwd}
-								onChange={e => onDraftCwdChange?.(e.target.value)}
-								placeholder="Leave empty for default"
-								autoFocus
-							/>
+							<FolderBrowser value={draft.cwd} onChange={(p) => onDraftCwdChange?.(p)} />
 						</div>
 					) : (
 					<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>

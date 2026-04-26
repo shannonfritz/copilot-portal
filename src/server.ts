@@ -501,6 +501,27 @@ export class PortalServer {
 			return;
 		}
 
+		// Folder browser for CWD picker
+		if (url.pathname === '/api/browse' && method === 'GET') {
+			const browsePath = url.searchParams.get('path') || '';
+			try {
+				const resolved = browsePath ? path.resolve(browsePath) : path.parse(process.cwd()).root;
+				const stat = fs.statSync(resolved);
+				if (!stat.isDirectory()) { this.sendJson(res, 200, { path: resolved, exists: true, isDir: false, folders: [] }); return; }
+				const entries = fs.readdirSync(resolved, { withFileTypes: true });
+				const folders = entries
+					.filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
+					.map(e => e.name)
+					.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+				this.sendJson(res, 200, { path: resolved, exists: true, isDir: true, folders });
+			} catch (e) {
+				const errMsg = String(e);
+				if (errMsg.includes('ENOENT')) this.sendJson(res, 200, { path: browsePath, exists: false, isDir: false, folders: [] });
+				else if (errMsg.includes('EPERM') || errMsg.includes('EACCES')) this.sendJson(res, 200, { path: browsePath, exists: true, isDir: true, folders: [], error: 'Permission denied' });
+				else this.sendJson(res, 500, { error: errMsg });
+			}
+			return;
+		}
 
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
