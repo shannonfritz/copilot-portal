@@ -838,7 +838,7 @@ function SessionDrawer({
 										<button
 											key={a.name}
 											type="button"
-											className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+											className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left"
 											style={{ background: currentAgent?.name === a.name ? 'var(--primary-tint)' : 'transparent' }}
 											onClick={async () => {
 												await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
