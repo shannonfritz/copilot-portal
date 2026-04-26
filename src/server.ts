@@ -523,6 +523,22 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/browse' && method === 'POST') {
+			try {
+				const body = await this.readBody(req);
+				const { parentPath, name } = JSON.parse(body) as { parentPath: string; name: string };
+				if (!parentPath || !name || /[<>:"|?*]/.test(name) || name.includes('\\') || name.includes('/')) {
+					this.sendJson(res, 400, { error: 'Invalid folder name' }); return;
+				}
+				const fullPath = path.join(path.resolve(parentPath), name);
+				fs.mkdirSync(fullPath, { recursive: true });
+				this.sendJson(res, 200, { path: fullPath, ok: true });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
 			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };
