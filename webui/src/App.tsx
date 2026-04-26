@@ -464,6 +464,7 @@ function SessionDrawer({
 	sessionStartTime,
 	sessionUsage,
 	sessionQuota,
+	onChangeCwd,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -478,10 +479,14 @@ function SessionDrawer({
 	sessionStartTime?: string;
 	sessionUsage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null;
 	sessionQuota?: { unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null;
+	onChangeCwd?: (newCwd: string) => Promise<void>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
 	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
+	const [editingCwd, setEditingCwd] = useState(false);
+	const [cwdInput, setCwdInput] = useState('');
+	const [cwdSaving, setCwdSaving] = useState(false);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -553,25 +558,58 @@ function SessionDrawer({
 					</div>
 
 					{/* cwd / branch */}
-					<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-						</svg>
-						{cwd ? (
-							<span className="whitespace-nowrap font-mono" style={{ color: 'var(--text-muted)' }}>{cwd}</span>
-						) : (
-							<span className="whitespace-nowrap font-mono italic" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>Loading…</span>
-						)}
-						{branch && (
-							<>
-								<span style={{ color: 'var(--border)' }}>·</span>
-								<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
-								</svg>
-								<span className="font-mono" style={{ color: 'var(--text-muted)' }}>{branch}</span>
-							</>
-						)}
-					</div>
+					{editingCwd ? (
+						<form className="mb-3 flex items-center gap-2 rounded-lg px-3 py-1 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--primary)' }} onSubmit={async (e) => {
+							e.preventDefault();
+							const trimmed = cwdInput.trim();
+							if (!trimmed || trimmed === cwd || !onChangeCwd) return;
+							setCwdSaving(true);
+							try { await onChangeCwd(trimmed); } catch {}
+							setCwdSaving(false);
+							setEditingCwd(false);
+						}}>
+							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							</svg>
+							<input
+								className="flex-1 min-w-0 bg-transparent border-none outline-none font-mono text-xs py-1"
+								style={{ color: 'var(--text)' }}
+								value={cwdInput}
+								onChange={e => setCwdInput(e.target.value)}
+								placeholder="/path/to/project"
+								autoFocus
+								disabled={cwdSaving}
+							/>
+							<button type="submit" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: cwdSaving ? 0.5 : 1 }} disabled={cwdSaving}>
+								{cwdSaving ? '…' : 'Set'}
+							</button>
+							<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setEditingCwd(false)}>
+								Cancel
+							</button>
+						</form>
+					) : (
+						<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => { setCwdInput(cwd ?? ''); setEditingCwd(true); }} title="Click to change working directory">
+							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							</svg>
+							{cwd ? (
+								<span className="whitespace-nowrap font-mono" style={{ color: 'var(--text-muted)' }}>{cwd}</span>
+							) : (
+								<span className="whitespace-nowrap font-mono italic" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>No working directory set</span>
+							)}
+							{branch && (
+								<>
+									<span style={{ color: 'var(--border)' }}>·</span>
+									<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9" />
+									</svg>
+									<span className="font-mono" style={{ color: 'var(--text-muted)' }}>{branch}</span>
+								</>
+							)}
+							<div className="flex-1" />
+							<svg className="size-3 shrink-0" style={{ opacity: 0.4 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+						</button>
+					)}
 
 					{/* Session usage stats */}
 					{sessionUsage && sessionUsage.requests > 0 && (
@@ -2997,6 +3035,16 @@ export default function App() {
 					sessionStartTime={sessions.find(s => s.sessionId === activeSessionId)?.startTime}
 					sessionUsage={sessionUsage}
 					sessionQuota={sessionQuota}
+					onChangeCwd={async (newCwd) => {
+						if (!activeSessionId) return;
+						const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/cwd`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ workingDirectory: newCwd }),
+						});
+						const data = await res.json();
+						if (data.context) setSessionContext(data.context);
+					}}
 					/>
 				)}
 
