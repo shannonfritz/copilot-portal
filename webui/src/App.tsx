@@ -172,6 +172,7 @@ interface InputRequest {
 interface PortalInfo {
 	version: string;
 	login: string;
+	defaultCwd?: string;
 	models: Array<{ id: string; name: string }>;
 }
 
@@ -1730,7 +1731,7 @@ export default function App() {
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
 		// Enter draft mode — session is created when user sends first message or clicks Create
-		setDraftSession({ cwd: '' });
+		setDraftSession({ cwd: portalInfo?.defaultCwd ?? '' });
 		setMessages([]);
 		setStreamingContent('');
 		setIsStreaming(false);
