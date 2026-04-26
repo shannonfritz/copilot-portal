@@ -519,7 +519,7 @@ export class PortalServer {
 				if (!stat.isDirectory()) { this.sendJson(res, 200, { path: resolved, exists: true, isDir: false, folders: [] }); return; }
 				const entries = fs.readdirSync(resolved, { withFileTypes: true });
 				const folders = entries
-					.filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
+					.filter(e => e.isDirectory() && !e.isSymbolicLink() && !e.name.startsWith('.') && e.name !== 'node_modules')
 					.map(e => e.name)
 					.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 				this.sendJson(res, 200, { path: resolved, exists: true, isDir: true, folders });
@@ -536,7 +536,7 @@ export class PortalServer {
 			try {
 				const body = await this.readBody(req);
 				const { parentPath, name } = JSON.parse(body) as { parentPath: string; name: string };
-				if (!parentPath || !name || /[<>:"|?*]/.test(name) || name.includes('\\') || name.includes('/')) {
+				if (!parentPath || !name || name === '.' || name === '..' || /[<>:"|?*]/.test(name) || name.includes('\\') || name.includes('/')) {
 					this.sendJson(res, 400, { error: 'Invalid folder name' }); return;
 				}
 				const fullPath = path.join(path.resolve(parentPath), name);
@@ -555,7 +555,9 @@ export class PortalServer {
 				const body = await this.readBody(req);
 				const { workingDirectory } = JSON.parse(body) as { workingDirectory: string };
 				if (!workingDirectory) { this.sendJson(res, 400, { error: 'workingDirectory required' }); return; }
-				await this.pool.changeCwd(sessionId, workingDirectory);
+				const resolved = path.resolve(workingDirectory);
+				try { if (!fs.statSync(resolved).isDirectory()) { this.sendJson(res, 400, { error: 'Path is not a directory' }); return; } } catch { this.sendJson(res, 400, { error: 'Path does not exist' }); return; }
+				await this.pool.changeCwd(sessionId, resolved);
 				this.broadcastAll({ type: 'session_context_updated', sessionId, context: { cwd: workingDirectory } });
 				this.sendJson(res, 200, { ok: true, context: { cwd: workingDirectory } });
 				this.log(`[API] CWD changed for ${sessionId.slice(0, 8)} → ${workingDirectory}`);
@@ -568,14 +570,19 @@ export class PortalServer {
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
 			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };
-			this.log(`[API] POST /api/sessions body: sessionId=${sessionId ?? 'none'}, workingDirectory=${workingDirectory ?? 'none'}`);
 			try {
+				// Validate workingDirectory if provided
+				let resolvedCwd: string | undefined;
+				if (workingDirectory) {
+					resolvedCwd = path.resolve(workingDirectory);
+					try { if (!fs.statSync(resolvedCwd).isDirectory()) { this.sendJson(res, 400, { error: 'Path is not a directory' }); return; } } catch { this.sendJson(res, 400, { error: 'Path does not exist' }); return; }
+				}
 				if (sessionId) {
 					// Pre-warm: connect to the session so it's ready when client navigates
 					await this.pool.connect(sessionId);
 					this.sendJson(res, 200, { sessionId });
 				} else {
-					const handle = await this.pool.create(workingDirectory);
+					const handle = await this.pool.create(resolvedCwd);
 					const newId = handle.sessionId;
 					// Broadcast so other clients' pickers update
 					const sessions = await this.pool.listSessions().catch(() => []);
