@@ -653,6 +653,23 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		await this.session.disconnect().catch(() => {});
 	}
 
+	// Agent management
+	async listAgents(): Promise<Array<{ name: string; displayName: string; description: string }>> {
+		const result = await this.session.rpc.agent.list();
+		return result.agents;
+	}
+	async getCurrentAgent(): Promise<{ name: string; displayName: string; description: string } | null> {
+		const result = await this.session.rpc.agent.getCurrent();
+		return result.agent ?? null;
+	}
+	async selectAgent(name: string): Promise<{ name: string; displayName: string; description: string }> {
+		const result = await this.session.rpc.agent.select({ name });
+		return result.agent;
+	}
+	async deselectAgent(): Promise<void> {
+		await this.session.rpc.agent.deselect();
+	}
+
 	getPendingApprovalEvents(): PortalEvent[] {
 		// Only return the currently-active approval (the one being shown to clients).
 		// Others are queued and will be sent automatically after the current one resolves.

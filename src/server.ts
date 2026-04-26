@@ -501,6 +501,38 @@ export class PortalServer {
 			return;
 		}
 
+		// Agent management — requires active session
+		const agentMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/agents(?:\/(.+))?$/);
+		if (agentMatch) {
+			const sessionId = agentMatch[1];
+			const action = agentMatch[2]; // 'current', 'select', 'deselect', or undefined (list)
+			const handle = this.pool.getHandle(sessionId);
+			if (!handle) { this.sendJson(res, 404, { error: 'Session not found' }); return; }
+			try {
+				if (!action && method === 'GET') {
+					// List available agents
+					const agents = await handle.listAgents();
+					const current = await handle.getCurrentAgent();
+					this.sendJson(res, 200, { agents, current });
+				} else if (action === 'select' && method === 'POST') {
+					const body = await this.readBody(req);
+					const { name } = JSON.parse(body) as { name: string };
+					const agent = await handle.selectAgent(name);
+					this.sendJson(res, 200, { agent });
+					this.log(`[API] Agent selected for ${sessionId.slice(0, 8)}: ${name}`);
+				} else if (action === 'deselect' && method === 'POST') {
+					await handle.deselectAgent();
+					this.sendJson(res, 200, { ok: true });
+					this.log(`[API] Agent deselected for ${sessionId.slice(0, 8)}`);
+				} else {
+					this.sendJson(res, 400, { error: 'Unknown agent action' });
+				}
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		// Folder browser for CWD picker
 		if (url.pathname === '/api/browse' && method === 'GET') {
 			const browsePath = url.searchParams.get('path') || '';

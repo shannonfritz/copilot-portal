@@ -602,6 +602,9 @@ function SessionDrawer({
 	const [editingCwd, setEditingCwd] = useState(false);
 	const [cwdSaving, setCwdSaving] = useState(false);
 	const [browsedCwd, setBrowsedCwd] = useState('');
+	const [showAgentPicker, setShowAgentPicker] = useState(false);
+	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string }>>([]);
+	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -790,6 +793,77 @@ function SessionDrawer({
 							</div>
 						)}
 					</div>
+					{/* Agent selector — only for active sessions (not draft) */}
+					{!draft && activeSessionId && (
+						<div className="relative mt-3">
+							<button
+								type="button"
+								className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+								onClick={() => {
+									const opening = !showAgentPicker;
+									setShowAgentPicker(opening);
+									if (opening) {
+										apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).then((data: { agents: typeof agents; current: typeof currentAgent }) => {
+											setAgents(data.agents);
+											setCurrentAgent(data.current);
+										}).catch(() => {});
+									}
+								}}
+							>
+								<div className="flex items-center gap-2">
+									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+									</svg>
+									<span>{currentAgent?.displayName ?? currentAgent?.name ?? 'Default'}</span>
+								</div>
+								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
+							</button>
+							{showAgentPicker && (
+								<div className="code-scroll mt-1 max-h-48 overflow-y-auto rounded-lg" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+									<button
+										type="button"
+										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+										style={{ background: !currentAgent ? 'var(--primary-tint)' : 'transparent' }}
+										onClick={async () => {
+											await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => {});
+											setCurrentAgent(null);
+											setShowAgentPicker(false);
+										}}
+									>
+										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{!currentAgent ? '\u2713' : ''}</span>
+										<span>Default</span>
+									</button>
+									{agents.map(a => (
+										<button
+											key={a.name}
+											type="button"
+											className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+											style={{ background: currentAgent?.name === a.name ? 'var(--primary-tint)' : 'transparent' }}
+											onClick={async () => {
+												await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
+													method: 'POST',
+													headers: { 'Content-Type': 'application/json' },
+													body: JSON.stringify({ name: a.name }),
+												}).catch(() => {});
+												setCurrentAgent(a);
+												setShowAgentPicker(false);
+											}}
+										>
+											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
+											<div>
+												<div>{a.displayName || a.name}</div>
+												{a.description && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.description}</div>}
+											</div>
+										</button>
+									))}
+									{agents.length === 0 && (
+										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No custom agents found</div>
+									)}
+								</div>
+							)}
+						</div>
+					)}
 					{draft && (
 						<button
 							type="button"
