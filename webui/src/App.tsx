@@ -593,10 +593,13 @@ function SessionDrawer({
 	draft?: { cwd: string } | null;
 	onDraftCwdChange?: (cwd: string) => void;
 	onCreateDraft?: () => void;
+	onChangeCwd?: (newCwd: string) => Promise<void>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
 	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
+	const [editingCwd, setEditingCwd] = useState(false);
+	const [cwdSaving, setCwdSaving] = useState(false);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -678,8 +681,28 @@ function SessionDrawer({
 							</label>
 							<FolderBrowser value={draft.cwd} onChange={(p) => onDraftCwdChange?.(p)} />
 						</div>
+					) : editingCwd ? (
+					<div className="mb-3">
+						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							</svg>
+							Working Directory
+						</label>
+						<FolderBrowser value={cwd ?? ''} onChange={async (p) => {
+							if (!onChangeCwd || p === cwd) return;
+							setCwdSaving(true);
+							try { await onChangeCwd(p); } catch {}
+							setCwdSaving(false);
+							setEditingCwd(false);
+						}} />
+						<div className="flex justify-end gap-2 mt-2">
+							{cwdSaving && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Applying…</span>}
+							<button type="button" className="rounded-lg px-3 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setEditingCwd(false)}>Cancel</button>
+						</div>
+					</div>
 					) : (
-					<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+					<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => setEditingCwd(true)} title="Click to change working directory">
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 						</svg>
@@ -697,7 +720,9 @@ function SessionDrawer({
 								<span className="font-mono" style={{ color: 'var(--text-muted)' }}>{branch}</span>
 							</>
 						)}
-					</div>
+						<div className="flex-1" />
+						<svg className="size-3 shrink-0" style={{ opacity: 0.4 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+					</button>
 					)}
 
 					{/* Session usage stats */}
@@ -3221,6 +3246,15 @@ export default function App() {
 					draft={draftSession}
 					onDraftCwdChange={(cwd) => setDraftSession(prev => prev ? { ...prev, cwd } : null)}
 					onCreateDraft={() => createDraftSession()}
+					onChangeCwd={async (newCwd) => {
+						if (!activeSessionId) return;
+						await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/cwd`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ workingDirectory: newCwd }),
+						});
+						setSessionContext({ cwd: newCwd });
+					}}
 					/>
 				)}
 

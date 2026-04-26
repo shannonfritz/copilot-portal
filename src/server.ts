@@ -548,6 +548,23 @@ export class PortalServer {
 			return;
 		}
 
+		const cwdMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/cwd$/);
+		if (cwdMatch && method === 'POST') {
+			const sessionId = cwdMatch[1];
+			try {
+				const body = await this.readBody(req);
+				const { workingDirectory } = JSON.parse(body) as { workingDirectory: string };
+				if (!workingDirectory) { this.sendJson(res, 400, { error: 'workingDirectory required' }); return; }
+				await this.pool.changeCwd(sessionId, workingDirectory);
+				this.broadcastAll({ type: 'session_context_updated', sessionId, context: { cwd: workingDirectory } });
+				this.sendJson(res, 200, { ok: true, context: { cwd: workingDirectory } });
+				this.log(`[API] CWD changed for ${sessionId.slice(0, 8)} → ${workingDirectory}`);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
 			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };

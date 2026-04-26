@@ -1441,6 +1441,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (handler) handler(event.data, gen);
 		});
 	}
+
+	/** Replace the underlying SDK session (used after CWD change via disconnect+resume). */
+	replaceSession(newSession: CopilotSession): void {
+		this.sessionGeneration++;
+		this.session = newSession;
+		this.attachListeners();
+	}
 }
 
 /** Manages multiple CopilotSession instances under a single CopilotClient (one auth). */
@@ -1506,6 +1513,23 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
+
+	/** Change the working directory for an active session (disconnect + resume with new CWD). */
+	async changeCwd(sessionId: string, newCwd: string): Promise<void> {
+		const handle = this.pool.get(sessionId);
+		if (!handle) throw new Error(`Session not found in pool: ${sessionId}`);
+		this.log(`[Pool] Changing CWD for ${sessionId.slice(0, 8)} to ${newCwd}`);
+		const model = handle.currentModel ?? undefined;
+		await handle.disconnect();
+		const newSession = await this.client.resumeSession(sessionId, {
+			workingDirectory: newCwd,
+			model,
+			onPermissionRequest: (req: PermissionRequest) => handle.handlePermissionRequest(req),
+			onUserInputRequest: (req: UserInputRequest) => handle.handleUserInputRequest(req),
+		});
+		handle.replaceSession(newSession);
+		this.log(`[Pool] CWD changed for ${sessionId.slice(0, 8)}`);
+	}
 
 	async getLastSessionId(): Promise<string | null> {
 		// In shared mode, prefer the CLI's foreground session
