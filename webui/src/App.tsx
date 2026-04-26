@@ -600,6 +600,7 @@ function SessionDrawer({
 	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [editingCwd, setEditingCwd] = useState(false);
 	const [cwdSaving, setCwdSaving] = useState(false);
+	const [browsedCwd, setBrowsedCwd] = useState('');
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -689,20 +690,20 @@ function SessionDrawer({
 							</svg>
 							Working Directory
 						</label>
-						<FolderBrowser value={cwd ?? ''} onChange={async (p) => {
-							if (!onChangeCwd || p === cwd) return;
-							setCwdSaving(true);
-							try { await onChangeCwd(p); } catch {}
-							setCwdSaving(false);
-							setEditingCwd(false);
-						}} />
+						<FolderBrowser value={cwd ?? ''} onChange={(p) => setBrowsedCwd(p)} />
 						<div className="flex justify-end gap-2 mt-2">
-							{cwdSaving && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Applying…</span>}
 							<button type="button" className="rounded-lg px-3 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setEditingCwd(false)}>Cancel</button>
+							<button type="button" className="rounded-lg px-3 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: (!browsedCwd || browsedCwd === cwd || cwdSaving) ? 0.5 : 1 }} disabled={!browsedCwd || browsedCwd === cwd || cwdSaving} onClick={async () => {
+								if (!onChangeCwd || !browsedCwd || browsedCwd === cwd) return;
+								setCwdSaving(true);
+								try { await onChangeCwd(browsedCwd); } catch {}
+								setCwdSaving(false);
+								setEditingCwd(false);
+							}}>{cwdSaving ? 'Applying…' : 'Apply'}</button>
 						</div>
 					</div>
 					) : (
-					<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => setEditingCwd(true)} title="Click to change working directory">
+					<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => { setBrowsedCwd(cwd ?? ''); setEditingCwd(true); }} title="Click to change working directory">
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 						</svg>
