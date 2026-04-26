@@ -464,6 +464,9 @@ function SessionDrawer({
 	sessionStartTime,
 	sessionUsage,
 	sessionQuota,
+	draft,
+	onDraftCwdChange,
+	onCreateDraft,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -478,6 +481,9 @@ function SessionDrawer({
 	sessionStartTime?: string;
 	sessionUsage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null;
 	sessionQuota?: { unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null;
+	draft?: { cwd: string } | null;
+	onDraftCwdChange?: (cwd: string) => void;
+	onCreateDraft?: () => void;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
@@ -504,8 +510,8 @@ function SessionDrawer({
 			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
 			<button className="flex w-full items-center gap-2 border-none bg-transparent px-4 py-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }} onClick={onToggle} type="button">
 				{/* Session summary — read-only */}
-				<span className="whitespace-nowrap shrink-0" style={{ color: sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
-					{sessionSummary || <em>untitled session</em>}
+				<span className="whitespace-nowrap shrink-0" style={{ color: draft ? 'var(--primary)' : sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
+					{draft ? 'New Session' : sessionSummary || <em>untitled session</em>}
 				</span>
 				{/* Flex spacer — blank space clicks toggle the tray */}
 				<div className="flex-1" />
@@ -553,6 +559,24 @@ function SessionDrawer({
 					</div>
 
 					{/* cwd / branch */}
+					{draft ? (
+						<div className="mb-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+							<label className="flex items-center gap-2 mb-1.5" style={{ color: 'var(--text-muted)' }}>
+								<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+								</svg>
+								Working Directory
+							</label>
+							<input
+								className="w-full bg-transparent border-none outline-none font-mono text-xs py-1"
+								style={{ color: 'var(--text)', borderBottom: '1px solid var(--border)' }}
+								value={draft.cwd}
+								onChange={e => onDraftCwdChange?.(e.target.value)}
+								placeholder="Leave empty for default"
+								autoFocus
+							/>
+						</div>
+					) : (
 					<div className="code-scroll mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -572,6 +596,7 @@ function SessionDrawer({
 							</>
 						)}
 					</div>
+					)}
 
 					{/* Session usage stats */}
 					{sessionUsage && sessionUsage.requests > 0 && (
@@ -628,6 +653,14 @@ function SessionDrawer({
 							</div>
 						)}
 					</div>
+					{draft && (
+						<button
+							type="button"
+							className="w-full mt-3 rounded-lg px-3 py-2 text-sm font-medium"
+							style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+							onClick={onCreateDraft}
+						>Create Session</button>
+					)}
 				</div>
 			)}
 		</div>
@@ -782,6 +815,7 @@ export default function App() {
 	const [sessionUsage, setSessionUsage] = useState<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null>(null);
 	const [sessionQuota, setSessionQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	const [draftSession, setDraftSession] = useState<{ cwd: string } | null>(null);
 	const [noSession, setNoSession] = useState(!hasSessionInUrl);
 	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -1046,6 +1080,16 @@ export default function App() {
 					// Auto-open drawer when session is empty (new session)
 					if (historyBufferRef.current.length === 0) setDrawerOpen(true);
 					historyBufferRef.current = [];
+					// Check for pending prompt from draft session creation
+					const pendingPrompt = sessionStorage.getItem('portal_pending_prompt');
+					if (pendingPrompt) {
+						sessionStorage.removeItem('portal_pending_prompt');
+						setTimeout(() => {
+							wsRef.current?.send(JSON.stringify({ type: 'prompt', content: pendingPrompt }));
+							setMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'user', content: pendingPrompt, timestamp: Date.now() }]);
+							setIsThinking(true);
+						}, 100);
+					}
 					return;
 				}
 
@@ -1618,18 +1662,52 @@ export default function App() {
 
 	const newSession = useCallback(async () => {
 		setShowPicker(false);
+		// Enter draft mode — session is created when user sends first message or clicks Create
+		setDraftSession({ cwd: '' });
+		setMessages([]);
+		setStreamingContent('');
+		setIsStreaming(false);
+		setIsThinking(false);
+		setPendingApproval(null);
+		setCliApprovalInfo(null);
+		setCliInputInfo(null);
+		setActiveModel(null);
+		setSessionContext(null);
+		setActiveSessionSummary(null);
+		setSessionUsage(null);
+		setSessionQuota(null);
+		setActiveSessionId(null);
+		noSessionRef.current = false;
+		setNoSession(false);
+		setDrawerOpen(true);
+		// Clear URL session param
+		const params = new URLSearchParams(window.location.search);
+		params.delete('session');
+		window.history.replaceState(null, '', `?${params.toString()}`);
+	}, []);
+
+	/** Actually create the session from draft config and navigate to it. */
+	const createDraftSession = useCallback(async (firstPrompt?: string) => {
+		if (!draftSession) return;
 		try {
-			const res = await apiFetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+			const body: Record<string, string> = {};
+			if (draftSession.cwd.trim()) body.workingDirectory = draftSession.cwd.trim();
+			const res = await apiFetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 			const { sessionId } = await res.json() as { sessionId: string };
+			setDraftSession(null);
 			noSessionRef.current = false;
 			setNoSession(false);
 			const params = new URLSearchParams(window.location.search);
 			params.set('session', sessionId);
+			if (firstPrompt) {
+				// Store the prompt to send after reconnect
+				sessionStorage.setItem('portal_pending_prompt', firstPrompt);
+			}
 			window.location.search = params.toString();
 		} catch {
 			setError('Could not create session');
 		}
-	}, []);
+	}, [draftSession]);
 
 	const changeModel = useCallback((modelId: string) => {
 		setActiveModel(modelId);
@@ -1842,7 +1920,14 @@ export default function App() {
 
 	const sendPrompt = () => {
 		const prompt = input.trim();
-		if (!prompt || connectionState !== 'connected') return;
+		if (!prompt) return;
+		// Draft mode: create session first, then send after reload
+		if (draftSession) {
+			setInput('');
+			createDraftSession(prompt);
+			return;
+		}
+		if (connectionState !== 'connected') return;
 		setMessages((prev) => [
 			...prev,
 			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() },
@@ -2981,8 +3066,8 @@ export default function App() {
 
 			{/* Chat */}
 			<main className="flex flex-1 flex-col overflow-hidden">
-				{/* Session info drawer — always visible when connected */}
-				{connectionState === 'connected' && (
+				{/* Session info drawer — always visible when connected or in draft mode */}
+				{(connectionState === 'connected' || draftSession) && (
 					<SessionDrawer
 						open={drawerOpen}
 						onToggle={() => setDrawerOpen(v => !v)}
@@ -2997,6 +3082,9 @@ export default function App() {
 					sessionStartTime={sessions.find(s => s.sessionId === activeSessionId)?.startTime}
 					sessionUsage={sessionUsage}
 					sessionQuota={sessionQuota}
+					draft={draftSession}
+					onDraftCwdChange={(cwd) => setDraftSession(prev => prev ? { ...prev, cwd } : null)}
+					onCreateDraft={() => createDraftSession()}
 					/>
 				)}
 
@@ -3514,8 +3602,8 @@ export default function App() {
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-									placeholder={connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
-									disabled={connectionState !== 'connected'}
+									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
+									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
 									value={input}
 									onChange={(e) => setInput(e.target.value)}
@@ -3602,9 +3690,9 @@ export default function App() {
 									style={{
 										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
 										color: 'white',
-										cursor: input.trim() && connectionState === 'connected' ? 'pointer' : 'default',
+										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
 									}}
-									disabled={!input.trim() || connectionState !== 'connected'}
+									disabled={!input.trim() || (!draftSession && connectionState !== 'connected')}
 									type="submit"
 									title="Send"
 								>
