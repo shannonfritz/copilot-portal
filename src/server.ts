@@ -505,6 +505,15 @@ export class PortalServer {
 		if (url.pathname === '/api/browse' && method === 'GET') {
 			const browsePath = url.searchParams.get('path') || '';
 			try {
+				// No path on Windows → list drive letters
+				if (!browsePath && process.platform === 'win32') {
+					const { execSync } = require('child_process') as typeof import('child_process');
+					const drives = execSync('wmic logicaldisk get name', { encoding: 'utf8' })
+						.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:$/.test(l))
+						.sort();
+					this.sendJson(res, 200, { path: '', exists: true, isDir: true, folders: drives, isDriveList: true });
+					return;
+				}
 				const resolved = browsePath ? path.resolve(browsePath) : path.parse(process.cwd()).root;
 				const stat = fs.statSync(resolved);
 				if (!stat.isDirectory()) { this.sendJson(res, 200, { path: resolved, exists: true, isDir: false, folders: [] }); return; }

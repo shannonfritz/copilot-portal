@@ -459,16 +459,19 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 	const [isValid, setIsValid] = useState(true);
 	const [creatingFolder, setCreatingFolder] = useState(false);
 	const [newFolderName, setNewFolderName] = useState('');
+	const [isDriveList, setIsDriveList] = useState(false);
 
 	const fetchFolders = useCallback((p: string) => {
 		setLoading(true);
 		setError(null);
-		apiFetch(`/api/browse?path=${encodeURIComponent(p)}`).then(r => r.json()).then((data: { path: string; exists: boolean; isDir: boolean; folders: string[]; error?: string }) => {
+		setCreatingFolder(false);
+		apiFetch(`/api/browse?path=${encodeURIComponent(p)}`).then(r => r.json()).then((data: { path: string; exists: boolean; isDir: boolean; folders: string[]; error?: string; isDriveList?: boolean }) => {
 			setBrowsePath(data.path);
 			setFolders(data.folders);
+			setIsDriveList(!!data.isDriveList);
 			setIsValid(data.exists && data.isDir);
 			setError(data.error ?? (!data.exists ? 'Path does not exist' : !data.isDir ? 'Not a directory' : null));
-			if (data.exists && data.isDir) onChange(data.path);
+			if (data.exists && data.isDir && !data.isDriveList) onChange(data.path);
 			setLoading(false);
 		}).catch(() => { setLoading(false); setError('Failed to browse'); });
 	}, [onChange]);
@@ -504,7 +507,7 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 			</div>
 			{/* Folder list */}
 			<div className="code-scroll max-h-40 overflow-y-auto">
-				{creatingFolder ? (
+				{!isDriveList && (creatingFolder ? (
 					<form className="flex items-center gap-2 px-3 py-1.5" onSubmit={async (e) => {
 						e.preventDefault();
 						const name = newFolderName.trim();
@@ -528,22 +531,25 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 						<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
 						<span className="text-xs">New Folder</span>
 					</button>
-				)}
+				))}
 				{error && <div className="px-3 py-2 italic" style={{ color: 'var(--error)' }}>{error}</div>}
 				{!error && folders.length === 0 && !loading && !creatingFolder && (
 					<div className="px-3 py-2 italic" style={{ color: 'var(--text-muted)' }}>No subfolders</div>
 				)}
 				{folders.map(f => (
-					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(browsePath + sep + f); }}>
+					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(isDriveList ? f + '\\' : browsePath + sep + f); }}>
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
-							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							{isDriveList
+								? <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 12h8M12 8v8" /></>
+								: <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							}
 						</svg>
-						<span className="font-mono" style={{ color: 'var(--text)' }}>{f}</span>
+						<span className="font-mono" style={{ color: 'var(--text)' }}>{f}{isDriveList ? '\\' : ''}</span>
 					</button>
 				))}
 			</div>
 			{/* Selected path display */}
-			{isValid && !error && (
+			{isValid && !error && !isDriveList && (
 				<div className="px-3 py-2 flex items-center gap-2" style={{ borderTop: '1px solid var(--border)' }}>
 					<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2"><path d="M20 6L9 17l-5-5" /></svg>
 					<span className="font-mono truncate" style={{ color: 'var(--text-muted)' }}>{browsePath}</span>
