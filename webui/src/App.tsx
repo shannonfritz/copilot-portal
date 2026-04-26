@@ -502,19 +502,7 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 				{loading && <span className="ml-1" style={{ color: 'var(--text-muted)' }}>…</span>}
 			</div>
 			{/* Folder list */}
-			<div className="max-h-40 overflow-y-auto">
-				{error && <div className="px-3 py-2 italic" style={{ color: 'var(--error)' }}>{error}</div>}
-				{!error && folders.length === 0 && !loading && !creatingFolder && (
-					<div className="px-3 py-2 italic" style={{ color: 'var(--text-muted)' }}>No subfolders</div>
-				)}
-				{folders.map(f => (
-					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(browsePath + '\\' + f); }}>
-						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
-							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-						</svg>
-						<span className="font-mono" style={{ color: 'var(--text)' }}>{f}</span>
-					</button>
-				))}
+			<div className="code-scroll max-h-40 overflow-y-auto">
 				{creatingFolder ? (
 					<form className="flex items-center gap-2 px-3 py-1.5" onSubmit={async (e) => {
 						e.preventDefault();
@@ -540,6 +528,18 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 						<span className="text-xs">New Folder</span>
 					</button>
 				)}
+				{error && <div className="px-3 py-2 italic" style={{ color: 'var(--error)' }}>{error}</div>}
+				{!error && folders.length === 0 && !loading && !creatingFolder && (
+					<div className="px-3 py-2 italic" style={{ color: 'var(--text-muted)' }}>No subfolders</div>
+				)}
+				{folders.map(f => (
+					<button key={f} type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--surface)]" onClick={() => { setCreatingFolder(false); fetchFolders(browsePath + '\\' + f); }}>
+						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
+							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+						</svg>
+						<span className="font-mono" style={{ color: 'var(--text)' }}>{f}</span>
+					</button>
+				))}
 			</div>
 			{/* Selected path display */}
 			{isValid && !error && (
