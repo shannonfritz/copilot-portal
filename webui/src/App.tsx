@@ -622,7 +622,15 @@ function SessionDrawer({
 				if (chat) setQuota({ unlimited: false, used: chat.usedRequests, total: chat.entitlementRequests, remaining: chat.remainingPercentage, resetDate: chat.resetDate });
 			}).catch(() => {});
 		}
-	}, [open]);
+		// Fetch current agent on mount / session change
+		if (activeSessionId && !draft) {
+			apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId)}/agents`).then(r => r.json()).then((data: { agents: typeof agents; current: typeof currentAgent }) => {
+				setAgents(data.agents);
+				setCurrentAgent(data.current);
+				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
+			}).catch(() => {});
+		}
+	}, [open, activeSessionId]);
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
