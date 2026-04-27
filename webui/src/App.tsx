@@ -1752,7 +1752,7 @@ export default function App() {
 				} else if (event.type === 'warning' || event.type === 'info') {
 					setNotification({ type: event.type, message: event.content ?? '' });
 					if (!(event as { action?: unknown }).action) {
-						setTimeout(() => setNotification(null), 8000);
+						setTimeout(() => setNotification(null), event.type === 'warning' ? 15000 : 8000);
 					}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
