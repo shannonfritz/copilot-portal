@@ -879,7 +879,7 @@ function SessionDrawer({
 											}}
 										>
 											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
-											<div className="flex-1">
+											<div className="flex-1" ref={currentAgent?.name === a.name ? (el) => { el?.scrollIntoView({ block: 'nearest' }); } : undefined}>
 												<div className="flex items-center gap-2">
 													<span>{a.displayName || a.name}</span>
 													{a.source && <span className="text-[10px] opacity-50">{a.source}</span>}
