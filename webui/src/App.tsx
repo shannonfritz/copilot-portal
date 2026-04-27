@@ -933,7 +933,7 @@ export default function App() {
 	const [thinkingText, setThinkingText] = useState('');
 	const [reasoningText, setReasoningText] = useState('');
 	const [error, setError] = useState<string | null>(null);
-	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } } | null>(null);
+	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void }; count?: number } | null>(null);
 	const [input, setInput] = useState('');
 	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string; name: string }>>([]);
 	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -1750,7 +1750,13 @@ export default function App() {
 					// Server switched CLI mode — reload to reconnect cleanly
 					window.location.reload();
 				} else if (event.type === 'warning' || event.type === 'info') {
-					setNotification({ type: event.type, message: event.content ?? '' });
+					setNotification(prev => {
+						// Accumulate repeated warnings (e.g., multiple image size warnings)
+						if (prev && prev.type === event.type && prev.message === (event.content ?? '')) {
+							return { ...prev, count: (prev.count ?? 1) + 1 };
+						}
+						return { type: event.type, message: event.content ?? '' };
+					});
 					if (!(event as { action?: unknown }).action) {
 						setTimeout(() => setNotification(null), event.type === 'warning' ? 15000 : 8000);
 					}
@@ -3740,7 +3746,7 @@ export default function App() {
 							}}
 						>
 							<span className="flex-1">
-								<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}
+								<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
 							</span>
 							{notification.action && (
 								<button
