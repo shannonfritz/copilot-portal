@@ -829,9 +829,13 @@ function SessionDrawer({
 										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
 										style={{ background: !currentAgent ? 'var(--primary-tint)' : 'transparent' }}
 										onClick={async () => {
-											await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => {});
-											setCurrentAgent(null);
-											onAgentChange?.(null);
+											const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => null);
+											if (res?.ok) {
+												// Confirm with the SDK
+												const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
+												setCurrentAgent(check?.current ?? null);
+												onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? null);
+											}
 											setShowAgentPicker(false);
 										}}
 									>
@@ -845,13 +849,17 @@ function SessionDrawer({
 											className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left"
 											style={{ background: currentAgent?.name === a.name ? 'var(--primary-tint)' : 'transparent' }}
 											onClick={async () => {
-												await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
+												const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
 													method: 'POST',
 													headers: { 'Content-Type': 'application/json' },
 													body: JSON.stringify({ name: a.name }),
-												}).catch(() => {});
-												setCurrentAgent(a);
-												onAgentChange?.(a.displayName || a.name);
+												}).catch(() => null);
+												if (res?.ok) {
+													// Confirm with the SDK
+													const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
+													setCurrentAgent(check?.current ?? a);
+													onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? a.displayName ?? a.name);
+												}
 												setShowAgentPicker(false);
 											}}
 										>
