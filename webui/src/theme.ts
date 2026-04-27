@@ -221,9 +221,33 @@ export function generateRandomPalette(): { base: string; accent: string; text: s
 	const textSat = 4 + Math.random() * 8;
 	const textLight = isDarkTheme ? 75 + Math.random() * 10 : 15 + Math.random() * 10;
 
+	const name = generatePaletteName(baseHue, accentHue % 360, isDarkTheme);
 	return {
 		base: hslToHex(baseHue, baseSat, baseLight),
 		accent: hslToHex(accentHue % 360, accentSat, accentLight),
 		text: hslToHex(baseHue, textSat, textLight),
+		name,
 	};
+}
+
+function hueToColorName(hue: number): string {
+	hue = ((hue % 360) + 360) % 360;
+	const colors: [number, string][] = [
+		[15, 'Rose'], [35, 'Coral'], [50, 'Amber'], [65, 'Gold'],
+		[80, 'Lime'], [100, 'Sage'], [140, 'Emerald'], [165, 'Jade'],
+		[185, 'Teal'], [200, 'Cyan'], [220, 'Azure'], [245, 'Indigo'],
+		[270, 'Violet'], [290, 'Orchid'], [320, 'Magenta'], [345, 'Crimson'],
+		[360, 'Rose'],
+	];
+	for (const [h, name] of colors) { if (hue <= h) return name; }
+	return 'Rose';
+}
+
+function generatePaletteName(baseHue: number, accentHue: number, isDark: boolean): string {
+	const moods = isDark
+		? ['Deep', 'Midnight', 'Dark', 'Shadow', 'Dusk', 'Obsidian', 'Velvet', 'Night']
+		: ['Soft', 'Morning', 'Light', 'Pale', 'Dawn', 'Misty', 'Cloud', 'Frost'];
+	const mood = moods[Math.floor(Math.random() * moods.length)];
+	const color = hueToColorName(accentHue);
+	return `${mood} ${color}`;
 }
