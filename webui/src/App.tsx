@@ -936,6 +936,7 @@ export default function App() {
 	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } } | null>(null);
 	const [input, setInput] = useState('');
 	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string; name: string }>>([]);
+	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
 	// Agent is "active" whenever it's thinking, running tools, streaming, or waiting for stop to confirm
@@ -2999,6 +3000,17 @@ export default function App() {
 				</div>
 			)}
 
+			{/* Image Lightbox */}
+			{lightboxImage && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center p-4"
+					style={{ background: 'rgba(0,0,0,0.85)' }}
+					onClick={() => setLightboxImage(null)}
+				>
+					<img src={lightboxImage} alt="Full size" className="rounded-lg" style={{ maxWidth: '95vw', maxHeight: '90vh', objectFit: 'contain' }} onClick={(e) => e.stopPropagation()} />
+				</div>
+			)}
+
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
@@ -3645,7 +3657,7 @@ export default function App() {
 										{msg.images && msg.images.length > 0 && (
 											<div className="flex gap-2 mb-2 flex-wrap">
 												{msg.images.map((src, i) => (
-													<img key={i} src={src} alt="Attached" className="rounded-lg" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} />
+													<img key={i} src={src} alt="Attached" className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} onClick={() => setLightboxImage(src)} />
 												))}
 											</div>
 										)}
