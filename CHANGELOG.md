@@ -2,6 +2,15 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.5.11
+
+### Agent Picker
+- Select custom agents from the session drawer (same pattern as model picker)
+- Agents discovered from `~/.copilot/agents/` (personal) and `.github/agents/` (project)
+- Source label shown next to each agent (user/repository)
+- Agent selection persists across page reloads, session switches, and server restarts
+- Input placeholder shows active agent name: "Ask explain agent…"
+
 ## v0.5.10
 
 ### ⚠️ Update Required — Tool Execution Fix
