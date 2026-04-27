@@ -1751,14 +1751,14 @@ export default function App() {
 					window.location.reload();
 				} else if (event.type === 'warning' || event.type === 'info') {
 					setNotification(prev => {
-						// Accumulate repeated warnings (e.g., multiple image size warnings)
 						if (prev && prev.type === event.type && prev.message === (event.content ?? '')) {
 							return { ...prev, count: (prev.count ?? 1) + 1 };
 						}
 						return { type: event.type, message: event.content ?? '' };
 					});
-					if (!(event as { action?: unknown }).action) {
-						setTimeout(() => setNotification(null), event.type === 'warning' ? 15000 : 8000);
+					// Info messages auto-dismiss; warnings persist until next user message
+					if (event.type === 'info' && !(event as { action?: unknown }).action) {
+						setTimeout(() => setNotification(null), 8000);
 					}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
@@ -2241,6 +2241,7 @@ export default function App() {
 		setToolEvents([]);
 		intentionMapRef.current.clear();
 		setError(null);
+		setNotification(null);
 		setInput('');
 		setShowPromptsTray(false);
 		setIsThinking(true);
