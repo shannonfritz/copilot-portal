@@ -607,6 +607,7 @@ function SessionDrawer({
 	const [showAgentPicker, setShowAgentPicker] = useState(false);
 	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string; source?: string }>>([]);
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
+	const [agentsAtBottom, setAgentsAtBottom] = useState(true);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -833,7 +834,11 @@ function SessionDrawer({
 								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
 							</button>
 							{showAgentPicker && (
-								<div className="code-scroll mt-1 max-h-48 overflow-y-auto rounded-lg" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								<div className="relative mt-1 overflow-hidden rounded-lg" style={{ border: '1px solid var(--border)' }}>
+								<div className="code-scroll max-h-48 overflow-y-auto" style={{ background: 'var(--bg)' }} onScroll={e => {
+									const el = e.currentTarget;
+									setAgentsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+								}}>
 									<button
 										type="button"
 										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
@@ -886,6 +891,10 @@ function SessionDrawer({
 									{agents.length === 0 && (
 										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No custom agents found</div>
 									)}
+								</div>
+								{agents.length > 2 && !agentsAtBottom && (
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 36, background: 'linear-gradient(transparent 0%, var(--bg) 60%)' }} />
+								)}
 								</div>
 							)}
 						</div>
