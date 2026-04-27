@@ -893,7 +893,7 @@ function SessionDrawer({
 									)}
 								</div>
 								{agents.length > 2 && !agentsAtBottom && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 56, background: 'linear-gradient(transparent 0%, var(--bg) 70%)' }} />
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--bg) 80%)' }} />
 								)}
 								</div>
 							)}
