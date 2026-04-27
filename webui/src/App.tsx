@@ -3939,18 +3939,33 @@ export default function App() {
 									onPaste={(e) => {
 										const items = e.clipboardData?.items;
 										if (!items) return;
+										const MAX_IMAGE_SIZE = 3 * 1024 * 1024; // 3MB
+										const MAX_IMAGES = 5;
+										const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 										for (const item of items) {
 											if (item.type.startsWith('image/')) {
 												e.preventDefault();
+												if (!SUPPORTED_TYPES.includes(item.type)) {
+													setError(`Unsupported image format: ${item.type}. Use JPEG, PNG, or WebP.`);
+													continue;
+												}
 												const file = item.getAsFile();
 												if (!file) continue;
+												if (file.size > MAX_IMAGE_SIZE) {
+													setError(`Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max is 3MB.`);
+													continue;
+												}
+												if (pendingImages.length >= MAX_IMAGES) {
+													setError(`Maximum ${MAX_IMAGES} images per message.`);
+													continue;
+												}
 												const reader = new FileReader();
 												reader.onload = () => {
 													const dataUrl = reader.result as string;
 													const base64 = dataUrl.split(',')[1];
 													const mimeType = file.type;
 													const name = file.name || `image-${Date.now()}.${mimeType.split('/')[1]}`;
-													setPendingImages(prev => [...prev, { data: base64, mimeType, name }]);
+													setPendingImages(prev => prev.length >= MAX_IMAGES ? prev : [...prev, { data: base64, mimeType, name }]);
 												};
 												reader.readAsDataURL(file);
 											}
