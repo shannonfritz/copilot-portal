@@ -96,6 +96,8 @@ export class SessionHandle {
 	private reconnectFn: ((id: string, model?: string) => Promise<CopilotSession>) | null = null;
 	/** The model currently in use by the CLI session — passed to resumeSession on reconnect so portal sends use the same model. */
 	currentModel: string | null = null;
+	/** The custom agent currently selected — re-applied after reconnect since SDK doesn't persist it. */
+	currentAgent: string | null = null;
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
@@ -544,6 +546,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.activeDeltaBuffer = '';
 			this.activeReasoningBuffer = '';
 			this.attachListeners();
+			this.restoreAgent();
 			const msgs = await this.session.getMessages();
 			this.log(`[Sync] Post-reconnect getMessages: ${msgs.length} (lastSyncedCount=${this.lastSyncedCount})`);
 			await this.syncMessages();
@@ -605,6 +608,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					this.session = newSession;
 					this.isReconnecting = false;
 					this.attachListeners();
+					this.restoreAgent();
 					this.log('[Session] Reconnected — retrying send');
 					await this.session.send({ prompt });
 					return;
@@ -664,10 +668,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 	async selectAgent(name: string): Promise<{ name: string; displayName: string; description: string }> {
 		const result = await this.session.rpc.agent.select({ name });
+		this.currentAgent = name;
 		return result.agent;
 	}
 	async deselectAgent(): Promise<void> {
 		await this.session.rpc.agent.deselect();
+		this.currentAgent = null;
 	}
 
 	getPendingApprovalEvents(): PortalEvent[] {
@@ -1100,6 +1106,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				this.session = newSession;
 				this.isReconnecting = false;
 				this.attachListeners();
+				this.restoreAgent();
 				this.log('[Session] Auto-repair complete — session reconnected');
 				this.broadcast({ type: 'info', content: 'Session repaired — try again' });
 			}
@@ -1476,6 +1483,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.sessionGeneration++;
 		this.session = newSession;
 		this.attachListeners();
+		this.restoreAgent();
+	}
+
+	/** Re-select the current agent after a reconnect (SDK doesn't persist agent selection). */
+	private restoreAgent(): void {
+		if (this.currentAgent) {
+			this.session.rpc.agent.select({ name: this.currentAgent }).catch(() => {});
+		}
 	}
 }
 
