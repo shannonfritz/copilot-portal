@@ -577,6 +577,7 @@ function SessionDrawer({
 	onDraftCwdChange,
 	onCreateDraft,
 	onChangeCwd,
+	onAgentChange,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -595,6 +596,7 @@ function SessionDrawer({
 	onDraftCwdChange?: (cwd: string) => void;
 	onCreateDraft?: () => void;
 	onChangeCwd?: (newCwd: string) => Promise<void>;
+	onAgentChange?: (agentName: string | null) => void;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
@@ -807,6 +809,7 @@ function SessionDrawer({
 										apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).then((data: { agents: typeof agents; current: typeof currentAgent }) => {
 											setAgents(data.agents);
 											setCurrentAgent(data.current);
+											onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 										}).catch(() => {});
 									}
 								}}
@@ -828,6 +831,7 @@ function SessionDrawer({
 										onClick={async () => {
 											await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => {});
 											setCurrentAgent(null);
+											onAgentChange?.(null);
 											setShowAgentPicker(false);
 										}}
 									>
@@ -847,6 +851,7 @@ function SessionDrawer({
 													body: JSON.stringify({ name: a.name }),
 												}).catch(() => {});
 												setCurrentAgent(a);
+												onAgentChange?.(a.displayName || a.name);
 												setShowAgentPicker(false);
 											}}
 										>
@@ -1023,6 +1028,7 @@ export default function App() {
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
+	const [activeAgent, setActiveAgent] = useState<string | null>(null);
 	const [sessionUsage, setSessionUsage] = useState<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null>(null);
 	const [sessionQuota, setSessionQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
@@ -3337,6 +3343,7 @@ export default function App() {
 						});
 						setSessionContext({ cwd: newCwd });
 					}}
+					onAgentChange={setActiveAgent}
 					/>
 				)}
 
@@ -3854,7 +3861,7 @@ export default function App() {
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : connectionState === 'connected' ? 'Ask Copilot…' : `Connecting… ${connectingSecs}s`}
+									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
 									value={input}
