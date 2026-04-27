@@ -110,6 +110,7 @@ interface Message {
 	toolCallIds?: string[]; // tool call IDs dispatched by this message (for tracking completion)
 	askUserChoices?: string[];
 	questionChoices?: string[];
+	images?: string[]; // data: URIs for attached images
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -934,6 +935,7 @@ export default function App() {
 	const [error, setError] = useState<string | null>(null);
 	const [notification, setNotification] = useState<{ type: 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } } | null>(null);
 	const [input, setInput] = useState('');
+	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string; name: string }>>([]);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
 	// Agent is "active" whenever it's thinking, running tools, streaming, or waiting for stop to confirm
@@ -2210,7 +2212,7 @@ export default function App() {
 		if (connectionState !== 'connected') return;
 		setMessages((prev) => [
 			...prev,
-			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now() },
+			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
 		]);
 		setToolEvents([]);
 		intentionMapRef.current.clear();
@@ -2221,7 +2223,11 @@ export default function App() {
 		setThinkingText('');
 		setReasoningText('');
 		reasoningRef.current = '';
-		wsRef.current?.send(JSON.stringify({ type: 'prompt', content: prompt }));
+		const attachments = pendingImages.length > 0
+			? pendingImages.map(img => ({ type: 'blob' as const, data: img.data, mimeType: img.mimeType, displayName: img.name }))
+			: undefined;
+		setPendingImages([]);
+		wsRef.current?.send(JSON.stringify({ type: 'prompt', content: prompt, attachments }));
 	};
 
 	const stopAgent = () => {
@@ -3635,6 +3641,13 @@ export default function App() {
 												</div>
 											</details>
 										)}
+										{msg.images && msg.images.length > 0 && (
+											<div className="flex gap-2 mb-2 flex-wrap">
+												{msg.images.map((src, i) => (
+													<img key={i} src={src} alt="Attached" className="rounded-lg" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} />
+												))}
+											</div>
+										)}
 										<div className="whitespace-pre-wrap break-words">{msg.content}</div>
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 											<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -3887,6 +3900,18 @@ export default function App() {
 								</div>
 							)}
 							<div className="relative">
+								{pendingImages.length > 0 && (
+									<div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto">
+										{pendingImages.map((img, i) => (
+											<div key={i} className="relative shrink-0 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+												<img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name} className="block" style={{ height: 64, maxWidth: 120, objectFit: 'cover' }} />
+												<button type="button" className="absolute top-0.5 right-0.5 rounded-full p-0.5" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))} title="Remove">
+													<svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+												</button>
+											</div>
+										))}
+									</div>
+								)}
 								<textarea
 									ref={textareaRef}
 									id="message-input"
@@ -3898,6 +3923,26 @@ export default function App() {
 									rows={1}
 									value={input}
 									onChange={(e) => setInput(e.target.value)}
+									onPaste={(e) => {
+										const items = e.clipboardData?.items;
+										if (!items) return;
+										for (const item of items) {
+											if (item.type.startsWith('image/')) {
+												e.preventDefault();
+												const file = item.getAsFile();
+												if (!file) continue;
+												const reader = new FileReader();
+												reader.onload = () => {
+													const dataUrl = reader.result as string;
+													const base64 = dataUrl.split(',')[1];
+													const mimeType = file.type;
+													const name = file.name || `image-${Date.now()}.${mimeType.split('/')[1]}`;
+													setPendingImages(prev => [...prev, { data: base64, mimeType, name }]);
+												};
+												reader.readAsDataURL(file);
+											}
+										}
+									}}
 									enterKeyHint="enter"
 									onKeyDown={(e) => {
 										// Touch devices (iOS): Enter adds newlines — send via button only.

@@ -570,13 +570,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
-	async send(prompt: string): Promise<void> {
+	async send(prompt: string, attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }>): Promise<void> {
 		// Mark turn active immediately so pollForChanges() won't reconnect when
 		// user.message fires and changes modifiedTime.
 		this.isTurnActive = true;
 		this.isPortalTurn = true;
 		this.activeUserMessage = prompt;
-		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars), ~${this.tokensSinceCompaction} tokens since last compaction`);
+		const attachCount = attachments?.length ?? 0;
+		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars${attachCount ? `, ${attachCount} attachment(s)` : ''}), ~${this.tokensSinceCompaction} tokens since last compaction`);
 
 		// Proactively compact if we're approaching the context limit
 		if (this.tokensSinceCompaction >= SessionHandle.COMPACT_TOKEN_THRESHOLD) {
@@ -592,7 +593,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 
 		try {
-			await this.session.send({ prompt });
+			await this.session.send({ prompt, attachments });
 		} catch (e) {
 			const statusCode = (e as { statusCode?: number })?.statusCode;
 			const errMsg = String(e);
