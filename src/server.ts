@@ -365,6 +365,20 @@ export class PortalServer {
 		} catch {}
 	}
 
+	private loadSessionAgents(): void {
+		try {
+			const f = path.join(this.dataDir, 'session-agents.json');
+			if (fs.existsSync(f)) this.sessionAgents = JSON.parse(fs.readFileSync(f, 'utf8'));
+		} catch {}
+	}
+
+	private saveSessionAgents(): void {
+		try {
+			fs.mkdirSync(this.dataDir, { recursive: true });
+			fs.writeFileSync(path.join(this.dataDir, 'session-agents.json'), JSON.stringify(this.sessionAgents, null, 2));
+		} catch {}
+	}
+
 	private loadSessionPrompts(): void {
 		try {
 			const f = path.join(this.dataDir, 'session-prompts.json');
@@ -525,11 +539,13 @@ export class PortalServer {
 					const { name } = JSON.parse(body) as { name: string };
 					const agent = await handle.selectAgent(name);
 					this.sessionAgents[sessionId] = name;
+					this.saveSessionAgents();
 					this.sendJson(res, 200, { agent });
 					this.log(`[API] Agent selected for ${sessionId.slice(0, 8)}: ${name}`);
 				} else if (action === 'deselect' && method === 'POST') {
 					await handle.deselectAgent();
 					delete this.sessionAgents[sessionId];
+					this.saveSessionAgents();
 					this.sendJson(res, 200, { ok: true });
 					this.log(`[API] Agent deselected for ${sessionId.slice(0, 8)}`);
 				} else {
@@ -1258,6 +1274,7 @@ export class PortalServer {
 
 	async start(): Promise<void> {
 		this.loadShields();
+		this.loadSessionAgents();
 		this.loadSessionPrompts();
 		await this.pool.start();
 		// Cache portal info (version, user, models) once at startup
