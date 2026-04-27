@@ -1327,14 +1327,8 @@ export default function App() {
 					setSessionContext(ctx);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
-					// Fetch current agent for this session
-					if (newId) {
-						apiFetch(`/api/sessions/${encodeURIComponent(newId)}/agents`).then(r => r.json()).then((data: { current?: { name: string; displayName: string } | null }) => {
-							setActiveAgent(data.current?.displayName ?? data.current?.name ?? null);
-						}).catch(() => setActiveAgent(null));
-					} else {
-						setActiveAgent(null);
-					}
+					// Restore agent name from session_switched event
+					setActiveAgent((event as { agent?: string | null }).agent ?? null);
 					// Restore prompts for this session
 					setShowPromptsTray(false);
 					if (newId) {

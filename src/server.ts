@@ -26,6 +26,7 @@ export class PortalServer {
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
 	private shields: Record<string, boolean> = {};
+	private sessionAgents: Record<string, string> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
 	private updater: UpdateChecker;
 	private failedAuth = new Map<string, { count: number; resetTime: number }>();
@@ -160,7 +161,12 @@ export class PortalServer {
 			if (!cancelled && ws.readyState === WebSocket.OPEN) {
 				const sessions = await this.pool.listSessions().catch(() => []);
 				const meta = sessions.find(s => s.sessionId === sessionId);
-				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, serverBuild: __BUILD__ }));
+				const savedAgent = this.sessionAgents[sessionId] ?? null;
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, agent: savedAgent, serverBuild: __BUILD__ }));
+				// Re-select saved agent if the SDK session doesn't have it (reconnect resets agent)
+				if (savedAgent) {
+					handle.selectAgent(savedAgent).catch(() => {});
+				}
 
 				// For brand-new sessions the CLI subprocess may not have written cwd yet —
 				// retry once after a short delay and push an update if context arrives.
@@ -518,10 +524,12 @@ export class PortalServer {
 					const body = await this.readBody(req);
 					const { name } = JSON.parse(body) as { name: string };
 					const agent = await handle.selectAgent(name);
+					this.sessionAgents[sessionId] = name;
 					this.sendJson(res, 200, { agent });
 					this.log(`[API] Agent selected for ${sessionId.slice(0, 8)}: ${name}`);
 				} else if (action === 'deselect' && method === 'POST') {
 					await handle.deselectAgent();
+					delete this.sessionAgents[sessionId];
 					this.sendJson(res, 200, { ok: true });
 					this.log(`[API] Agent deselected for ${sessionId.slice(0, 8)}`);
 				} else {
