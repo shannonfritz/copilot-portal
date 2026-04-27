@@ -607,7 +607,7 @@ function SessionDrawer({
 	const [showAgentPicker, setShowAgentPicker] = useState(false);
 	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string; source?: string }>>([]);
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
-	const [agentsAtBottom, setAgentsAtBottom] = useState(true);
+	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
