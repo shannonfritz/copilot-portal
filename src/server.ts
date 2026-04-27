@@ -533,17 +533,24 @@ export class PortalServer {
 					// List available agents with source detection
 					const agents = await handle.listAgents();
 					const current = await handle.getCurrentAgent();
-					// Detect source: check ~/.copilot/agents/ (user) and CWD/.github/agents/ (repository)
+					// Detect source: check ~/.copilot/agents/ (user), CWD/.github/agents/ (repository), and git root/.github/agents/
 					const sessions = await this.pool.listSessions().catch(() => []);
 					const sessionMeta = sessions.find(s => s.sessionId === sessionId);
 					const sessionCwd = sessionMeta?.context?.cwd;
+					const gitRoot = sessionMeta?.context?.gitRoot;
 					const userAgentsDir = path.join(os.homedir(), '.copilot', 'agents');
-					const repoAgentsDir = sessionCwd ? path.join(sessionCwd, '.github', 'agents') : null;
+					const repoDirs: string[] = [];
+					if (sessionCwd) repoDirs.push(path.join(sessionCwd, '.github', 'agents'));
+					if (gitRoot && gitRoot !== sessionCwd) repoDirs.push(path.join(gitRoot, '.github', 'agents'));
 					const agentsWithSource = agents.map(a => {
 						let source = 'unknown';
 						try { if (fs.existsSync(path.join(userAgentsDir, `${a.name}.agent.md`))) source = 'user'; } catch {}
-						if (source === 'unknown' && repoAgentsDir) {
-							try { if (fs.existsSync(path.join(repoAgentsDir, `${a.name}.agent.md`))) source = 'repository'; } catch {}
+						if (source === 'unknown') {
+							for (const dir of repoDirs) {
+								try {
+									if (fs.existsSync(path.join(dir, `${a.name}.agent.md`))) { source = 'repository'; break; }
+								} catch {}
+							}
 						}
 						return { ...a, source };
 					});
