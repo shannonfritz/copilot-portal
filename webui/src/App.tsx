@@ -1468,6 +1468,7 @@ export default function App() {
 							content,
 							timestamp: event.timestamp ?? Date.now(),
 							askUserChoices: event.askUserChoices,
+							images: event.images?.length ? event.images : undefined,
 						});
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';

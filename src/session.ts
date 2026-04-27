@@ -59,6 +59,7 @@ export interface PortalEvent {
 	summary?: string;
 	shielded?: boolean;
 	session?: unknown;
+	images?: string[]; // data: URIs for image attachments (history replay)
 }
 
 type PendingApproval = {
@@ -344,7 +345,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					currentMsgTools = [];
 				}
 				flushRound();
-				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts });
+				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts,
+					images: ((raw.data as { attachments?: Array<{ type: string; data: string; mimeType?: string }> })?.attachments ?? [])
+						.filter(a => a.type === 'blob' && a.data)
+						.map(a => `data:${a.mimeType ?? 'image/png'};base64,${a.data}`),
+				});
 			} else if (e.type === 'assistant.message') {
 				// Save accumulated tools for the previous message
 				if (roundMsgs.length > 0) {
