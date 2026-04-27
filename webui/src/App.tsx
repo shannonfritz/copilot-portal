@@ -605,7 +605,7 @@ function SessionDrawer({
 	const [cwdSaving, setCwdSaving] = useState(false);
 	const [browsedCwd, setBrowsedCwd] = useState('');
 	const [showAgentPicker, setShowAgentPicker] = useState(false);
-	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string }>>([]);
+	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string; source?: string }>>([]);
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
@@ -874,8 +874,11 @@ function SessionDrawer({
 											}}
 										>
 											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
-											<div>
-												<div>{a.displayName || a.name}</div>
+											<div className="flex-1">
+												<div className="flex items-center gap-2">
+													<span>{a.displayName || a.name}</span>
+													{a.source && <span className="text-[10px] opacity-50">{a.source}</span>}
+												</div>
 												{a.description && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.description}</div>}
 											</div>
 										</button>

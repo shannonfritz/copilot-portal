@@ -530,10 +530,24 @@ export class PortalServer {
 			if (!handle) { this.sendJson(res, 404, { error: 'Session not found' }); return; }
 			try {
 				if (!action && method === 'GET') {
-					// List available agents
+					// List available agents with source detection
 					const agents = await handle.listAgents();
 					const current = await handle.getCurrentAgent();
-					this.sendJson(res, 200, { agents, current });
+					// Detect source: check ~/.copilot/agents/ (user) and CWD/.github/agents/ (repository)
+					const sessions = await this.pool.listSessions().catch(() => []);
+					const sessionMeta = sessions.find(s => s.sessionId === sessionId);
+					const sessionCwd = sessionMeta?.context?.cwd;
+					const userAgentsDir = path.join(os.homedir(), '.copilot', 'agents');
+					const repoAgentsDir = sessionCwd ? path.join(sessionCwd, '.github', 'agents') : null;
+					const agentsWithSource = agents.map(a => {
+						let source = 'unknown';
+						try { if (fs.existsSync(path.join(userAgentsDir, `${a.name}.agent.md`))) source = 'user'; } catch {}
+						if (source === 'unknown' && repoAgentsDir) {
+							try { if (fs.existsSync(path.join(repoAgentsDir, `${a.name}.agent.md`))) source = 'repository'; } catch {}
+						}
+						return { ...a, source };
+					});
+					this.sendJson(res, 200, { agents: agentsWithSource, current });
 				} else if (action === 'select' && method === 'POST') {
 					const body = await this.readBody(req);
 					const { name } = JSON.parse(body) as { name: string };
