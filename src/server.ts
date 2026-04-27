@@ -289,10 +289,11 @@ export class PortalServer {
 				pattern?: string;
 				ruleId?: string;
 			};
-			if (msg.type === 'prompt' && msg.content) {
+			if (msg.type === 'prompt' && (msg.content || (msg as { attachments?: unknown[] }).attachments?.length)) {
+				const prompt = msg.content || '';
 				const attachments = (msg as { attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }> }).attachments;
-				this.log(`[${clientId}] Prompt: ${msg.content.slice(0, 80)}${attachments?.length ? ` [${attachments.length} image(s)]` : ''}`);
-				handle.send(msg.content, attachments).catch(async (e) => {
+				this.log(`[${clientId}] Prompt: ${prompt.slice(0, 80) || '(image only)'}${attachments?.length ? ` [${attachments.length} image(s)]` : ''}`);
+				handle.send(prompt, attachments).catch(async (e) => {
 					const errMsg = String(e);
 					this.log(`[${clientId}] Send error: ${errMsg}`);
 					if (errMsg.includes('Connection is closed') || errMsg.includes('not connected')) {

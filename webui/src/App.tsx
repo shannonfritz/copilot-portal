@@ -937,6 +937,8 @@ export default function App() {
 	const [input, setInput] = useState('');
 	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string; name: string }>>([]);
 	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+	const [isDraggingImage, setIsDraggingImage] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
 	// Agent is "active" whenever it's thinking, running tools, streaming, or waiting for stop to confirm
@@ -2202,9 +2204,23 @@ export default function App() {
 		} catch { /* prompts are optional */ }
 	};
 
+	const addImageFiles = useCallback((files: FileList | File[]) => {
+		for (const file of files) {
+			if (!file.type.startsWith('image/')) continue;
+			const reader = new FileReader();
+			reader.onload = () => {
+				const dataUrl = reader.result as string;
+				const base64 = dataUrl.split(',')[1];
+				const name = file.name || `image-${Date.now()}.${file.type.split('/')[1]}`;
+				setPendingImages(prev => [...prev, { data: base64, mimeType: file.type, name }]);
+			};
+			reader.readAsDataURL(file);
+		}
+	}, []);
+
 	const sendPrompt = () => {
 		const prompt = input.trim();
-		if (!prompt) return;
+		if (!prompt && pendingImages.length === 0) return;
 		// Draft mode: create session first, then send after reload
 		if (draftSession) {
 			setInput('');
@@ -3854,12 +3870,22 @@ export default function App() {
 					className="border-t px-4 py-3"
 					style={{
 						background: 'var(--surface)',
-						borderColor: 'var(--border)',
+						borderColor: isDraggingImage ? 'var(--primary)' : 'var(--border)',
 						paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+						outline: isDraggingImage ? '2px dashed var(--primary)' : undefined,
+						outlineOffset: '-2px',
+						transition: 'outline 0.15s, border-color 0.15s',
 					}}
 					onSubmit={(e) => {
 						e.preventDefault();
 						sendPrompt();
+					}}
+					onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types.includes('Files')) setIsDraggingImage(true); }}
+					onDragLeave={() => setIsDraggingImage(false)}
+					onDrop={(e) => {
+						e.preventDefault();
+						setIsDraggingImage(false);
+						if (e.dataTransfer?.files.length) addImageFiles(e.dataTransfer.files);
 					}}
 				>
 					<div ref={inputContainerRef} className="flex gap-2">
@@ -3939,22 +3965,15 @@ export default function App() {
 									onPaste={(e) => {
 										const items = e.clipboardData?.items;
 										if (!items) return;
+										const files: File[] = [];
 										for (const item of items) {
 											if (item.type.startsWith('image/')) {
 												e.preventDefault();
 												const file = item.getAsFile();
-												if (!file) continue;
-												const reader = new FileReader();
-												reader.onload = () => {
-													const dataUrl = reader.result as string;
-													const base64 = dataUrl.split(',')[1];
-													const mimeType = file.type;
-													const name = file.name || `image-${Date.now()}.${mimeType.split('/')[1]}`;
-													setPendingImages(prev => [...prev, { data: base64, mimeType, name }]);
-												};
-												reader.readAsDataURL(file);
+												if (file) files.push(file);
 											}
 										}
+										if (files.length) addImageFiles(files);
 									}}
 									enterKeyHint="enter"
 									onKeyDown={(e) => {
@@ -4033,7 +4052,19 @@ export default function App() {
 									)}
 								</div>
 							)}
-							<div className="flex items-center" style={{ marginTop: 'auto', marginBottom: 4 }}>
+							<div className="flex items-center gap-1" style={{ marginTop: 'auto', marginBottom: 4 }}>
+								<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
+								<button
+									className="flex size-9 items-center justify-center rounded-full border-none"
+									style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
+									type="button"
+									title="Attach image"
+									onClick={() => fileInputRef.current?.click()}
+								>
+									<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+										<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+									</svg>
+								</button>
 								<button
 									className="flex size-11 items-center justify-center rounded-full border-none"
 									style={{
@@ -4041,7 +4072,7 @@ export default function App() {
 										color: 'white',
 										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
 									}}
-									disabled={!input.trim() || (!draftSession && connectionState !== 'connected')}
+									disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
 									type="submit"
 									title="Send"
 								>
