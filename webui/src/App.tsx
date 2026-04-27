@@ -698,23 +698,25 @@ function SessionDrawer({
 						</div>
 					) : editingCwd ? (
 					<div className="mb-3">
-						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-							</svg>
-							Working Directory
-						</label>
-						<FolderBrowser value={cwd ?? ''} onChange={(p) => setBrowsedCwd(p)} />
-						<div className="flex justify-end gap-2 mt-2">
-							<button type="button" className="rounded-lg px-3 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setEditingCwd(false)}>Cancel</button>
-							<button type="button" className="rounded-lg px-3 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: (!browsedCwd || browsedCwd === cwd || cwdSaving) ? 0.5 : 1 }} disabled={!browsedCwd || browsedCwd === cwd || cwdSaving} onClick={async () => {
-								if (!onChangeCwd || !browsedCwd || browsedCwd === cwd) return;
-								setCwdSaving(true);
-								try { await onChangeCwd(browsedCwd); } catch {}
-								setCwdSaving(false);
-								setEditingCwd(false);
-							}}>{cwdSaving ? 'Applying…' : 'Apply'}</button>
+						<div className="flex items-center justify-between mb-1.5">
+							<label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+								<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+								</svg>
+								Working Directory
+							</label>
+							<div className="flex gap-2">
+								<button type="button" className="rounded-lg px-3 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setEditingCwd(false)}>Cancel</button>
+								<button type="button" className="rounded-lg px-3 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: (!browsedCwd || browsedCwd === cwd || cwdSaving) ? 0.5 : 1 }} disabled={!browsedCwd || browsedCwd === cwd || cwdSaving} onClick={async () => {
+									if (!onChangeCwd || !browsedCwd || browsedCwd === cwd) return;
+									setCwdSaving(true);
+									try { await onChangeCwd(browsedCwd); } catch {}
+									setCwdSaving(false);
+									setEditingCwd(false);
+								}}>{cwdSaving ? 'Applying…' : 'Apply'}</button>
+							</div>
 						</div>
+						<FolderBrowser value={cwd ?? ''} onChange={(p) => setBrowsedCwd(p)} />
 					</div>
 					) : (
 					<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => { setBrowsedCwd(cwd ?? ''); setEditingCwd(true); }} title="Click to change working directory">
