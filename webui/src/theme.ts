@@ -195,29 +195,35 @@ function hslToHex(h: number, s: number, l: number): string {
 export function generateRandomPalette(): { base: string; accent: string; text: string } {
 	const baseHue = Math.random() * 360;
 	const isDarkTheme = Math.random() > 0.35; // slight bias toward dark
-	const baseSat = 10 + Math.random() * 25; // subtle saturation in the base
-	const baseLight = isDarkTheme ? 10 + Math.random() * 12 : 88 + Math.random() * 8;
 
-	// Pick a harmony strategy
-	const strategies = ['complementary', 'analogous', 'triadic', 'split'] as const;
+	// Base: low saturation, controlled lightness for a clean background
+	const baseSat = isDarkTheme ? 8 + Math.random() * 15 : 5 + Math.random() * 12;
+	const baseLight = isDarkTheme ? 8 + Math.random() * 10 : 90 + Math.random() * 6;
+
+	// Accent: pick from curated harmony strategies with guaranteed hue distance
+	const strategies = ['complementary', 'analogous', 'triadic', 'split', 'golden'] as const;
 	const strategy = strategies[Math.floor(Math.random() * strategies.length)];
 	let accentHue: number;
 	switch (strategy) {
-		case 'complementary': accentHue = baseHue + 180; break;
-		case 'analogous': accentHue = baseHue + 30 + Math.random() * 30; break;
-		case 'triadic': accentHue = baseHue + (Math.random() > 0.5 ? 120 : 240); break;
+		case 'complementary': accentHue = baseHue + 180 + (Math.random() * 20 - 10); break;
+		case 'analogous': accentHue = baseHue + 25 + Math.random() * 35; break;
+		case 'triadic': accentHue = baseHue + (Math.random() > 0.5 ? 120 : 240) + (Math.random() * 15 - 7); break;
 		case 'split': accentHue = baseHue + (Math.random() > 0.5 ? 150 : 210); break;
+		case 'golden': accentHue = baseHue + 137.5; break; // golden angle — naturally pleasing
 	}
-	const accentSat = 55 + Math.random() * 30;
-	const accentLight = isDarkTheme ? 55 + Math.random() * 20 : 35 + Math.random() * 20;
+	// Accent saturation: vibrant but not neon. Lightness: visible against the base.
+	const accentSat = 60 + Math.random() * 25;
+	const accentLight = isDarkTheme
+		? 50 + Math.random() * 15 // bright enough on dark backgrounds
+		: 40 + Math.random() * 15; // rich enough on light backgrounds
 
-	// Text: tinted toward the base hue for cohesion
-	const textSat = 5 + Math.random() * 10;
-	const textLight = isDarkTheme ? 70 + Math.random() * 15 : 15 + Math.random() * 15;
+	// Text: tinted slightly toward base hue, high contrast
+	const textSat = 4 + Math.random() * 8;
+	const textLight = isDarkTheme ? 75 + Math.random() * 10 : 15 + Math.random() * 10;
 
 	return {
 		base: hslToHex(baseHue, baseSat, baseLight),
-		accent: hslToHex(accentHue, accentSat, accentLight),
+		accent: hslToHex(accentHue % 360, accentSat, accentLight),
 		text: hslToHex(baseHue, textSat, textLight),
 	};
 }
