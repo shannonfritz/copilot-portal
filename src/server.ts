@@ -288,10 +288,11 @@ export class PortalServer {
 				kind?: string;
 				pattern?: string;
 				ruleId?: string;
+				attachments?: Array<{ type: string; data: string; mimeType: string; displayName?: string }>;
 			};
-			if (msg.type === 'prompt' && (msg.content || (msg as { attachments?: unknown[] }).attachments?.length)) {
+			if (msg.type === 'prompt' && (msg.content || msg.attachments?.length)) {
 				const prompt = msg.content || '';
-				const attachments = (msg as { attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }> }).attachments;
+				const attachments = msg.attachments as Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }> | undefined;
 				this.log(`[${clientId}] Prompt: ${prompt.slice(0, 80) || '(image only)'}${attachments?.length ? ` [${attachments.length} image(s)]` : ''}`);
 				handle.send(prompt, attachments).catch(async (e) => {
 					const errMsg = String(e);
