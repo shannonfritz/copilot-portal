@@ -2,18 +2,23 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.5.12
+## v0.5.13
 
 ### Agent Picker
 - Select custom agents from the session drawer (same pattern as model picker)
-- Agents discovered from `~/.copilot/agents/` (personal) and `.github/agents/` (project)
+- Agents discovered from `~/.copilot/agents/` (personal) and `.github/agents/` (project/git root)
 - Source label shown next to each agent (user/repository)
 - Agent selection persists across page reloads, session switches, and server restarts
 - Input placeholder shows active agent name: "Ask explain agent…"
+- Scroll fade indicates more agents below the fold
+- Auto-scrolls to the selected agent when picker opens
+- Squad agent detected correctly from git root
 
 ### Theme Improvements
 - Improved "Surprise Me" palette quality — tighter color bands, golden angle harmony
 - Auto-generated theme names from palette colors (e.g., "Midnight Emerald", "Morning Coral")
+
+## v0.5.12 (superseded by v0.5.13)
 
 ## v0.5.11
 
