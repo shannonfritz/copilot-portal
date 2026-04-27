@@ -15,10 +15,17 @@ All notable changes to Copilot Portal are documented here.
 - Improved "Surprise Me" palette quality — tighter color bands, golden angle harmony
 - Auto-generated theme names from palette colors (e.g., "Midnight Emerald", "Morning Coral")
 
+## v0.5.11
+
+### Agent Picker
+- Initial agent picker release (superseded by v0.5.12 with theme improvements)
+
 ## v0.5.10
 
-### ⚠️ Update Required — Tool Execution Fix
-v0.5.8 shipped with a breaking incompatibility: the Copilot SDK v0.3.0 (released April 24) changed the tool approval response format from `'approved'` to `'approve-once'`. Portal was still returning the old format, causing every tool approval to silently fail with `unexpected user permission response`. Portal now auto-detects the correct format from the SDK at startup.
+### Tool Execution Fix (revised)
+- v0.5.9 hardcoded `'approve-once'` which broke on some environments
+- Portal now auto-detects the correct approval format from the SDK's own `approveAll` handler at startup
+- Works with both old and new SDK versions automatically
 
 ### Per-Session Themes
 - Each session can have its own theme (or fall back to the starred default)
@@ -41,6 +48,14 @@ v0.5.8 shipped with a breaking incompatibility: the Copilot SDK v0.3.0 (released
 - Path traversal blocked in folder creation (`.` and `..` rejected)
 - CWD paths validated (must exist, must be a directory)
 - Symlinks filtered from folder browser listings
+
+## v0.5.9 (withdrawn)
+
+### Tool Execution Fix
+- Copilot SDK v0.3.0 changed the tool approval response format from `'approved'` to `'approve-once'`
+- Portal v0.5.8 and earlier used the old format, causing tool approvals to silently fail
+- This release hardcoded the new format — worked on some machines but failed on others due to SDK/CLI version mismatches
+- Superseded by v0.5.10 which auto-detects the correct format
 
 ## v0.5.8
 
