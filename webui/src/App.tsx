@@ -343,11 +343,12 @@ function AssistantMessageBlock({ content, timestamp, bytes }: { content: string;
 			<div ref={htmlRef}><AssistantMarkdown content={content} /></div>
 			<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 				<span>{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-				{bytes != null && bytes > 0 && (
+				{/* Message size indicator — hidden for now, revisit later */}
+				{/* {bytes != null && bytes > 0 && (
 					<span className="font-mono tabular-nums">
 						{bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KiB`}
 					</span>
-				)}
+				)} */}
 				<div className="flex items-center gap-1">
 					<CopyRichButton htmlRef={htmlRef} plainText={content} />
 					<CopyButton text={content} />
@@ -746,8 +747,8 @@ function SessionDrawer({
 					</button>
 					)}
 
-					{/* Session usage stats */}
-					{sessionUsage && sessionUsage.requests > 0 && (
+					{/* Session usage stats — hidden for now, revisit later */}
+					{/* {sessionUsage && sessionUsage.requests > 0 && (
 						<div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
 							<span className="flex-1">
 								Tokens: {sessionUsage.inputTokens.toLocaleString()} ↑ {sessionUsage.outputTokens.toLocaleString()} ↓
@@ -757,7 +758,7 @@ function SessionDrawer({
 							</span>
 							<CopyButton text={`Tokens: ${sessionUsage.inputTokens.toLocaleString()} ↑ ${sessionUsage.outputTokens.toLocaleString()} ↓${sessionUsage.reasoningTokens > 0 ? ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}` : ''}${sessionUsage.cacheReadTokens > 0 ? ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}` : ''} · Requests: ${sessionUsage.requests}`} />
 						</div>
-					)}
+					)} */}
 
 					{/* Context window usage */}
 					{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
