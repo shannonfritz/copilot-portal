@@ -659,15 +659,39 @@ function SessionDrawer({
 			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
 			<button className="flex w-full items-center gap-2 border-none bg-transparent px-4 py-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }} onClick={onToggle} type="button">
 				{/* Session summary — read-only */}
-				<span className="whitespace-nowrap shrink-0" style={{ color: draft ? 'var(--primary)' : sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
+				<span className="overflow-hidden whitespace-nowrap min-w-0" style={{ color: draft ? 'var(--primary)' : sessionSummary ? 'var(--text)' : 'var(--text-muted)', maskImage: 'linear-gradient(to right, black 85%, transparent)', WebkitMaskImage: 'linear-gradient(to right, black 85%, transparent)' }}>
 					{draft ? 'New Session' : sessionSummary || <em>untitled session</em>}
 				</span>
-				{/* Flex spacer — blank space clicks toggle the tray */}
-				<div className="flex-1" />
 				{/* Right side: session ID + chevron */}
 				<div className="flex items-center gap-1.5 shrink-0">
 					{activeSessionId && (
-						<span className="font-mono text-[10px] opacity-40" title={activeSessionId}>
+						<span
+							className="font-mono text-[10px] opacity-40 hover:opacity-80 cursor-pointer"
+							title="Copy session ID"
+							onMouseDown={(e) => {
+								e.stopPropagation();
+								e.preventDefault();
+							}}
+							onClick={(e) => {
+								e.stopPropagation();
+								e.preventDefault();
+								const id = activeSessionId;
+								if (navigator.clipboard) {
+									navigator.clipboard.writeText(id).catch(() => {});
+								} else {
+									const ta = document.createElement('textarea');
+									ta.value = id;
+									document.body.appendChild(ta);
+									ta.select();
+									document.execCommand('copy');
+									document.body.removeChild(ta);
+								}
+								const el = e.currentTarget;
+								const orig = el.textContent;
+								el.textContent = '✓ copied';
+								setTimeout(() => { el.textContent = orig; }, 1200);
+							}}
+						>
 							{activeSessionId.slice(0, 8)}
 						</span>
 					)}
@@ -786,25 +810,8 @@ function SessionDrawer({
 							AI Model
 						</label>
 					)}
-					<div className="relative" ref={modelPickerRef} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showModelPicker ? '0.5rem 0.5rem 0 0' : '0.5rem' }}>
-						<button
-							type="button"
-							className="flex w-full items-center justify-between px-3 py-2 text-sm"
-							onClick={() => {
-								const opening = !showModelPicker;
-								setShowModelPicker(opening);
-								if (opening && onFetchModels) onFetchModels().then(setLiveModels).catch(() => {});
-							}}
-						>
-							<div className="flex items-center gap-2">
-								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-								</svg>
-								<span>{currentModelName}</span>
-							</div>
-							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
-						</button>
-						{/* Context window usage — inside model box */}
+					<div className="relative" ref={modelPickerRef}>
+						{/* Context window usage — above model button */}
 						{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
 							const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
 							const systemTotal = systemTokens + toolDefinitionsTokens;
@@ -814,7 +821,7 @@ function SessionDrawer({
 							const convPct = Math.round(conversationTokens / tokenLimit * 100);
 							const freePct = Math.round(free / tokenLimit * 100);
 							return (
-								<div className="px-3 py-1.5 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+								<div className="px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderBottom: 'none', borderRadius: '0.5rem 0.5rem 0 0', color: 'var(--text-muted)' }}>
 									<div className="flex items-center justify-between mb-1">
 										<span>Context: {pct}%</span>
 										<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
@@ -831,8 +838,26 @@ function SessionDrawer({
 								</div>
 							);
 						})()}
+						<button
+							type="button"
+							className="flex w-full items-center justify-between px-3 py-2 text-sm"
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderTop: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? 'none' : undefined, borderRadius: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? (showModelPicker ? '0' : '0 0 0.5rem 0.5rem') : (showModelPicker ? '0.5rem 0.5rem 0 0' : '0.5rem') }}
+							onClick={() => {
+								const opening = !showModelPicker;
+								setShowModelPicker(opening);
+								if (opening && onFetchModels) onFetchModels().then(setLiveModels).catch(() => {});
+							}}
+						>
+							<div className="flex items-center gap-2">
+								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+								</svg>
+								<span>{currentModelName}</span>
+							</div>
+							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
+						</button>
 						{showModelPicker && (
-							<div className="absolute z-10 overflow-hidden" style={{ left: -1, right: -1, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+							<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 							<div
 								className="chat-scroll max-h-72 overflow-y-auto py-1"
 								style={{ background: 'var(--surface)' }}
@@ -900,7 +925,7 @@ function SessionDrawer({
 								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
 							</button>
 							{showAgentPicker && (
-								<div className="absolute z-10 overflow-hidden" style={{ left: -1, right: -1, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div
 									className="chat-scroll max-h-56 overflow-y-auto py-1"
 									style={{ background: 'var(--surface)' }}
