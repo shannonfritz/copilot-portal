@@ -574,6 +574,7 @@ function SessionDrawer({
 	sessionStartTime,
 	sessionUsage,
 	sessionQuota,
+	contextUsage,
 	draft,
 	onDraftCwdChange,
 	onCreateDraft,
@@ -593,6 +594,7 @@ function SessionDrawer({
 	sessionStartTime?: string;
 	sessionUsage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null;
 	sessionQuota?: { unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null;
+	contextUsage?: { tokenLimit: number; currentTokens: number; systemTokens: number; conversationTokens: number; toolDefinitionsTokens: number } | null;
 	draft?: { cwd: string } | null;
 	onDraftCwdChange?: (cwd: string) => void;
 	onCreateDraft?: () => void;
@@ -756,6 +758,34 @@ function SessionDrawer({
 							<CopyButton text={`Tokens: ${sessionUsage.inputTokens.toLocaleString()} ↑ ${sessionUsage.outputTokens.toLocaleString()} ↓${sessionUsage.reasoningTokens > 0 ? ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}` : ''}${sessionUsage.cacheReadTokens > 0 ? ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}` : ''} · Requests: ${sessionUsage.requests}`} />
 						</div>
 					)}
+
+					{/* Context window usage */}
+					{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
+						const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
+						const systemTotal = systemTokens + toolDefinitionsTokens;
+						const free = tokenLimit - currentTokens;
+						const pct = Math.round(currentTokens / tokenLimit * 100);
+						const sysPct = Math.round(systemTotal / tokenLimit * 100);
+						const convPct = Math.round(conversationTokens / tokenLimit * 100);
+						const freePct = Math.round(free / tokenLimit * 100);
+						return (
+							<div className="mb-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+								<div className="flex items-center justify-between mb-1">
+									<span>Context: {pct}%</span>
+									<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
+								</div>
+								<div className="flex rounded-full overflow-hidden" style={{ height: 6, background: 'var(--border)' }}>
+									<div style={{ width: `${sysPct}%`, background: 'var(--accent)', opacity: 0.6 }} title={`System/Tools: ${sysPct}%`} />
+									<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
+								</div>
+								<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
+									<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}%</span>
+									<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}%</span>
+									<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}%</span>
+								</div>
+							</div>
+						);
+					})()}
 
 					{/* Model selector */}
 					{draft && (
@@ -1066,6 +1096,7 @@ export default function App() {
 	const [activeAgent, setActiveAgent] = useState<string | null>(null);
 	const [sessionUsage, setSessionUsage] = useState<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; reasoningTokens: number; requests: number } | null>(null);
 	const [sessionQuota, setSessionQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
+	const [contextUsage, setContextUsage] = useState<{ tokenLimit: number; currentTokens: number; systemTokens: number; conversationTokens: number; toolDefinitionsTokens: number } | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [draftSession, setDraftSession] = useState<{ cwd: string } | null>(null);
 	const draftRef = useRef(false);
@@ -1418,6 +1449,14 @@ export default function App() {
 						const q = e.quota['chat'] ?? e.quota['premium_interactions'];
 						if (q) setSessionQuota({ unlimited: !!q.isUnlimitedEntitlement, used: q.usedRequests, total: q.entitlementRequests, remaining: q.remainingPercentage, resetDate: q.resetDate });
 					}
+					return;
+				}
+
+				if (event.type === 'context_usage') {
+					try {
+						const d = JSON.parse(event.content ?? '{}');
+						setContextUsage(d);
+					} catch {}
 					return;
 				}
 
@@ -3405,6 +3444,7 @@ export default function App() {
 					sessionStartTime={sessions.find(s => s.sessionId === activeSessionId)?.startTime}
 					sessionUsage={sessionUsage}
 					sessionQuota={sessionQuota}
+					contextUsage={contextUsage}
 					draft={draftSession}
 					onDraftCwdChange={(cwd) => setDraftSession(prev => prev ? { ...prev, cwd } : null)}
 					onCreateDraft={() => createDraftSession()}

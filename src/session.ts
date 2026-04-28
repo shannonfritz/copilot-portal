@@ -34,7 +34,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info' | 'session_usage';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info' | 'session_usage' | 'context_usage';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -1425,10 +1425,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onAssistantTurnEnd(): void {
-		// assistant.turn_end fires between tool rounds — NOT a definitive session end.
-		// Only session.idle signals the entire conversation turn is done.
-		// Log it for observability but do NOT clear turn state.
 		this.log('[Session] assistant.turn_end (informational — waiting for session.idle)');
+	}
+
+	private onSessionUsageInfo(data: unknown): void {
+		const d = data as { tokenLimit?: number; currentTokens?: number; systemTokens?: number; conversationTokens?: number; toolDefinitionsTokens?: number; messagesLength?: number };
+		this.broadcast({ type: 'context_usage', content: JSON.stringify(d) });
 	}
 
 	// --- Event dispatch ---
@@ -1466,6 +1468,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'subagent.completed':               (d) => this.onSubagentCompleted(d),
 		'assistant.turn_end':               () => this.onAssistantTurnEnd(),
 		'assistant.usage':                  (d) => this.onAssistantUsage(d),
+		'session.usage_info':               (d) => this.onSessionUsageInfo(d),
 	};
 
 	private attachListeners(): void {
