@@ -1325,6 +1325,7 @@ export class PortalServer {
 					.filter(m => !m.policy || m.policy.state === 'enabled')
 					.map(m => ({ id: m.id, name: m.name })),
 			};
+			this.log(`[Pool] CLI runtime: v${status.version}`);
 			this.log(`[Pool] Models available: ${this.portalInfo.models.length}`);
 		} catch (e) {
 			this.log(`[Pool] Could not fetch portal info: ${e}`);

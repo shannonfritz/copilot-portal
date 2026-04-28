@@ -169,7 +169,7 @@ export class UpdateChecker {
 			if (!this.hasLoggedVersions) {
 				this.hasLoggedVersions = true;
 				for (const p of results) {
-					this.log(`[Version] ${p.name} ${p.installed}`);
+					this.log(`[Version] ${p.name} ${p.installed} (package)`);
 				}
 			}
 
