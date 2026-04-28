@@ -1970,6 +1970,7 @@ export default function App() {
 		setActiveSessionSummary(null);
 		setSessionUsage(null);
 		setSessionQuota(null);
+		setContextUsage(null);
 		// Load the theme for the new session
 		loadSessionTheme(sessionId);
 		const params = new URLSearchParams(window.location.search);
@@ -2007,6 +2008,7 @@ export default function App() {
 		setActiveSessionSummary(null);
 		setSessionUsage(null);
 		setSessionQuota(null);
+		setContextUsage(null);
 		setActiveSessionId(null);
 		noSessionRef.current = false;
 		setNoSession(false);
