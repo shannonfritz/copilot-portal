@@ -36,7 +36,7 @@ if ! command -v pwsh &>/dev/null; then
 fi
 
 # GitHub authentication
-if ! node -e "try{const c=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.copilot','config.json'),'utf8'));process.exit(c.logged_in_users&&c.logged_in_users.length?0:1)}catch{process.exit(1)}" 2>/dev/null; then
+if ! node -e "try{const c=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.copilot','config.json'),'utf8'));const u=c.logged_in_users||c.loggedInUsers;process.exit(u&&u.length?0:1)}catch{process.exit(1)}" 2>/dev/null; then
     echo
     echo "  Not signed in to GitHub. A browser window will open"
     echo "  so you can sign in with your GitHub account."
