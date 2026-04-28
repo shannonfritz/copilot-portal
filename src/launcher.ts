@@ -14,6 +14,7 @@
  *   Exit code 75 triggers a relaunch of the portal server.
  */
 import { spawn, spawnSync, exec } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +88,15 @@ function launchCli(port: number): boolean {
 }
 
 let cliLaunched = false;
+let cliStartVersion: string | null = null;
+
+/** Capture the current on-disk CLI version */
+function captureCliVersion(): void {
+	try {
+		const pkgPath = path.join(__dirname, '..', 'node_modules', '@github', 'copilot', 'package.json');
+		cliStartVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version ?? null;
+	} catch { cliStartVersion = null; }
+}
 
 /** Stop the CLI server process if we launched it */
 function stopCli(): void {
@@ -140,6 +150,7 @@ async function start() {
 
 	if (cliUrl) {
 		console.log(`[Launcher] Connecting to CLI server at ${cliUrl}`);
+		captureCliVersion();
 	} else {
 		console.log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
 	}
@@ -158,10 +169,21 @@ function launch(cliUrl?: string) {
 		if (code === RESTART_CODE) {
 			console.log('\n[Launcher] Restarting server...\n');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');
-			// Stop CLI server so updated packages take effect on restart
-			stopCli();
-			// Small delay to let the port free up before relaunching
-			setTimeout(() => start(), 500);
+			// Check if CLI package version changed — only restart CLI if it did
+			if (cliLaunched) {
+				try {
+					const pkgPath = path.join(__dirname, '..', 'node_modules', '@github', 'copilot', 'package.json');
+					const diskVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+					if (diskVersion && cliStartVersion && diskVersion !== cliStartVersion) {
+						console.log(`[Launcher] CLI updated (${cliStartVersion} → ${diskVersion}) — restarting CLI server`);
+						stopCli();
+						// Small delay to let the port free up before relaunching
+						setTimeout(() => start(), 500);
+						return;
+					}
+				} catch { /* ignore — can't check, keep CLI running */ }
+			}
+			launch(cliUrl);
 		} else {
 			stopCli(); // clean up CLI server on normal exit
 			process.exit(code ?? 0);
