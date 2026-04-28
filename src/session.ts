@@ -1394,11 +1394,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onModelChange(data: unknown): void {
-		const d = data as { modelId?: string };
-		if (d.modelId) {
-			this.currentModel = d.modelId;
-			this.log(`[Session] Model changed: ${d.modelId}`);
-			this.broadcast({ type: 'model_changed', content: d.modelId });
+		const d = data as { modelId?: string; newModel?: string };
+		const model = d.newModel ?? d.modelId;
+		if (model) {
+			this.currentModel = model;
+			this.log(`[Session] Model changed: ${model}`);
+			this.broadcast({ type: 'model_changed', content: model });
 		}
 	}
 
