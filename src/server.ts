@@ -180,6 +180,15 @@ export class PortalServer {
 						}
 					}, 1500);
 				}
+				// Model may not be known yet (getCurrent is async) — push update once it resolves
+				if (!handle.currentModel) {
+					setTimeout(() => {
+						if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+						if (handle.currentModel) {
+							ws.send(JSON.stringify({ type: 'model_changed', content: handle.currentModel }));
+						}
+					}, 1000);
+				}
 			}
 
 			// Replay history + pending requests.
