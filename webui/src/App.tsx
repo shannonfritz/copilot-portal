@@ -1605,7 +1605,7 @@ export default function App() {
 						};
 						if (msg.intermediate || hasTools) {
 							// Intermediate or tool-dispatching: commit immediately
-							setMessages(prev => prev.some(m => m.content === msg.content && msg.content) ? prev : [...prev, msg]);
+							setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
 						} else {
 							// Final message: buffer for idle to attach remaining tool summary
 							lastStreamedRef.current = (lastStreamedRef.current ? lastStreamedRef.current + '\n' : '') + content;
@@ -1633,7 +1633,7 @@ export default function App() {
 						if (pendingMsgRef.current) {
 							const msg = pendingMsgRef.current;
 							pendingMsgRef.current = null;
-							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+							setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
 						}
 						if (!isStoppingRef.current) {
 							setIsThinking(true);
@@ -1644,7 +1644,7 @@ export default function App() {
 						if (pendingMsgRef.current) {
 							const msg = pendingMsgRef.current;
 							pendingMsgRef.current = null;
-							setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+							setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
 						}
 						setCliApprovalInfo(null);
 						if (!isStoppingRef.current) {
@@ -1710,14 +1710,14 @@ export default function App() {
 						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
 						const msg = { ...pendingMsgRef.current, toolSummary: remainingTools.length ? remainingTools : undefined, bytes: pendingBytes };
 						pendingMsgRef.current = null;
-						setMessages(prev => prev.some(m => m.content === msg.content) ? prev : [...prev, msg]);
+						setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
 					}
 					const final = streamingRef.current;
 					if (final) {
 						const finalBytes = new TextEncoder().encode(final).length;
 						lastStreamedRef.current = final;
 						setMessages((prev) => {
-							if (prev.some(m => m.role === 'assistant' && m.content === final)) return prev;
+							if (prev.length > 0 && prev[prev.length - 1].role === 'assistant' && prev[prev.length - 1].content === final && Date.now() - prev[prev.length - 1].timestamp < 2000) return prev;
 							return [
 								...prev,
 								{
