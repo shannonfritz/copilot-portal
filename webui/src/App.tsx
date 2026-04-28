@@ -671,7 +671,7 @@ function SessionDrawer({
 							{activeSessionId.slice(0, 8)}
 						</span>
 					)}
-					<span>{open ? '▴' : '▾'}</span>
+					<svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }}><polyline points="6 9 12 15 18 9" /></svg>
 				</div>
 			</button>
 
@@ -832,7 +832,7 @@ function SessionDrawer({
 							);
 						})()}
 						{showModelPicker && (
-							<div className="absolute inset-x-0 top-full z-10 overflow-hidden" style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+							<div className="absolute z-10 overflow-hidden" style={{ left: -1, right: -1, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 							<div
 								className="chat-scroll max-h-72 overflow-y-auto py-1"
 								style={{ background: 'var(--surface)' }}
@@ -900,7 +900,7 @@ function SessionDrawer({
 								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
 							</button>
 							{showAgentPicker && (
-								<div className="absolute inset-x-0 top-full z-10 overflow-hidden" style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div className="absolute z-10 overflow-hidden" style={{ left: -1, right: -1, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div
 									className="chat-scroll max-h-56 overflow-y-auto py-1"
 									style={{ background: 'var(--surface)' }}
@@ -1455,10 +1455,26 @@ export default function App() {
 					} else {
 						setSessionPrompts([]);
 					}
-					// Check if the server has a newer build than the client
+					// Check for build mismatch between server and client
 					const serverBuild = (event as { serverBuild?: string }).serverBuild;
 					if (serverBuild && serverBuild !== __BUILD__) {
-						setNotification({ type: 'info', message: `Server updated to build ${serverBuild}.`, action: { label: 'Reload', onClick: () => window.location.reload() } });
+						if (serverBuild > __BUILD__) {
+							// Server is newer — client needs to reload
+							setNotification({ type: 'info', message: `Server updated to build ${serverBuild}.`, action: { label: 'Reload', onClick: () => window.location.reload() } });
+						} else {
+							// Client is newer — server needs restart, then reload to sync
+							setNotification({ type: 'warning', message: `Server is running build ${serverBuild}, client has ${__BUILD__}.`, action: { label: 'Restart', onClick: () => {
+								restartServer();
+								setNotification({ type: 'info', message: 'Restarting server…' });
+								// Poll until server is back, then reload
+								const poll = setInterval(async () => {
+									try {
+										const res = await fetch(`${window.location.origin}/api/status`);
+										if (res.ok) { clearInterval(poll); window.location.reload(); }
+									} catch { /* server still down */ }
+								}, 1000);
+							} } });
+						}
 					}
 					if (newId) {
 						const summary = (event as { summary?: string | null }).summary ?? undefined;
@@ -3573,7 +3589,17 @@ export default function App() {
 									type="button"
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--success)', color: 'var(--button-contrast)' }}
-									onClick={() => restartServer()}
+									onClick={() => {
+										restartServer();
+										setUpdateStatus(prev => prev ? { ...prev, restartNeeded: false, applying: true } : prev);
+										setNotification({ type: 'info', message: 'Restarting server…' });
+										const poll = setInterval(async () => {
+											try {
+												const res = await fetch(`${window.location.origin}/api/status`);
+												if (res.ok) { clearInterval(poll); window.location.reload(); }
+											} catch { /* server still down */ }
+										}, 1000);
+									}}
 								>
 									Restart
 								</button>
@@ -3979,7 +4005,7 @@ export default function App() {
 						if (e.dataTransfer?.files.length) addImageFiles(e.dataTransfer.files);
 					}}
 				>
-					<div ref={inputContainerRef} className="relative flex gap-2">
+					<div ref={inputContainerRef} className="relative flex gap-1">
 						<div className="flex-1 relative">
 							{/* Prompts overlay — floats above input */}
 							{showPromptsTray && sessionPrompts.length > 0 && (
@@ -4096,7 +4122,7 @@ export default function App() {
 							</div>
 						</div>
 						</div>
-						<div className="shrink-0 grid" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: '1fr 1fr', alignSelf: 'flex-end', marginBottom: 4 }}>
+						<div className="shrink-0 grid" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: '1fr 1fr', alignSelf: 'flex-end', marginBottom: 4, justifyItems: 'center', columnGap: 6 }}>
 							<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
 							<button
 								className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
