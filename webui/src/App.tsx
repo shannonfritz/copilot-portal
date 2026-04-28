@@ -780,9 +780,9 @@ function SessionDrawer({
 									<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
 								</div>
 								<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
-									<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}%</span>
-									<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}%</span>
-									<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}%</span>
+									<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}% <span className="font-mono">{(systemTotal / 1000).toFixed(0)}k</span></span>
+									<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}% <span className="font-mono">{(conversationTokens / 1000).toFixed(0)}k</span></span>
+									<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}% <span className="font-mono">{(free / 1000).toFixed(0)}k</span></span>
 								</div>
 							</div>
 						);
