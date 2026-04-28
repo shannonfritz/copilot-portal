@@ -122,6 +122,9 @@ export class SessionHandle {
 	// Accumulated session usage stats — broadcast on each assistant.usage event
 	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
 
+	/** Get accumulated session usage stats for initial sync. */
+	getSessionUsage() { return this.sessionUsage.requests > 0 ? { ...this.sessionUsage } : null; }
+
 	// Per-connection tool tracking — reset on each attachListeners() call
 	private deltasSent = false;
 	private toolsInFlight = 0;

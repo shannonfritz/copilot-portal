@@ -1395,6 +1395,9 @@ export default function App() {
 					setActiveModel((event as { model?: string | null }).model ?? null);
 					// Restore agent name from session_switched event
 					setActiveAgent((event as { agent?: string | null }).agent ?? null);
+					// Restore accumulated usage from server (survives page reload)
+					const usageFromServer = (event as { usage?: typeof sessionUsage }).usage;
+					if (usageFromServer) setSessionUsage(usageFromServer);
 					// Restore prompts for this session
 					setShowPromptsTray(false);
 					if (newId) {
