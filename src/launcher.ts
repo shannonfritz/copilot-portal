@@ -158,8 +158,10 @@ function launch(cliUrl?: string) {
 		if (code === RESTART_CODE) {
 			console.log('\n[Launcher] Restarting server...\n');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');
-			// Don't stop CLI server on restart — it stays running
-			launch(cliUrl);
+			// Stop CLI server so updated packages take effect on restart
+			stopCli();
+			// Small delay to let the port free up before relaunching
+			setTimeout(() => start(), 500);
 		} else {
 			stopCli(); // clean up CLI server on normal exit
 			process.exit(code ?? 0);
