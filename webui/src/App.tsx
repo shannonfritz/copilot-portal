@@ -174,7 +174,7 @@ interface PortalInfo {
 	version: string;
 	login: string;
 	defaultCwd?: string;
-	models: Array<{ id: string; name: string }>;
+	models: Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }>;
 }
 
 interface SessionContext {
@@ -588,7 +588,7 @@ function SessionDrawer({
 	context: SessionContext | null;
 	activeModel: string | null;
 	onChangeModel: (id: string) => void;
-	onFetchModels?: () => Promise<Array<{ id: string; name: string }>>;
+	onFetchModels?: () => Promise<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }>>;
 	onFetchQuota?: () => Promise<{ quotaSnapshots: Record<string, { entitlementRequests: number; usedRequests: number; remainingPercentage: number; resetDate?: string }> }>;
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
@@ -603,7 +603,7 @@ function SessionDrawer({
 	onAgentChange?: (agentName: string | null) => void;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
-	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }> | null>(null);
+	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }> | null>(null);
 	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [editingCwd, setEditingCwd] = useState(false);
 	const [cwdSaving, setCwdSaving] = useState(false);
@@ -612,6 +612,9 @@ function SessionDrawer({
 	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string; source?: string }>>([]);
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
+	const [modelsAtBottom, setModelsAtBottom] = useState(false);
+	const agentPickerRef = useRef<HTMLDivElement>(null);
+	const modelPickerRef = useRef<HTMLDivElement>(null);
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -636,6 +639,20 @@ function SessionDrawer({
 			}).catch(() => {});
 		}
 	}, [open, activeSessionId]);
+
+	// Click-away to close pickers
+	useEffect(() => {
+		const handler = (e: MouseEvent) => {
+			if (showAgentPicker && agentPickerRef.current && !agentPickerRef.current.contains(e.target as Node)) {
+				setShowAgentPicker(false);
+			}
+			if (showModelPicker && modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
+				setShowModelPicker(false);
+			}
+		};
+		document.addEventListener('mousedown', handler);
+		return () => document.removeEventListener('mousedown', handler);
+	}, [showAgentPicker, showModelPicker]);
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
@@ -760,34 +777,6 @@ function SessionDrawer({
 						</div>
 					)} */}
 
-					{/* Context window usage */}
-					{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
-						const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
-						const systemTotal = systemTokens + toolDefinitionsTokens;
-						const free = tokenLimit - currentTokens;
-						const pct = Math.round(currentTokens / tokenLimit * 100);
-						const sysPct = Math.round(systemTotal / tokenLimit * 100);
-						const convPct = Math.round(conversationTokens / tokenLimit * 100);
-						const freePct = Math.round(free / tokenLimit * 100);
-						return (
-							<div className="mb-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-								<div className="flex items-center justify-between mb-1">
-									<span>Context: {pct}%</span>
-									<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
-								</div>
-								<div className="flex rounded-full overflow-hidden" style={{ height: 6, background: 'var(--border)' }}>
-									<div style={{ width: `${sysPct}%`, background: 'var(--accent)', opacity: 0.6 }} title={`System/Tools: ${sysPct}%`} />
-									<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
-								</div>
-								<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
-									<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}% <span className="font-mono">{(systemTotal / 1000).toFixed(0)}k</span></span>
-									<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}% <span className="font-mono">{(conversationTokens / 1000).toFixed(0)}k</span></span>
-									<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}% <span className="font-mono">{(free / 1000).toFixed(0)}k</span></span>
-								</div>
-							</div>
-						);
-					})()}
-
 					{/* Model selector */}
 					{draft && (
 						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -797,11 +786,10 @@ function SessionDrawer({
 							AI Model
 						</label>
 					)}
-					<div className="relative">
+					<div className="relative" ref={modelPickerRef} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showModelPicker ? '0.5rem 0.5rem 0 0' : '0.5rem' }}>
 						<button
 							type="button"
-							className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+							className="flex w-full items-center justify-between px-3 py-2 text-sm"
 							onClick={() => {
 								const opening = !showModelPicker;
 								setShowModelPicker(opening);
@@ -816,10 +804,42 @@ function SessionDrawer({
 							</div>
 							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
 						</button>
+						{/* Context window usage — inside model box */}
+						{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
+							const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
+							const systemTotal = systemTokens + toolDefinitionsTokens;
+							const free = tokenLimit - currentTokens;
+							const pct = Math.round(currentTokens / tokenLimit * 100);
+							const sysPct = Math.round(systemTotal / tokenLimit * 100);
+							const convPct = Math.round(conversationTokens / tokenLimit * 100);
+							const freePct = Math.round(free / tokenLimit * 100);
+							return (
+								<div className="px-3 py-1.5 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+									<div className="flex items-center justify-between mb-1">
+										<span>Context: {pct}%</span>
+										<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
+									</div>
+									<div className="flex rounded-full overflow-hidden" style={{ height: 6, background: 'var(--border)' }}>
+										<div style={{ width: `${sysPct}%`, background: 'var(--accent)', opacity: 0.6 }} title={`System/Tools: ${sysPct}%`} />
+										<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
+									</div>
+									<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
+										<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}% <span className="font-mono">{(systemTotal / 1000).toFixed(0)}k</span></span>
+										<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}% <span className="font-mono">{(conversationTokens / 1000).toFixed(0)}k</span></span>
+										<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}% <span className="font-mono">{(free / 1000).toFixed(0)}k</span></span>
+									</div>
+								</div>
+							);
+						})()}
 						{showModelPicker && (
+							<div className="absolute inset-x-0 top-full z-10 overflow-hidden" style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 							<div
-								className="chat-scroll absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg py-1"
-								style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+								className="chat-scroll max-h-72 overflow-y-auto py-1"
+								style={{ background: 'var(--surface)' }}
+								onScroll={e => {
+									const el = e.currentTarget;
+									setModelsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+								}}
 							>
 								{models.map(m => (
 									<button
@@ -832,19 +852,33 @@ function SessionDrawer({
 										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>
 											{m.id === currentModelId ? '\u2713' : ''}
 										</span>
-										<span>{m.name}</span>
+										<div className="flex-1 text-left">
+											<span>{m.name}</span>
+											{(!!m.contextWindow || m.vision || m.reasoning || (m.multiplier != null && m.multiplier > 0)) && (
+												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+													{m.multiplier != null && (m.multiplier > 0 || !!m.contextWindow) && <span>{m.multiplier}×</span>}
+													{m.contextWindow ? <span>{(m.contextWindow / 1000).toFixed(0)}k</span> : null}
+													{m.vision && <span>vision</span>}
+													{m.reasoning && <span>thinking</span>}
+												</div>
+											)}
+										</div>
 									</button>
 								))}
+							</div>
+							{!modelsAtBottom && (
+								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+							)}
 							</div>
 						)}
 					</div>
 					{/* Agent selector — only for active sessions (not draft) */}
 					{!draft && activeSessionId && (
-						<div className="relative mt-3">
+						<div className="relative mt-3" ref={agentPickerRef}>
 							<button
 								type="button"
-								className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-								style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+								className="flex w-full items-center justify-between px-3 py-2 text-sm"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showAgentPicker ? '0.5rem 0.5rem 0 0' : '0.5rem' }}
 								onClick={() => {
 									const opening = !showAgentPicker;
 									setShowAgentPicker(opening);
@@ -866,11 +900,15 @@ function SessionDrawer({
 								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
 							</button>
 							{showAgentPicker && (
-								<div className="relative mt-1 overflow-hidden rounded-lg" style={{ border: '1px solid var(--border)' }}>
-								<div className="code-scroll max-h-48 overflow-y-auto" style={{ background: 'var(--bg)' }} onScroll={e => {
-									const el = e.currentTarget;
-									setAgentsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
-								}}>
+								<div className="absolute inset-x-0 top-full z-10 overflow-hidden" style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div
+									className="chat-scroll max-h-56 overflow-y-auto py-1"
+									style={{ background: 'var(--surface)' }}
+									onScroll={e => {
+										const el = e.currentTarget;
+										setAgentsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+									}}
+								>
 									<button
 										type="button"
 										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
@@ -878,7 +916,6 @@ function SessionDrawer({
 										onClick={async () => {
 											const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => null);
 											if (res?.ok) {
-												// Confirm with the SDK
 												const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
 												setCurrentAgent(check?.current ?? null);
 												onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? null);
@@ -902,7 +939,6 @@ function SessionDrawer({
 													body: JSON.stringify({ name: a.name }),
 												}).catch(() => null);
 												if (res?.ok) {
-													// Confirm with the SDK
 													const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
 													setCurrentAgent(check?.current ?? a);
 													onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? a.displayName ?? a.name);
@@ -911,7 +947,7 @@ function SessionDrawer({
 											}}
 										>
 											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
-											<div className="flex-1" ref={currentAgent?.name === a.name ? (el) => { el?.scrollIntoView({ block: 'nearest' }); } : undefined}>
+											<div className="flex-1">
 												<div className="flex items-center gap-2">
 													<span>{a.displayName || a.name}</span>
 													{a.source && <span className="text-[10px] opacity-50">{a.source}</span>}
@@ -924,8 +960,8 @@ function SessionDrawer({
 										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No custom agents found</div>
 									)}
 								</div>
-								{agents.length > 2 && !agentsAtBottom && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--bg) 80%)' }} />
+								{!agentsAtBottom && (
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
 								)}
 								</div>
 							)}
@@ -2330,11 +2366,6 @@ export default function App() {
 		return () => document.removeEventListener('mousedown', handler);
 	}, [showPromptsTray]);
 
-	// Scroll chat to bottom when prompts tray opens
-	useEffect(() => {
-		if (showPromptsTray) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-	}, [showPromptsTray]);
-
 	if (connectionState === 'no_token') {
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
@@ -3322,7 +3353,7 @@ export default function App() {
 							</svg>
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
-						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · build {__BUILD__}</div>
+						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · {__BUILD__}</div>
 					</div>
 				</div>
 				<div className="flex flex-col items-end gap-0.5">
@@ -3598,7 +3629,7 @@ export default function App() {
 					{/* Interleave messages and tool events by timestamp */}
 					{(() => {
 						// Consolidate consecutive tool-only messages (no text, just toolSummary)
-						const visibleMessages = messages.filter(m => m.content.trim() || m.toolSummary?.length);
+						const visibleMessages = messages.filter(m => m.content.trim() || m.toolSummary?.length || m.images?.length);
 						const consolidated: Message[] = [];
 						for (const msg of visibleMessages) {
 							const isToolOnly = !msg.content.trim() && msg.toolSummary?.length;
@@ -3941,56 +3972,58 @@ export default function App() {
 						if (e.dataTransfer?.files.length) addImageFiles(e.dataTransfer.files);
 					}}
 				>
-					<div ref={inputContainerRef} className="flex gap-2">
-						<div className="flex-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+					<div ref={inputContainerRef} className="relative flex gap-2">
+						<div className="flex-1 relative">
+							{/* Prompts overlay — floats above input */}
 							{showPromptsTray && sessionPrompts.length > 0 && (
-								<div className="relative overflow-hidden border-b" style={{ borderColor: 'var(--border)' }}>
-									<div className="chat-scroll flex flex-col gap-1 px-3 pt-2 pb-3" style={{ maxHeight: 200, overflowY: 'auto' }} onScroll={e => {
+								<div className="absolute inset-x-0 bottom-full z-10 overflow-hidden" style={{ border: '1px solid var(--border)', borderBottom: 'none', borderRadius: '0.75rem 0.75rem 0 0', boxShadow: '0 -8px 24px rgba(0,0,0,0.3)' }}>
+									<div className="chat-scroll flex flex-col gap-1 px-3 pt-2 pb-3" style={{ maxHeight: 240, overflowY: 'auto', background: 'var(--bg)' }} onScroll={e => {
 										const el = e.currentTarget;
 										setPromptsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
 									}}>
 										{sessionPrompts.map((p, i) => (
-										<div key={i} className="flex items-center gap-1">
-											<button
-												type="button"
-												className="flex-1 rounded-lg px-3 py-2 text-left text-sm"
-												style={{ color: 'var(--text)' }}
-												onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
-												onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-												onClick={() => {
-													setInput(p.text);
-													setShowPromptsTray(false);
-													textareaRef.current?.focus();
-												}}
-											>
-												{p.label}
-											</button>
-											{confirmDeletePrompt === p.label ? (
-												<span className="flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
-													<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={() => { removeSessionPrompt(p.label); setConfirmDeletePrompt(null); }} type="button">Delete</button>
-													<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmDeletePrompt(null)} type="button">Cancel</button>
-												</span>
-											) : (
+											<div key={i} className="flex items-center gap-1">
 												<button
 													type="button"
-													className="shrink-0 rounded p-1 opacity-30 hover:opacity-70"
-													style={{ color: 'var(--text-muted)' }}
-													onClick={() => setConfirmDeletePrompt(p.label)}
-													title="Remove prompt"
+													className="flex-1 rounded-lg px-3 py-2 text-left text-sm"
+													style={{ color: 'var(--text)' }}
+													onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')}
+													onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+													onClick={() => {
+														setInput(p.text);
+														setShowPromptsTray(false);
+														textareaRef.current?.focus();
+													}}
 												>
-													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-													</svg>
+													{p.label}
 												</button>
-											)}
-										</div>
-									))}
-								</div>
-								{sessionPrompts.length > 5 && !promptsAtBottom && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10" style={{ height: 36, background: 'linear-gradient(transparent 0%, var(--bg) 60%)' }} />
-								)}
+												{confirmDeletePrompt === p.label ? (
+													<span className="flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
+														<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={() => { removeSessionPrompt(p.label); setConfirmDeletePrompt(null); }} type="button">Delete</button>
+														<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmDeletePrompt(null)} type="button">Cancel</button>
+													</span>
+												) : (
+													<button
+														type="button"
+														className="shrink-0 rounded p-1 opacity-30 hover:opacity-70"
+														style={{ color: 'var(--text-muted)' }}
+														onClick={() => setConfirmDeletePrompt(p.label)}
+														title="Remove prompt"
+													>
+														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+															<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+														</svg>
+													</button>
+												)}
+											</div>
+										))}
+									</div>
+									{sessionPrompts.length > 5 && !promptsAtBottom && (
+										<div className="pointer-events-none absolute top-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(var(--bg) 0%, transparent 80%)' }} />
+									)}
 								</div>
 							)}
+							<div className="border" style={{ borderColor: 'var(--border)', background: 'var(--bg)', borderRadius: showPromptsTray && sessionPrompts.length > 0 ? '0 0 0.75rem 0.75rem' : '0.75rem' }}>
 							<div className="relative">
 								{pendingImages.length > 0 && (
 									<div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto">
@@ -4053,87 +4086,65 @@ export default function App() {
 										</svg>
 									</button>
 								)}
-								{!input && messages.filter(m => m.role === 'user').length > 0 && (
-									<button
-										type="button"
-										title="Recall last message"
-										onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
-										className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
-										style={{ color: 'var(--text-muted)', right: sessionPrompts.length > 0 ? 28 : 8 }}
-									>
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
-											<polyline points="9 10 4 15 9 20"/>
-											<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
-										</svg>
-									</button>
-								)}
-								{input && (
-									<button
-										type="button"
-										title="Clear"
-										onClick={() => { setInput(''); textareaRef.current?.focus(); }}
-										className="absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded opacity-40 hover:opacity-80"
-										style={{ color: 'var(--text-muted)', right: sessionPrompts.length > 0 ? 28 : 8 }}
-									>
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
-											<path d="M18 6L6 18M6 6l12 12"/>
-										</svg>
-									</button>
-								)}
 							</div>
 						</div>
-						<div className="flex shrink-0 flex-col items-center">
-							{showPromptsTray && sessionPrompts.length > 0 && (
-								<div className="flex flex-1 items-center">
-									{confirmDeletePrompt === '__all__' ? (
-										<div className="flex flex-col gap-1 items-center">
-											<button className="rounded px-2 py-0.5 text-xs" style={{ background: 'var(--error)', color: 'white' }} onClick={() => { clearSessionPrompts(); setConfirmDeletePrompt(null); }} type="button">Delete All</button>
-											<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => setConfirmDeletePrompt(null)} type="button">Cancel</button>
-										</div>
-									) : (
-										<button
-											className="flex size-8 items-center justify-center rounded-full border-none"
-											style={{ background: 'var(--error)', color: 'white', opacity: 0.8 }}
-											onClick={() => setConfirmDeletePrompt('__all__')}
-											type="button"
-											title="Remove all prompts"
-										>
-											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-												<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-											</svg>
-										</button>
-									)}
-								</div>
-							)}
-							<div className="flex items-center gap-1" style={{ marginTop: 'auto', marginBottom: 4 }}>
-								<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
+						</div>
+						<div className="shrink-0 grid" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: '1fr 1fr', alignSelf: 'flex-end', marginBottom: 4 }}>
+							<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
+							<button
+								className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
+								style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', gridColumn: 1, gridRow: 1 }}
+								type="button"
+								title="Attach image"
+								onClick={() => fileInputRef.current?.click()}
+							>
+								<svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+								</svg>
+							</button>
+							<button
+								className="flex size-11 items-center justify-center rounded-full border-none"
+								style={{
+									background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
+									color: 'white',
+									cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
+									gridColumn: 2, gridRow: '1 / 3',
+									alignSelf: 'center',
+								}}
+								disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
+								type="submit"
+								title="Send"
+							>
+								<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+								</svg>
+							</button>
+							{!input && messages.filter(m => m.role === 'user').length > 0 ? (
 								<button
-									className="flex size-9 items-center justify-center rounded-full border-none"
-									style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
 									type="button"
-									title="Attach image"
-									onClick={() => fileInputRef.current?.click()}
+									title="Recall last message"
+									onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
+									className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
+									style={{ color: 'var(--text-muted)', gridColumn: 1, gridRow: 2 }}
 								>
-									<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
-										<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+										<polyline points="9 10 4 15 9 20"/>
+										<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
 									</svg>
 								</button>
+							) : input ? (
 								<button
-									className="flex size-11 items-center justify-center rounded-full border-none"
-									style={{
-										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
-										color: 'white',
-										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
-									}}
-									disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
-									type="submit"
-									title="Send"
+									type="button"
+									title="Clear"
+									onClick={() => { setInput(''); textareaRef.current?.focus(); }}
+									className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
+									style={{ color: 'var(--text-muted)', gridColumn: 1, gridRow: 2 }}
 								>
-									<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
+										<path d="M18 6L6 18M6 6l12 12"/>
 									</svg>
 								</button>
-							</div>
+							) : <div className="size-5" style={{ gridColumn: 1, gridRow: 2 }} />}
 						</div>
 					</div>
 				</form>

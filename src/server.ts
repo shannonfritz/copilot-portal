@@ -475,8 +475,16 @@ export class PortalServer {
 			try {
 				const allModels = await this.pool.listModels();
 				const models = allModels
-					.filter(m => !m.policy || m.policy.state === 'enabled')
-					.map(m => ({ id: m.id, name: m.name }));
+					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
+					.map((m: any) => ({
+						id: m.id,
+						name: m.name,
+						contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
+						vision: !!m.capabilities?.supports?.vision,
+						reasoning: !!m.capabilities?.supports?.adaptive_thinking,
+						premium: !!m.billing?.is_premium,
+						multiplier: m.billing?.multiplier ?? (m.billing?.is_premium ? 1 : 0),
+					}));
 				if (this.portalInfo) this.portalInfo = { ...this.portalInfo, models };
 				this.sendJson(res, 200, models);
 			} catch {
@@ -1322,8 +1330,16 @@ export class PortalServer {
 				login: auth.login ?? 'unknown',
 				defaultCwd: path.resolve(this.dataDir, 'workspaces', 'default'),
 				models: allModels
-					.filter(m => !m.policy || m.policy.state === 'enabled')
-					.map(m => ({ id: m.id, name: m.name })),
+					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
+					.map((m: any) => ({
+						id: m.id,
+						name: m.name,
+						contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
+						vision: !!m.capabilities?.supports?.vision,
+						reasoning: !!m.capabilities?.supports?.adaptive_thinking,
+						premium: !!m.billing?.is_premium,
+						multiplier: m.billing?.multiplier ?? (m.billing?.is_premium ? 1 : 0),
+					})),
 			};
 			this.log(`[Pool] CLI runtime: v${status.version}`);
 			this.log(`[Pool] Models available: ${this.portalInfo.models.length}`);
