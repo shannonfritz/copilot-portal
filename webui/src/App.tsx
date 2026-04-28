@@ -1569,6 +1569,13 @@ export default function App() {
 							});
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
+						} else if (event.toolSummary?.length) {
+							// Tool-only idle (no preceding delta) — attach to the last assistant message
+							const buf = historyBufferRef.current;
+							const last = buf.length > 0 ? buf[buf.length - 1] : null;
+							if (last && last.role === 'assistant') {
+								last.toolSummary = [...(last.toolSummary ?? []), ...event.toolSummary];
+							}
 						}
 					}
 					return;

@@ -298,6 +298,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		let currentMsgTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 
 		const flushRound = (allIntermediate = false) => {
+			// Collect all tools in this round so the final message gets the summary
+			const allRoundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
+			for (let i = 0; i < roundMsgs.length; i++) {
+				const msgToolsRaw = roundPerMsgTools[i] ?? [];
+				const msgTools = msgToolsRaw.filter(t => t.toolName !== 'ask_user');
+				allRoundTools.push(...msgTools);
+			}
+
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const content = roundMsgs[i];
 				const isLast = i === roundMsgs.length - 1;
@@ -305,10 +313,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				const hasToolRequests = roundFollowingTools[i] === '_has_tool_requests' || (roundFollowingTools[i] !== null && roundFollowingTools[i] !== 'ask_user');
 				const intermediate = followedByAskUser ? false : (allIntermediate || hasToolRequests);
 
-				// Get this message's tools (filter ask_user)
-				const msgToolsRaw = roundPerMsgTools[i] ?? [];
-				const msgTools = msgToolsRaw.filter(t => t.toolName !== 'ask_user');
-				const toolSummary = msgTools.length > 0 ? [...msgTools] : undefined;
+				// Attach all tools to the final message in the round (matches live behavior)
+				const toolSummary = isLast && allRoundTools.length > 0 ? [...allRoundTools] : undefined;
 
 				// Emit the message content or tool-only row
 				if (content || toolSummary) {
