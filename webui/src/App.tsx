@@ -1490,17 +1490,10 @@ export default function App() {
 							// Server is newer — client needs to reload
 							setNotification({ type: 'info', message: `Server updated to build ${serverBuild}.`, action: { label: 'Reload', onClick: () => window.location.reload() } });
 						} else {
-							// Client is newer — server needs restart, then reload to sync
+							// Client is newer — server needs restart
 							setNotification({ type: 'warning', message: `Server is running build ${serverBuild}, client has ${__BUILD__}.`, action: { label: 'Restart', onClick: () => {
 								restartServer();
-								setNotification({ type: 'info', message: 'Restarting server…' });
-								// Poll until server is back, then reload
-								const poll = setInterval(async () => {
-									try {
-										const res = await fetch(`${window.location.origin}/api/status`);
-										if (res.ok) { clearInterval(poll); window.location.reload(); }
-									} catch { /* server still down */ }
-								}, 1000);
+								setNotification({ type: 'info', message: 'Restarting server… refresh when ready.' });
 							} } });
 						}
 					}
@@ -2140,14 +2133,19 @@ export default function App() {
 
 	const applyUpdates = useCallback(async () => {
 		setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
-		try {
-			const res = await apiFetch('/api/updates/apply', { method: 'POST' });
-			const status = await res.json() as UpdateStatus;
-			// Force restartNeeded on client side — older servers may not track it
-			setUpdateStatus({ ...status, restartNeeded: true });
-		} catch (e) {
-			setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
-		}
+		// Fire the apply request — don't await it (npm install can take minutes)
+		apiFetch('/api/updates/apply', { method: 'POST' }).catch(() => {});
+		// Poll for completion
+		const poll = setInterval(async () => {
+			try {
+				const res = await apiFetch('/api/updates');
+				const status = await res.json() as UpdateStatus;
+				if (!status.applying) {
+					clearInterval(poll);
+					setUpdateStatus({ ...status, restartNeeded: !status.error });
+				}
+			} catch { /* server busy */ }
+		}, 3000);
 	}, []);
 
 	const restartServer = useCallback(async (force = false) => {
@@ -3600,9 +3598,20 @@ export default function App() {
 												setUpdateStatus(status);
 											}
 											if (updatable.length > 0) {
-												const res = await apiFetch('/api/updates/apply', { method: 'POST' });
-												const status = await res.json() as UpdateStatus;
-												setUpdateStatus({ ...status, restartNeeded: true });
+												// Fire and forget — npm install can take minutes
+												apiFetch('/api/updates/apply', { method: 'POST' }).catch(() => {});
+												// Poll for completion
+												const poll = setInterval(async () => {
+													try {
+														const res = await apiFetch('/api/updates');
+														const status = await res.json() as UpdateStatus;
+														if (!status.applying) {
+															clearInterval(poll);
+															setUpdateStatus({ ...status, restartNeeded: !status.error });
+														}
+													} catch { /* server busy */ }
+												}, 3000);
+												return;
 											}
 										} catch (e) {
 											setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
@@ -3619,14 +3628,8 @@ export default function App() {
 									style={{ background: 'var(--success)', color: 'var(--button-contrast)' }}
 									onClick={() => {
 										restartServer();
-										setUpdateStatus(prev => prev ? { ...prev, restartNeeded: false, applying: true } : prev);
-										setNotification({ type: 'info', message: 'Restarting server…' });
-										const poll = setInterval(async () => {
-											try {
-												const res = await fetch(`${window.location.origin}/api/status`);
-												if (res.ok) { clearInterval(poll); window.location.reload(); }
-											} catch { /* server still down */ }
-										}, 1000);
+										setUpdateStatus(prev => prev ? { ...prev, restartNeeded: false } : prev);
+										setNotification({ type: 'info', message: 'Restarting server… refresh when ready.' });
 									}}
 								>
 									Restart

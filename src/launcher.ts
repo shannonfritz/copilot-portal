@@ -170,18 +170,26 @@ function launch(cliUrl?: string) {
 			console.log('\n[Launcher] Restarting server...\n');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');
 			// Check if CLI package version changed — only restart CLI if it did
+			console.log(`[Launcher] cliLaunched=${cliLaunched}, cliStartVersion=${cliStartVersion}`);
 			if (cliLaunched) {
 				try {
 					const pkgPath = path.join(__dirname, '..', 'node_modules', '@github', 'copilot', 'package.json');
 					const diskVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+					console.log(`[Launcher] CLI version check: start=${cliStartVersion} disk=${diskVersion}`);
 					if (diskVersion && cliStartVersion && diskVersion !== cliStartVersion) {
 						console.log(`[Launcher] CLI updated (${cliStartVersion} → ${diskVersion}) — restarting CLI server`);
 						stopCli();
 						// Small delay to let the port free up before relaunching
 						setTimeout(() => start(), 500);
 						return;
+					} else {
+						console.log(`[Launcher] CLI version unchanged — keeping CLI running`);
 					}
-				} catch { /* ignore — can't check, keep CLI running */ }
+				} catch (e) {
+					console.log(`[Launcher] CLI version check failed: ${e}`);
+				}
+			} else {
+				console.log(`[Launcher] CLI not managed by launcher — skipping CLI restart`);
 			}
 			launch(cliUrl);
 		} else {
