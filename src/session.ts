@@ -1548,8 +1548,23 @@ export class SessionPool {
 		}
 		const auth = await this.client.getAuthStatus();
 		if (!auth.isAuthenticated) {
-			this.log(`\n❌ Not authenticated. Please run:\n\n   npx copilot login\n\nThen restart the server.\n`);
-			throw new Error('Not authenticated — run "npx copilot login" first');
+			this.log(`[Pool] Not authenticated — attempting login...`);
+			try {
+				const { execSync } = await import('child_process');
+				const copilotBin = process.platform === 'win32' ? 'node_modules\\.bin\\copilot.cmd' : 'node_modules/.bin/copilot';
+				execSync(`${copilotBin} login`, { stdio: 'inherit', cwd: process.cwd() });
+				// Re-check after login
+				const recheck = await this.client.getAuthStatus();
+				if (!recheck.isAuthenticated) {
+					this.log(`\n❌ Login completed but still not authenticated.\n`);
+					throw new Error('Not authenticated after login attempt');
+				}
+				this.log(`[Pool] Authenticated as: ${recheck.login ?? 'unknown'}`);
+				return;
+			} catch (loginErr) {
+				this.log(`\n❌ Login failed. Please run manually:\n\n   npx copilot login\n\nThen restart the server.\n`);
+				throw new Error('Not authenticated — run "npx copilot login" first');
+			}
 		}
 		this.log(`[Pool] Authenticated as: ${auth.login ?? 'unknown'}`);
 	}
