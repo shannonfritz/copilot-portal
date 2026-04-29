@@ -1553,7 +1553,12 @@ export class SessionPool {
 				const { execSync } = await import('child_process');
 				const copilotBin = process.platform === 'win32' ? 'node_modules\\.bin\\copilot.cmd' : 'node_modules/.bin/copilot';
 				execSync(`${copilotBin} login`, { stdio: 'inherit', cwd: process.cwd() });
-				// Re-check after login
+				// Login updates credentials on disk but the running CLI server has stale auth.
+				// Restart the client so it picks up the new credentials.
+				this.log(`[Pool] Login completed — restarting client to refresh credentials...`);
+				await this.client.stop();
+				this.client = this.cliUrl ? new CopilotClient({ cliUrl: this.cliUrl }) : new CopilotClient();
+				await this.client.start();
 				const recheck = await this.client.getAuthStatus();
 				if (!recheck.isAuthenticated) {
 					this.log(`\n❌ Login completed but still not authenticated.\n`);
