@@ -659,9 +659,12 @@ function SessionDrawer({
 			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
 			<button className="flex w-full items-center gap-2 border-none bg-transparent px-4 py-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }} onClick={onToggle} type="button">
 				{/* Session summary — read-only */}
-				<span className="overflow-hidden whitespace-nowrap min-w-0" style={{ color: draft ? 'var(--primary)' : sessionSummary ? 'var(--text)' : 'var(--text-muted)', maskImage: 'linear-gradient(to right, black 85%, transparent)', WebkitMaskImage: 'linear-gradient(to right, black 85%, transparent)' }}>
-					{draft ? 'New Session' : sessionSummary || <em>untitled session</em>}
-				</span>
+				<div className="relative flex-1 overflow-hidden min-w-0" style={{ whiteSpace: 'nowrap', textAlign: 'left' }}>
+					<span style={{ color: draft ? 'var(--primary)' : sessionSummary ? 'var(--text)' : 'var(--text-muted)' }}>
+						{draft ? 'New Session' : sessionSummary || <em>untitled session</em>}
+					</span>
+					<div className="pointer-events-none absolute top-0 right-0 bottom-0" style={{ width: 24, background: 'linear-gradient(to right, transparent, var(--surface))' }} />
+				</div>
 				{/* Right side: session ID + chevron */}
 				<div className="flex items-center gap-1.5 shrink-0">
 					{activeSessionId && (
