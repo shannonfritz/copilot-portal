@@ -19,6 +19,15 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+function log(msg: string): void {
+	const now = new Date();
+	const h = now.getHours(); const m = now.getMinutes(); const s = now.getSeconds();
+	const ampm = h >= 12 ? 'PM' : 'AM';
+	const hh = String(h > 12 ? h - 12 : h || 12).padStart(2, '0');
+	const ts = `${hh}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}`;
+	console.log(`[${ts}] ${msg}`);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverScript = path.join(__dirname, 'server.js');
 const args = process.argv.slice(2);
@@ -83,7 +92,7 @@ function launchCli(port: number): boolean {
 		child.unref();
 	}
 	cliLaunched = true;
-	console.log(`[Launcher] CLI server started`);
+	log(`[Launcher] CLI server started`);
 	return true;
 }
 
@@ -102,7 +111,7 @@ function captureCliVersion(): void {
 function stopCli(): void {
 	if (!cliLaunched) return;
 	cliLaunched = false;
-	console.log(`[Launcher] Stopping CLI server...`);
+	log(`[Launcher] Stopping CLI server...`);
 	try {
 		if (process.platform === 'win32') {
 			// spawnSync so it works in 'exit' handler (synchronous only)
@@ -124,22 +133,22 @@ async function start() {
 		const cliUrlIdx = serverArgs.indexOf('--cli-url');
 		if (cliUrlIdx !== -1 && cliUrlIdx + 1 < serverArgs.length) {
 			cliUrl = serverArgs[cliUrlIdx + 1];
-			console.log(`[Launcher] Using provided CLI server: ${cliUrl}`);
+			log(`[Launcher] Using provided CLI server: ${cliUrl}`);
 		} else {
 			// Auto-detect or launch CLI server
 			const alreadyRunning = await isPortListening(CLI_PORT);
 			if (alreadyRunning) {
-				console.log(`[Launcher] CLI server detected on port ${CLI_PORT}`);
+				log(`[Launcher] CLI server detected on port ${CLI_PORT}`);
 			} else {
-				console.log(`[Launcher] Starting CLI server (port ${CLI_PORT})...`);
+				log(`[Launcher] Starting CLI server (port ${CLI_PORT})...`);
 				const launched = launchCli(CLI_PORT);
 				if (launched) {
 					const ready = await waitForPort(CLI_PORT, 30000);
 					if (!ready) {
-						console.log(`[Launcher] CLI server did not start within 30s — falling back to standalone mode`);
+						log(`[Launcher] CLI server did not start within 30s — falling back to standalone mode`);
 					}
 				} else {
-					console.log(`[Launcher] Falling back to standalone mode`);
+					log(`[Launcher] Falling back to standalone mode`);
 				}
 			}
 			if (await isPortListening(CLI_PORT)) {
@@ -149,10 +158,10 @@ async function start() {
 	}
 
 	if (cliUrl) {
-		console.log(`[Launcher] Connecting to CLI server at ${cliUrl}`);
+		log(`[Launcher] Connecting to CLI server at ${cliUrl}`);
 		captureCliVersion();
 	} else {
-		console.log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
+		log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
 	}
 
 	launch(cliUrl);
@@ -167,29 +176,29 @@ function launch(cliUrl?: string) {
 
 	child.on('exit', (code) => {
 		if (code === RESTART_CODE) {
-			console.log('\n[Launcher] Restarting server...\n');
+			log('\n[Launcher] Restarting server...\n');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');
 			// Check if CLI package version changed — only restart CLI if it did
-			console.log(`[Launcher] cliLaunched=${cliLaunched}, cliStartVersion=${cliStartVersion}`);
+			log(`[Launcher] cliLaunched=${cliLaunched}, cliStartVersion=${cliStartVersion}`);
 			if (cliLaunched) {
 				try {
 					const pkgPath = path.join(__dirname, '..', 'node_modules', '@github', 'copilot', 'package.json');
 					const diskVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
-					console.log(`[Launcher] CLI version check: start=${cliStartVersion} disk=${diskVersion}`);
+					log(`[Launcher] CLI version check: start=${cliStartVersion} disk=${diskVersion}`);
 					if (diskVersion && cliStartVersion && diskVersion !== cliStartVersion) {
-						console.log(`[Launcher] CLI updated (${cliStartVersion} → ${diskVersion}) — restarting CLI server`);
+						log(`[Launcher] CLI updated (${cliStartVersion} → ${diskVersion}) — restarting CLI server`);
 						stopCli();
 						// Small delay to let the port free up before relaunching
 						setTimeout(() => start(), 500);
 						return;
 					} else {
-						console.log(`[Launcher] CLI version unchanged — keeping CLI running`);
+						log(`[Launcher] CLI version unchanged — keeping CLI running`);
 					}
 				} catch (e) {
-					console.log(`[Launcher] CLI version check failed: ${e}`);
+					log(`[Launcher] CLI version check failed: ${e}`);
 				}
 			} else {
-				console.log(`[Launcher] CLI not managed by launcher — skipping CLI restart`);
+				log(`[Launcher] CLI not managed by launcher — skipping CLI restart`);
 			}
 			launch(cliUrl);
 		} else {

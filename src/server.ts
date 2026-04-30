@@ -84,15 +84,17 @@ export class PortalServer {
 		this.wss.on('error', (err) => this.log(`[WS Error] ${err.message}`));
 
 		this.wss.on('connection', async (ws, req) => {
-			const clientId = `C${++this.clientCounter}`;
 			const ip = req.socket.remoteAddress ?? 'unknown';
+			// Include short IP suffix so logs show which device is connecting (e.g. C3:.12 = .12 host)
+			const ipSuffix = ip.includes(':') ? ip.split(':').pop() ?? '' : ip.split('.').pop() ?? '';
+			const clientId = `C${++this.clientCounter}:.${ipSuffix}`;
 			const url = new URL(req.url ?? '/', 'http://localhost');
 			let sessionId = url.searchParams.get('session') ?? null;
 				const historyParam = url.searchParams.get('history');
 				const historyLimit = historyParam === 'all' ? undefined : (historyParam ? parseInt(historyParam, 10) || 50 : 50);
 			const isManagement = url.searchParams.get('management') === '1';
 
-			this.log(`[${clientId}] Connected from ${ip}, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
+			this.log(`[${clientId}] Connected, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
 
 			// Management connections: no session, just here to receive broadcasts
 			if (isManagement) {

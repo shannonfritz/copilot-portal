@@ -1038,7 +1038,13 @@ function SessionDrawer({
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
-	const [messages, setMessages] = useState<Message[]>([]);
+	const [messages, setMessagesState] = useState<Message[]>([]);
+	const messagesRef = useRef<Message[]>([]);
+	const setMessages = useCallback((arg: Message[] | ((prev: Message[]) => Message[])) => {
+		const next = typeof arg === 'function' ? arg(messagesRef.current) : arg;
+		messagesRef.current = next;
+		setMessagesState(next);
+	}, []);
 	const [toolEvents, setToolEventsState] = useState<ToolEvent[]>([]);
 	const toolEventsRef = useRef<ToolEvent[]>([]);
 	const intentionMapRef = useRef<Map<string, string>>(new Map());
@@ -1319,6 +1325,8 @@ export default function App() {
 		const token = getToken();
 		if (!token) { setConnectionState('no_token'); return; }
 		if (noSessionRef.current) return; // user must pick a session first
+		// Skip if already connecting — prevents duplicate connections from concurrent triggers
+		if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
 		// Close management WS before opening a session WS (they're mutually exclusive).
 		if (mgmtWsRef.current) {
@@ -1354,6 +1362,8 @@ export default function App() {
 		ws.onopen = () => {
 			fastFailCount.current = 0;
 			setConnectionState('connected');
+			// Restore textarea focus after reconnect (prevents focus loss on background return)
+			setTimeout(() => textareaRef.current?.focus(), 100);
 			// Re-check update status on (re)connect — server may have restarted with new versions
 			// Poll immediately and again after 15s (server may still be running its initial check)
 			const pollUpdates = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
@@ -1366,6 +1376,8 @@ export default function App() {
 			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); }
 			const hb = { interval: setInterval(() => {
 				if (ws.readyState === WebSocket.OPEN) {
+					// Skip heartbeat ping if the page is hidden — timers are unreliable when backgrounded
+					if (document.visibilityState === 'hidden') return;
 					ws.send('{"type":"ping"}');
 					hb.timeout = setTimeout(() => {
 						// No pong received — connection is stale
@@ -1447,6 +1459,21 @@ export default function App() {
 							bytes: new TextEncoder().encode(streamingRef.current).length,
 						});
 						streamingRef.current = '';
+					}
+					// Skip history replacement on reconnect if nothing changed.
+					// Compare user message counts — if the history has more, new messages arrived
+					// while we were disconnected (e.g. from another device). Accept the update.
+					// If same or fewer, our existing messages are still valid — skip the re-render.
+					const isReconnect = messagesRef.current.length > 0 && activeSessionIdRef.current === (event.sessionId ?? activeSessionIdRef.current);
+					if (isReconnect) {
+						const existingUserCount = messagesRef.current.filter(m => m.role === 'user').length;
+						const historyUserCount = historyBufferRef.current.filter(m => m.role === 'user').length;
+						if (historyUserCount <= existingUserCount) {
+							// No new messages — skip re-render to preserve focus and avoid flicker
+							historyBufferRef.current = [];
+							return;
+						}
+						// New messages detected — fall through to replace messages
 					}
 					setMessages(historyBufferRef.current);
 								// Prevent auto-collapse from firing when user manually opens drawer after history load
@@ -2004,19 +2031,22 @@ export default function App() {
 		const checkConnection = () => {
 			if (draftRef.current || noSessionRef.current) return;
 			if (Date.now() - lastConnectTime.current < 1500) return;
+			// Clear any stale heartbeat timeout — mobile browsers freeze timers while backgrounded,
+			// causing old timeouts to fire immediately when the tab becomes visible.
+			if (heartbeatRef.current?.timeout) { clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current.timeout = null; }
 			const ws = wsRef.current;
 			if (!ws) return;
 			if (ws.readyState === WebSocket.OPEN) {
 				// Connection looks alive — send a ping to verify. If no pong within 5s, onclose fires.
 				ws.send('{"type":"ping"}');
 				if (heartbeatRef.current) {
-					if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout);
 					heartbeatRef.current.timeout = setTimeout(() => ws.close(), 5000);
 				}
 				return;
 			}
 			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-			if (ws.readyState === WebSocket.CONNECTING) ws.close();
+			// If a connection is already in progress, don't interfere
+			if (ws.readyState === WebSocket.CONNECTING) return;
 			connect();
 		};
 		const onVisibility = () => { if (document.visibilityState === 'visible') checkConnection(); };
