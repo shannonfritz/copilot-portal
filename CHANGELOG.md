@@ -2,7 +2,7 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.6.0
+## v0.6.1
 
 ### 🖼️ Image Support
 - Paste, drag & drop, or pick images to attach to messages
@@ -28,6 +28,7 @@ All notable changes to Copilot Portal are documented here.
 - Build mismatch detection between client and server
 - Fire-and-forget npm install (no client timeout on long installs)
 - Restart button always shown after update cycle completes
+- Clear stale update banner on reconnect
 
 ### 🔌 Reconnect Improvements
 - Skip redundant history replay on reconnect (no flicker or focus loss)
@@ -42,6 +43,7 @@ All notable changes to Copilot Portal are documented here.
 - Model change detection handles SDK's `newModel` field
 - Auth check handles camelCase keys and comments in config.json
 - Session title fades gracefully when too long for drawer
+- Fix package.dist.json version not synced with package.json
 
 ### 💅 UI Polish
 - Input buttons in 2×2 grid (image, recall/clear, send)
@@ -50,6 +52,10 @@ All notable changes to Copilot Portal are documented here.
 - Session ID click-to-copy in drawer handle
 - Launcher logs include timestamps
 - Client IDs show full IP and tunnel indicator (`T:` prefix)
+
+## v0.6.0
+
+Superseded by v0.6.1 — release zip had stale version in package.json.
 
 ## v0.5.13
 
