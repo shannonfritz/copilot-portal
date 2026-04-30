@@ -38,17 +38,37 @@ git add BUILD && git commit -m "Bump build"
 
 The zip is in `releases/` — distribute via GitHub Releases or other channels.
 
+## Release Checklist
+
+1. **Bump version** — `npm version minor` (or `patch`). This updates `package.json` only.
+2. **Sync package.dist.json** — Manually update `"version"` in `package.dist.json` to match.
+   ⚠️ `npm version` does NOT update this file. If you forget, the release zip will report
+   the old version and the portal self-update checker will think it's outdated.
+3. **Update CHANGELOG.md** — Add release notes under the new version heading.
+4. **Build & package** — `npm run package`
+5. **Commit & tag** — `git add -A && git commit -m "vX.Y.Z" && git tag vX.Y.Z`
+6. **Push** — `git push origin master --tags`
+7. **Create GitHub release** — `gh release create vX.Y.Z releases/copilot-portal-vX.Y.Z-build-*.zip --title "vX.Y.Z — Title"`
+
+### If a release has a bug
+
+1. Fix the issue, bump patch version (`npm version patch` + sync `package.dist.json`)
+2. Merge the old release notes into the new version in CHANGELOG.md
+3. Mark the broken version as "Superseded by vX.Y.Z" in the changelog
+4. Delete the broken GitHub release: `gh release delete vX.Y.Z --yes --cleanup-tag`
+5. Publish the new release
+
 ## Versioning Scheme
 
-- **Version** (semver) — Lives in `package.json`, bumped manually for releases.
-  Currently `0.2.0`. Bump when shipping a significant feature set.
+- **Version** (semver) — Lives in `package.json` AND `package.dist.json` (keep in sync!).
+  Bump when shipping a significant feature set.
 
 - **Build** (daily counter) — Lives in `BUILD` file, auto-incremented on each `npm run package`.
   Format: `YYMMDD-NN` (e.g. `260323-03` = third build on March 23, 2026).
 
 - **Zip name** — `copilot-portal-v{version}-build-{build}.zip`
 
-- **UI display** — Shows `v0.2.0 · build 260323-03` in the session drawer.
+- **UI display** — Shows `v0.6.1 · 260430-04` in the session drawer.
 
 ## What's In the Release vs Dev Repo
 
@@ -68,6 +88,7 @@ The zip is in `releases/` — distribute via GitHub Releases or other channels.
 | `esbuild.cjs` | ❌ | ✅ | Build tooling |
 | `package.mjs` | ❌ | ✅ | This packaging script |
 | `docs/` | ❌ | ✅ | Internal planning docs |
+| `data/` | ❌ | ❌ | Runtime data (gitignored), never in zip |
 
 ## package.dist.json vs package.json
 
@@ -79,6 +100,10 @@ The release `package.dist.json` is a minimal version that becomes `package.json`
 - `postinstall` runs `patch-package` to apply SDK compatibility patches
 - No build scripts (release is pre-built)
 
+⚠️ **Version must be kept in sync manually.** `npm version` only updates `package.json`.
+Forgetting to update `package.dist.json` causes the portal self-update checker to detect
+a false update (installed version appears older than the latest release).
+
 ## User Experience
 
 End users:
@@ -89,10 +114,18 @@ End users:
 
 ## Update Flow
 
-The portal checks for SDK/CLI updates every 4 hours. When updates are available:
-1. Blue banner in UI: "copilot-sdk 0.1.32 → 0.2.0"
-2. User clicks "Update now"
-3. Server runs `npm install pkg@latest` (not `npm update` — crosses semver boundaries)
-4. Skips rebuild (no build script in release package)
-5. Green banner: "Restart now"
-6. User clicks restart → launcher relaunches server process
+The portal checks for SDK/CLI updates every 4 hours and portal releases via GitHub Releases.
+
+### SDK/CLI Updates
+1. Banner in UI shows available updates with version info
+2. User clicks "Update" → server runs `npm install pkg@latest` (fire-and-forget)
+3. Client polls `/api/updates` every 3s until complete
+4. Green "Restart" button appears when done (even if update failed)
+5. Launcher detects CLI version change → stops old CLI → restarts with new binary
+6. If credentials expired, portal auto-runs `copilot login` and restarts client
+
+### Portal Self-Updates
+1. Banner shows "Portal vX.Y.Z → vA.B.C"
+2. User clicks "Update" → server downloads zip from GitHub Releases, extracts over existing files
+3. "Restart" button appears → server restarts with new code
+4. Client's WS reconnects automatically; stale update banners are cleared
