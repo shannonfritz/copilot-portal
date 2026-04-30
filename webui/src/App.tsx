@@ -1364,11 +1364,13 @@ export default function App() {
 			setConnectionState('connected');
 			// Restore textarea focus after reconnect (prevents focus loss on background return)
 			setTimeout(() => textareaRef.current?.focus(), 100);
+			// Clear stale update status from before restart, then re-check
+			setUpdateStatus(null);
+			setUpdateDismissed(false);
 			// Re-check update status on (re)connect — server may have restarted with new versions
 			// Poll immediately and again after 15s (server may still be running its initial check)
 			const pollUpdates = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
 				setUpdateStatus(s);
-				if (!s.packages.some(p => p.hasUpdate) && !s.restartNeeded) setUpdateDismissed(false);
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
