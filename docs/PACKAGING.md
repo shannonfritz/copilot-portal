@@ -41,14 +41,11 @@ The zip is in `releases/` — distribute via GitHub Releases or other channels.
 ## Release Checklist
 
 1. **Bump version** — `npm version minor` (or `patch`). This updates `package.json` only.
-2. **Sync package.dist.json** — Manually update `"version"` in `package.dist.json` to match.
-   ⚠️ `npm version` does NOT update this file. If you forget, the release zip will report
-   the old version and the portal self-update checker will think it's outdated.
+2. **Build & package** — `npm run package` (auto-syncs version to `package.dist.json`)
 3. **Update CHANGELOG.md** — Add release notes under the new version heading.
-4. **Build & package** — `npm run package`
-5. **Commit & tag** — `git add -A && git commit -m "vX.Y.Z" && git tag vX.Y.Z`
-6. **Push** — `git push origin master --tags`
-7. **Create GitHub release** — `gh release create vX.Y.Z releases/copilot-portal-vX.Y.Z-build-*.zip --title "vX.Y.Z — Title"`
+4. **Commit & tag** — `git add -A && git commit -m "vX.Y.Z" && git tag vX.Y.Z`
+5. **Push** — `git push origin master --tags`
+6. **Create GitHub release** — `gh release create vX.Y.Z releases/copilot-portal-vX.Y.Z-build-*.zip --title "vX.Y.Z — Title"`
 
 ### If a release has a bug
 
@@ -100,9 +97,8 @@ The release `package.dist.json` is a minimal version that becomes `package.json`
 - `postinstall` runs `patch-package` to apply SDK compatibility patches
 - No build scripts (release is pre-built)
 
-⚠️ **Version must be kept in sync manually.** `npm version` only updates `package.json`.
-Forgetting to update `package.dist.json` causes the portal self-update checker to detect
-a false update (installed version appears older than the latest release).
+⚠️ **Version is auto-synced.** `npm run package` copies the version from `package.json`
+into `package.dist.json` automatically. If they differ, it logs a warning during packaging.
 
 ## User Experience
 

@@ -23,8 +23,14 @@ const buildNum = (prevDate === today) ? prevNum + 1 : 1;
 const build = `${today}-${String(buildNum).padStart(2, '0')}`;
 writeFileSync('BUILD', `${build}\n`);
 
-// 2. Read version from package.json
+// 2. Read version from package.json and sync to package.dist.json
 const { version: pkgVersion } = JSON.parse(readFileSync('package.json', 'utf8'));
+const distPkg = JSON.parse(readFileSync('package.dist.json', 'utf8'));
+if (distPkg.version !== pkgVersion) {
+	distPkg.version = pkgVersion;
+	writeFileSync('package.dist.json', JSON.stringify(distPkg, null, '\t') + '\n');
+	console.log(`  ⚠ Synced package.dist.json version to ${pkgVersion}`);
+}
 console.log(`\n  Version: ${pkgVersion}  Build: ${build}\n`);
 
 // 3. Build
