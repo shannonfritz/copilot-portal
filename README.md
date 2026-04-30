@@ -2,6 +2,21 @@
 
 A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server on your PC, then open the URL on any device — same network via QR code, or anywhere via DevTunnels.
 
+## Features
+
+- **Chat with Copilot** — full session management, model switching, tool approvals
+- **Image attachments** — paste, drag & drop, or pick images to include in messages
+- **Context window bar** — visual breakdown of token usage (system, messages, free space)
+- **Rich model picker** — context size, vision/thinking support, and cost multiplier per model
+- **Agent picker** — select custom agents from `~/.copilot/agents/` or `.github/agents/`
+- **Guides & Prompts** — markdown instructions and canned prompts, import from Gists
+- **Working directory** — browse and change per-session CWD with folder picker
+- **Themes** — per-session color themes with randomizer
+- **Mobile-first** — responsive design, PWA support, touch-friendly
+- **Multi-device** — use the same session from PC and phone simultaneously
+- **In-portal updates** — check for and apply CLI/SDK updates without leaving the browser
+- **Remote access** — DevTunnel integration for HTTPS access from anywhere
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) v22 or later
@@ -47,10 +62,11 @@ While the server is running, press a key in the terminal:
 
 ## Guides & Prompts
 
-Guides are markdown files that teach Copilot how to behave for a session. Prompts are canned queries that appear in a tray above the message box.
+Guides are markdown files that teach Copilot how to behave for a session. Prompts are canned queries that appear in an overlay above the message box.
 
 - Click the map icon in the header to browse, apply, edit, or create guides and prompts
 - **+ New** — start from scratch, pick from example templates, or import from a GitHub Gist URL
+- Prompts float above the input area without resizing the chat
 - Files live in `data/guides/` and `data/prompts/` — same filename pairs them
 - Prompts stack across multiple sources and persist per session
 
@@ -143,7 +159,7 @@ npm run package      # create release zip
 
 ### Versioning
 
-- **Version** (`v0.5.4`) — semver in `package.json`, bumped for releases
+- **Version** (`v0.6.0`) — semver in `package.json`, bumped for releases
 - **Build** (`260414-01`) — `YYMMDD-NN` in `BUILD`, auto-incremented by `npm run package`
 
 ### Project Structure
