@@ -768,7 +768,7 @@ function SessionDrawer({
 						<FolderBrowser value={cwd ?? ''} onChange={(p) => setBrowsedCwd(p)} />
 					</div>
 					) : (
-					<button type="button" className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} onClick={() => { setBrowsedCwd(cwd ?? ''); setEditingCwd(true); }} title="Click to change working directory">
+					<div className="code-scroll mb-3 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 						<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 							<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 						</svg>
@@ -787,8 +787,33 @@ function SessionDrawer({
 							</>
 						)}
 						<div className="flex-1" />
-						<svg className="size-3 shrink-0" style={{ opacity: 0.4 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-					</button>
+						<span
+							className="shrink-0 cursor-pointer opacity-40 hover:opacity-80"
+							title="Copy path"
+							onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+							onClick={(e) => {
+								e.stopPropagation();
+								e.preventDefault();
+								if (!cwd) return;
+								if (navigator.clipboard) {
+									navigator.clipboard.writeText(cwd).catch(() => {});
+								} else {
+									const ta = document.createElement('textarea');
+									ta.value = cwd;
+									document.body.appendChild(ta);
+									ta.select();
+									document.execCommand('copy');
+									document.body.removeChild(ta);
+								}
+								const el = e.currentTarget;
+								el.innerHTML = '✓';
+								setTimeout(() => { el.innerHTML = '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1200);
+							}}
+						><svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></span>
+						<span className="shrink-0 cursor-pointer opacity-40 hover:opacity-80" title="Edit working directory" onClick={() => { setBrowsedCwd(cwd ?? ''); setEditingCwd(true); }}>
+							<svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+						</span>
+					</div>
 					)}
 
 					{/* Session usage stats — hidden for now, revisit later */}
@@ -2142,7 +2167,7 @@ export default function App() {
 				const status = await res.json() as UpdateStatus;
 				if (!status.applying) {
 					clearInterval(poll);
-					setUpdateStatus({ ...status, restartNeeded: !status.error });
+					setUpdateStatus({ ...status, restartNeeded: true });
 				}
 			} catch { /* server busy */ }
 		}, 3000);
@@ -3595,7 +3620,12 @@ export default function App() {
 											if (portalUpdate) {
 												const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
 												const status = await res.json() as UpdateStatus;
-												setUpdateStatus(status);
+												// Don't show restart yet if npm updates are also pending
+												if (updatable.length > 0) {
+													setUpdateStatus({ ...status, restartNeeded: false });
+												} else {
+													setUpdateStatus(status);
+												}
 											}
 											if (updatable.length > 0) {
 												// Fire and forget — npm install can take minutes
@@ -3607,7 +3637,7 @@ export default function App() {
 														const status = await res.json() as UpdateStatus;
 														if (!status.applying) {
 															clearInterval(poll);
-															setUpdateStatus({ ...status, restartNeeded: !status.error });
+															setUpdateStatus({ ...status, restartNeeded: true });
 														}
 													} catch { /* server busy */ }
 												}, 3000);
