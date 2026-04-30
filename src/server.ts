@@ -84,10 +84,13 @@ export class PortalServer {
 		this.wss.on('error', (err) => this.log(`[WS Error] ${err.message}`));
 
 		this.wss.on('connection', async (ws, req) => {
-			const ip = req.socket.remoteAddress ?? 'unknown';
-			// Include short IP suffix so logs show which device is connecting (e.g. C3:.12 = .12 host)
-			const ipSuffix = ip.includes(':') ? ip.split(':').pop() ?? '' : ip.split('.').pop() ?? '';
-			const clientId = `C${++this.clientCounter}:.${ipSuffix}`;
+			const rawIp = req.socket.remoteAddress ?? 'unknown';
+			const forwarded = req.headers['x-forwarded-for'];
+			const isTunnel = !!forwarded;
+			const ip = isTunnel ? (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : forwarded[0]) : rawIp;
+			// Clean up IPv6-mapped IPv4 (e.g. ::ffff:192.168.1.12 → 192.168.1.12)
+			const cleanIp = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+			const clientId = `C${++this.clientCounter}:${isTunnel ? 'T:' : ''}${cleanIp}`;
 			const url = new URL(req.url ?? '/', 'http://localhost');
 			let sessionId = url.searchParams.get('session') ?? null;
 				const historyParam = url.searchParams.get('history');
