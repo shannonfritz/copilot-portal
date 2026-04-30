@@ -2,6 +2,55 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.6.0
+
+### 🖼️ Image Support
+- Paste, drag & drop, or pick images to attach to messages
+- Inline display with click-to-expand lightbox
+- Images persist in history across reloads and reconnects
+
+### 📊 Context Window Usage
+- Visual bar showing system/tools, messages, and free space with token counts
+- Integrated above the model selector in the drawer
+
+### 🤖 Rich Model Picker
+- Shows context window size, vision/thinking support, and cost multiplier per model
+- Connected-edge dropdown styling for model, agent, and prompts pickers
+- Click-away dismiss on all picker dropdowns
+
+### 💬 Prompts Overlay
+- Prompts tray floats above the input area (no chat window resize)
+- Consistent overlay behavior matching model and agent pickers
+
+### 🔄 Update & Restart Flow
+- In-portal updates reliably restart CLI with new binary version
+- Auto-login when credentials expire at startup
+- Build mismatch detection between client and server
+- Fire-and-forget npm install (no client timeout on long installs)
+- Restart button always shown after update cycle completes
+
+### 🔌 Reconnect Improvements
+- Skip redundant history replay on reconnect (no flicker or focus loss)
+- Accept new history when messages arrive from another device
+- Prevent duplicate connections from concurrent visibility/focus events
+- Fix stale heartbeat timers on mobile (frozen timer race condition)
+
+### 🐛 Fixes
+- Tool summaries now appear correctly after page reload
+- Image-only messages no longer hidden in chat history
+- Short responses no longer dropped by dedup
+- Model change detection handles SDK's `newModel` field
+- Auth check handles camelCase keys and comments in config.json
+- Session title fades gracefully when too long for drawer
+
+### 💅 UI Polish
+- Input buttons in 2×2 grid (image, recall/clear, send)
+- CWD copy button with clipboard fallback
+- SVG chevron with rotate animation on drawer
+- Session ID click-to-copy in drawer handle
+- Launcher logs include timestamps
+- Client IDs show full IP and tunnel indicator (`T:` prefix)
+
 ## v0.5.13
 
 ### Agent Picker
