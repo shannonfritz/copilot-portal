@@ -1281,6 +1281,11 @@ export class PortalServer {
 		return `http://${this.getLocalIP()}:${this.port}?token=${this.token}`;
 	}
 
+	/** URL using localhost — survives network changes, for local browser launch */
+	getLocalURL(): string {
+		return `http://localhost:${this.port}?token=${this.token}`;
+	}
+
 	getToken(): string {
 		return this.token;
 	}

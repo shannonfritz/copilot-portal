@@ -72,7 +72,7 @@ if (!NO_QR) {
 }
 
 if (LAUNCH) {
-	const url = server.getURL();
+	const url = server.getLocalURL();
 	const cmd = process.platform === 'win32' ? `start "" "${url}"`
 		: process.platform === 'darwin' ? `open "${url}"`
 		: `xdg-open "${url}"`;
@@ -353,7 +353,7 @@ if (process.stdin.isTTY) {
 				showCliPicker();
 				break;
 			case 'l': {
-				const url = server.getURL();
+				const url = server.getLocalURL();
 				const cmd = process.platform === 'win32' ? `start "" "${url}"`
 					: process.platform === 'darwin' ? `open "${url}"`
 					: `xdg-open "${url}"`;
