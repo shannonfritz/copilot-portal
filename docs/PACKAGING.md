@@ -55,8 +55,7 @@ The zip is in `releases/` — distribute via GitHub Releases or other channels.
 For test/dev builds that don't get published:
 
 1. `npm run package` — creates the zip in `releases/`
-2. Copy to `C:\Users\shfritz\OneDrive - Microsoft\Documents\copilot-portal\` for cross-device testing
-3. No tags, no changelog, no GitHub release
+2. No tags, no changelog, no GitHub release
 
 ### Replacing a Release
 
