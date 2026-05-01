@@ -41,19 +41,33 @@ The zip is in `releases/` — distribute via GitHub Releases or other channels.
 ## Release Checklist
 
 1. **Bump version** — `npm version minor` (or `patch`). This updates `package.json` only.
-2. **Build & package** — `npm run package` (auto-syncs version to `package.dist.json`)
-3. **Update CHANGELOG.md** — Add release notes under the new version heading.
-4. **Commit & tag** — `git add -A && git commit -m "vX.Y.Z" && git tag vX.Y.Z`
+2. **Update CHANGELOG.md** — Add release notes under the new version heading.
+3. **Build & package** — `npm run package` (auto-syncs version to `package.dist.json`)
+4. **Commit & tag** — `git add -A && git commit -m "vX.Y.Z — Summary" && git tag vX.Y.Z`
 5. **Push** — `git push origin master --tags`
 6. **Create GitHub release** — `gh release create vX.Y.Z releases/copilot-portal-vX.Y.Z-build-*.zip --title "vX.Y.Z — Title"`
+7. **Commit BUILD file** — `git add BUILD && git commit -m "BUILD YYMMDD-NN"`
 
-### If a release has a bug
+> **Tip:** Select the `release-manager` agent to automate these steps with confirmation gates.
 
-1. Fix the issue, bump patch version (`npm version patch` + sync `package.dist.json`)
-2. Merge the old release notes into the new version in CHANGELOG.md
-3. Mark the broken version as "Superseded by vX.Y.Z" in the changelog
-4. Delete the broken GitHub release: `gh release delete vX.Y.Z --yes --cleanup-tag`
-5. Publish the new release
+### Validation Builds
+
+For test/dev builds that don't get published:
+
+1. `npm run package` — creates the zip in `releases/`
+2. Copy to `C:\Users\shfritz\OneDrive - Microsoft\Documents\copilot-portal\` for cross-device testing
+3. No tags, no changelog, no GitHub release
+
+### Replacing a Release
+
+When a recently published release has a critical bug:
+
+1. Fix the issue, bump patch version (`npm version patch --no-git-tag-version`)
+2. Create a new CHANGELOG entry for the replacement version with ALL the original release notes plus the fix
+3. Update the broken version's CHANGELOG entry to: `Superseded by vX.Y.Z — [what was fixed]`
+4. Package, commit, tag, push
+5. Create new GitHub release with the combined release notes
+6. Delete the broken release: `gh release delete vX.Y.Z --yes --cleanup-tag`
 
 ## Versioning Scheme
 
