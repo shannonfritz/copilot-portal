@@ -757,16 +757,16 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const requestId = `approval-${++this.counter}`;
 		this.log(`[Session] Permission request: ${JSON.stringify(req).slice(0, 200)}`);
 
+		// approveAll mode — instant approval, no UI, regardless of who started the turn
+		if (this.getApproveAll()) {
+			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
+			return Promise.resolve(SDK_APPROVE);
+		}
+
 		// Connected to CLI server: don't respond to CLI-initiated approvals — let the CLI handle them
 		if (this.sharedMode && !this.isPortalTurn) {
 			this.log(`[Session] Deferring approval to CLI: ${requestId}`);
 			return new Promise(() => {}); // never resolves — CLI TUI will handle it
-		}
-
-		// approveAll mode — instant approval, no UI
-		if (this.getApproveAll()) {
-			this.log(`[Session] Auto-approved (approveAll): ${requestId}`);
-			return Promise.resolve(SDK_APPROVE);
 		}
 		const r = req as PermissionRequest & { fullCommandText?: string; path?: string; filePath?: string; file?: string; fileName?: string; resource?: string; target?: string; url?: string; toolName?: string; subject?: string; intention?: string; warning?: string };
 		const summary = r.fullCommandText ?? r.path ?? r.filePath ?? r.file ?? r.fileName ?? r.resource ?? r.target ?? r.url ?? r.intention ?? r.subject ?? r.toolName ?? r.kind;

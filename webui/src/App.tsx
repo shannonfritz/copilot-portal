@@ -4056,8 +4056,8 @@ export default function App() {
 								{(pendingInput.allowFreeform !== false || !pendingInput.choices?.length) && (
 									<div className="flex gap-2">
 										<textarea
-											className="flex-1 rounded-lg border px-3 py-2 text-sm resize-none"
-											style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)', minHeight: 40, maxHeight: 200 }}
+											className="chat-scroll flex-1 rounded-lg border px-3 py-2 text-sm resize-none outline-none"
+											style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)', minHeight: 40, maxHeight: 200, overflow: 'auto' }}
 											placeholder="Type your answer…"
 											value={freeformAnswer}
 											onChange={(e) => setFreeformAnswer(e.target.value)}
