@@ -410,11 +410,12 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 		</div>
 	);
 	const isComplete = tc.type === 'tool_complete';
-	const isFailed = isComplete && tc.content !== 'success';
+	const isError = isComplete && tc.content !== 'success' && tc.content !== 'done';
+	const isUnsuccessful = isComplete && tc.content === 'done'; // ran but returned false/non-zero
 	const label = tc.mcpServerName ? `${tc.mcpServerName} › ${tc.toolName}` : (tc.toolName ?? 'tool');
-	const borderColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
-	const bgColor = isFailed ? 'var(--error-tint)' : isComplete ? 'var(--success-tint)' : 'var(--tool-call-tint)';
-	const textColor = isFailed ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
+	const borderColor = isError ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
+	const bgColor = isError ? 'var(--error-tint)' : isComplete ? 'var(--success-tint)' : 'var(--tool-call-tint)';
+	const textColor = isError ? 'var(--error)' : isComplete ? 'var(--success)' : 'var(--tool-call)';
 	const hasDetail = !!(tc.displayLabel || tc.content);
 	return (
 		<div className="mb-2">
@@ -429,8 +430,8 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 				style={{ color: textColor, cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
 				onClick={() => hasDetail && setExpanded(e => !e)}
 			>
-				<span>{isFailed ? '✗' : isComplete ? '✅' : '⚙️'}</span>
-				<span className="flex-1">{isFailed ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
+				<span>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? '✅' : '⚙️'}</span>
+				<span className="flex-1">{isError ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
 				{!isComplete && elapsed > 0 && <span style={{ fontSize: '10px', opacity: 0.5 }}>{elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`}</span>}
 				{!isComplete && <button type="button" title="Copy debug info" style={{ fontSize: '10px', opacity: 0.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'inherit' }} onClick={(e) => {
 					e.stopPropagation();
@@ -1800,12 +1801,12 @@ export default function App() {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
 							return te?.type === 'tool_complete' || tcId === completedId;
 						});
-						// Check if any tool failed — keep failed tools visible (don't collapse)
-						const hasFailed = parentMsg.toolCallIds.some(tcId => {
+						// Check if any tool had a real error — keep error tools visible (don't collapse)
+						const hasError = parentMsg.toolCallIds.some(tcId => {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
-							return te?.type === 'tool_complete' && te?.content !== 'success';
+							return te?.type === 'tool_complete' && te?.content !== 'success' && te?.content !== 'done';
 						});
-						if (allDone && !hasFailed) {
+						if (allDone && !hasError) {
 							const msgId = parentMsg.id;
 							const toolCallIds = parentMsg.toolCallIds;
 							// Show green for 2s before collapsing
@@ -1838,7 +1839,7 @@ export default function App() {
 					}
 				} else if (event.type === 'idle') {
 					// Any remaining tool events not yet collapsed — exclude failed ones (they stay visible)
-					const remainingTools = buildToolSummary(toolEventsRef.current.filter(te => !(te.type === 'tool_complete' && te.content !== 'success')));
+					const remainingTools = buildToolSummary(toolEventsRef.current.filter(te => !(te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done')));
 					// Commit any buffered message as the final reply
 					if (pendingMsgRef.current) {
 						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
@@ -1876,8 +1877,8 @@ export default function App() {
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
 					isCliTurnRef.current = false;
-					// Keep failed tool events visible — only clear successful ones
-					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success'));
+					// Keep error tool events visible — only clear successful/done ones
+					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done'));
 					if (isStoppingRef.current) {
 						// Don't clear isStopping immediately — wait 800ms in case more events arrive.
 						// If they do, delta/thinking handlers will cancel this timer.

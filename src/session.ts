@@ -1040,8 +1040,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (d.success === false && d.error?.message) {
 			this.log(`[Session] ⚠ Tool failed: ${d.error.message}`);
 		}
-		const errorMsg = d.success === false ? (d.error?.message ?? 'failed') : undefined;
-		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: errorMsg ?? 'success' });
+		const errorMsg = (d.success === false && d.error?.message) ? d.error.message : undefined;
+		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: errorMsg ?? (d.success === false ? 'done' : 'success') });
 		// Clear CLI input pending when any tool completes (ask_user resolved)
 		if (this.cliInputPending) {
 			this.cliInputPending = null;
@@ -1393,10 +1393,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onSessionInfo(data: unknown): void {
-		const d = data as { message?: string };
+		const d = data as { message?: string; infoType?: string };
 		const msg = d.message ?? JSON.stringify(d);
-		this.log(`[Session] Info: ${msg}`);
-		this.broadcast({ type: 'info', content: msg });
+		const prefix = d.infoType ? `(${d.infoType}) ` : '';
+		this.log(`[Session] Info: ${prefix}${msg}`);
+		this.broadcast({ type: 'info', content: `${prefix}${msg}` });
 	}
 
 	private onModelChange(data: unknown): void {
