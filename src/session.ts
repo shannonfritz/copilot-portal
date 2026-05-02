@@ -1634,8 +1634,15 @@ export class SessionPool {
 	/** Returns handle from pool, or connects to the session and caches it. Concurrent calls for the same sessionId share a single in-flight promise. */
 	async connect(sessionId: string): Promise<SessionHandle> {
 		if (this.pool.has(sessionId)) {
-			this.log(`[Pool] Reusing: ${sessionId.slice(0, 8)}`);
-			return this.pool.get(sessionId)!;
+			// Verify the SDK connection is still alive before reusing
+			try {
+				await this.client.ping();
+				this.log(`[Pool] Reusing: ${sessionId.slice(0, 8)}`);
+				return this.pool.get(sessionId)!;
+			} catch {
+				this.log(`[Pool] Stale handle for ${sessionId.slice(0, 8)} — evicting and reconnecting`);
+				this.pool.delete(sessionId);
+			}
 		}
 		if (this.connecting.has(sessionId)) {
 			this.log(`[Pool] Joining in-flight connect: ${sessionId.slice(0, 8)}`);

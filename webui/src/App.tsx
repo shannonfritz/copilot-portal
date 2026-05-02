@@ -431,7 +431,10 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 				onClick={() => hasDetail && setExpanded(e => !e)}
 			>
 				<span>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? '✅' : '⚙️'}</span>
-				<span className="flex-1">{isError ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}</span>
+				<span className="flex-1">
+					{isError ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}
+					{isError && tc.displayLabel && <span style={{ fontWeight: 'normal', opacity: 0.7 }}> — {tc.displayLabel}</span>}
+				</span>
 				{!isComplete && elapsed > 0 && <span style={{ fontSize: '10px', opacity: 0.5 }}>{elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`}</span>}
 				{!isComplete && <button type="button" title="Copy debug info" style={{ fontSize: '10px', opacity: 0.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: 'inherit' }} onClick={(e) => {
 					e.stopPropagation();

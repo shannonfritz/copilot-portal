@@ -2,6 +2,7 @@ import { PortalServer } from './server.js';
 import { TunnelManager } from './tunnel.js';
 import qrcode from 'qrcode-terminal';
 import { exec, spawnSync } from 'node:child_process';
+import * as net from 'node:net';
 
 const args = process.argv.slice(2);
 process.title = 'Copilot Portal';
@@ -197,6 +198,24 @@ if (process.stdin.isTTY) {
 				// Tell clients to reload so they reconnect to the new CLI server
 				setTimeout(() => {
 					server.broadcastAll({ type: 'reload' });
+				}, 3000);
+				// Watch for TUI exit — when port 3848 stops listening, restart headless server
+				const watchTuiExit = setInterval(() => {
+					const sock = net.createConnection({ port: 3848, host: 'localhost' }, () => { sock.destroy(); });
+					sock.on('error', () => {
+						clearInterval(watchTuiExit);
+						log('TUI exited — restarting headless CLI server');
+						if (process.platform === 'win32') {
+							const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+							if (which.status === 0) {
+								const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
+								exec(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
+							}
+						} else {
+							exec('copilot --server --port 3848 &');
+						}
+					});
+					sock.setTimeout(1000, () => { sock.destroy(); });
 				}, 3000);
 			}, 1500);
 			return;
