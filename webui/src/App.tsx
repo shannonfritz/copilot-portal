@@ -1466,20 +1466,19 @@ export default function App() {
 						});
 						streamingRef.current = '';
 					}
-					// Skip history replacement on reconnect if nothing changed.
-					// Compare user message counts — if the history has more, new messages arrived
-					// while we were disconnected (e.g. from another device). Accept the update.
-					// If same or fewer, our existing messages are still valid — skip the re-render.
+					// On reconnect to the same session, check if new messages arrived.
 					const isReconnect = messagesRef.current.length > 0 && activeSessionIdRef.current === (event.sessionId ?? activeSessionIdRef.current);
 					if (isReconnect) {
 						const existingUserCount = messagesRef.current.filter(m => m.role === 'user').length;
 						const historyUserCount = historyBufferRef.current.filter(m => m.role === 'user').length;
-						if (historyUserCount <= existingUserCount) {
-							// No new messages — skip re-render to preserve focus and avoid flicker
-							historyBufferRef.current = [];
-							return;
+						if (historyUserCount > existingUserCount) {
+							// New messages arrived (e.g. from another device) — replace with full history
+							setMessages(historyBufferRef.current);
+						} else {
+							// Same messages — keep existing to avoid flicker/focus loss
 						}
-						// New messages detected — fall through to replace messages
+						historyBufferRef.current = [];
+						return;
 					}
 					setMessages(historyBufferRef.current);
 								// Prevent auto-collapse from firing when user manually opens drawer after history load

@@ -106,6 +106,7 @@ export class SessionHandle {
 	// Active turn state — replayed to newly joining clients
 	private isTurnActive = false;
 	private isPortalTurn = false; // true when the current turn was initiated from the portal
+	private wasPortalTurn = false; // sticky flag — stays true until final idle, survives intermediate idles
 	private activeDeltaBuffer = '';
 	private activeReasoningBuffer = '';
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
@@ -589,6 +590,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// user.message fires and changes modifiedTime.
 		this.isTurnActive = true;
 		this.isPortalTurn = true;
+		this.wasPortalTurn = true;
 		this.activeUserMessage = prompt;
 		const attachCount = attachments?.length ?? 0;
 		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars${attachCount ? `, ${attachCount} attachment(s)` : ''}), ~${this.tokensSinceCompaction} tokens since last compaction`);
@@ -1251,10 +1253,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 		this.activeUserMessage = '';
 		this.broadcast({ type: 'idle' });
-		if (this.isPortalTurn) {
-			// Portal turn: client already has all content from the delta stream.
+		if (this.isPortalTurn || this.wasPortalTurn) {
+			// Portal turn (or was portal before subagent idles cleared isPortalTurn):
+			// client already has all content from the delta stream.
 			// Just advance the sync cursor so polls don't re-broadcast these messages.
 			this.isPortalTurn = false;
+			this.wasPortalTurn = false;
 			void this.advanceSyncCount();
 		} else {
 			void this.syncMessages();
