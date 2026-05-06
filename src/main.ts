@@ -281,7 +281,13 @@ if (process.stdin.isTTY) {
 		if (!tunnel.isInstalled()) {
 			tunnelBusy = false;
 			console.log('  devtunnel is not installed.');
-			console.log('  Install: winget install Microsoft.devtunnel');
+			if (process.platform === 'win32') {
+				console.log('  Install: winget install Microsoft.devtunnel');
+			} else if (process.platform === 'darwin') {
+				console.log('  Install: brew install devtunnel');
+			} else {
+				console.log('  Install: curl -sL https://aka.ms/DevTunnelCliInstall | bash');
+			}
 			console.log('  Then restart your terminal and run: devtunnel user login\n');
 			return;
 		}
