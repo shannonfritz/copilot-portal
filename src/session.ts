@@ -1607,6 +1607,19 @@ export class SessionPool {
 			return result.servers ?? [];
 		} catch { return []; }
 	}
+	async listSessionMcpServers(sessionId: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
+		const handle = this.pool.get(sessionId);
+		if (!handle) return this.discoverMcpServers();
+		try {
+			const result = await handle.session.rpc.mcp.list();
+			const servers = result.servers ?? [];
+			// If session list is empty, fall back to discover (session may not expose built-ins)
+			if (servers.length === 0) return this.discoverMcpServers();
+			return servers;
+		} catch {
+			return this.discoverMcpServers();
+		}
+	}
 
 	/** Change the working directory for an active session (disconnect + resume with new CWD). */
 	async changeCwd(sessionId: string, newCwd: string): Promise<void> {
