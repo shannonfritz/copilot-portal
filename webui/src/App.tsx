@@ -617,6 +617,9 @@ function SessionDrawer({
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
 	const [modelsAtBottom, setModelsAtBottom] = useState(false);
+	const [showMcpList, setShowMcpList] = useState(false);
+	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean }>>([]);
+	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
 	const models = liveModels ?? info?.models ?? [];
@@ -641,6 +644,10 @@ function SessionDrawer({
 				setCurrentAgent(data.current);
 				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 			}).catch(() => {});
+			// Fetch MCP servers
+			apiFetch('/api/mcp').then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
+				setMcpServers(data.servers ?? []);
+			}).catch(() => {});
 		}
 	}, [open, activeSessionId]);
 
@@ -653,10 +660,13 @@ function SessionDrawer({
 			if (showModelPicker && modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
 				setShowModelPicker(false);
 			}
+			if (showMcpList && mcpPickerRef.current && !mcpPickerRef.current.contains(e.target as Node)) {
+				setShowMcpList(false);
+			}
 		};
 		document.addEventListener('mousedown', handler);
 		return () => document.removeEventListener('mousedown', handler);
-	}, [showAgentPicker, showModelPicker]);
+	}, [showAgentPicker, showModelPicker, showMcpList]);
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
@@ -1020,6 +1030,59 @@ function SessionDrawer({
 								{!agentsAtBottom && (
 									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
 								)}
+								</div>
+							)}
+						</div>
+					)}
+					{/* MCP Servers — read-only list for active sessions */}
+					{!draft && activeSessionId && (
+						<div className="relative mt-3" ref={mcpPickerRef}>
+							<button
+								type="button"
+								className="flex w-full items-center justify-between px-3 py-2 text-sm"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showMcpList ? '0.5rem 0.5rem 0 0' : '0.5rem' }}
+								onClick={() => {
+									const opening = !showMcpList;
+									setShowMcpList(opening);
+									if (opening) {
+										apiFetch('/api/mcp').then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
+											setMcpServers(data.servers ?? []);
+										}).catch(() => {});
+									}
+								}}
+							>
+								<div className="flex items-center gap-2">
+									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+									</svg>
+									<span>{mcpServers.length > 0 ? `${mcpServers.filter(s => s.enabled).length} MCP server${mcpServers.filter(s => s.enabled).length !== 1 ? 's' : ''}` : 'No MCP servers'}</span>
+								</div>
+								<span style={{ color: 'var(--text-muted)' }}>{showMcpList ? '\u25b4' : '\u25be'}</span>
+							</button>
+							{showMcpList && (
+								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+									{mcpServers.length === 0 && (
+										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No MCP servers configured</div>
+									)}
+									{mcpServers.map(s => (
+										<div
+											key={s.name}
+											className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+										>
+											<span className="w-4 text-xs shrink-0" style={{ color: s.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
+												{s.enabled ? '●' : '○'}
+											</span>
+											<div className="flex-1">
+												<span>{s.name}</span>
+												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+													<span>{s.type}</span>
+													<span>{s.source}</span>
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
 								</div>
 							)}
 						</div>

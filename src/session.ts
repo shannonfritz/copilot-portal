@@ -1601,6 +1601,12 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
+	async discoverMcpServers(directory?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
+		try {
+			const result = await this.client.rpc.mcp.discover({ directory: directory ?? process.cwd() });
+			return result.servers ?? [];
+		} catch { return []; }
+	}
 
 	/** Change the working directory for an active session (disconnect + resume with new CWD). */
 	async changeCwd(sessionId: string, newCwd: string): Promise<void> {

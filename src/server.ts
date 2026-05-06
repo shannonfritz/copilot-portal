@@ -485,6 +485,17 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/mcp' && method === 'GET') {
+			const dir = url.searchParams.get('directory') ?? undefined;
+			try {
+				const servers = await this.pool.discoverMcpServers(dir);
+				this.sendJson(res, 200, { servers });
+			} catch {
+				this.sendJson(res, 200, { servers: [] });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();
