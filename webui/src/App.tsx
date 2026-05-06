@@ -1063,7 +1063,10 @@ function SessionDrawer({
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
 									{mcpServers.length === 0 && (
-										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No MCP servers detected</div>
+										<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+											<div className="italic">No custom MCP servers configured</div>
+											<div className="mt-1 opacity-60">Built-in servers (e.g. GitHub) are always active but not listed here</div>
+										</div>
 									)}
 									{mcpServers.map(s => (
 										<div
