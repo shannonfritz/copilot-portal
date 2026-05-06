@@ -2,11 +2,12 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.6.2
+## v0.6.3
 
 ### 🔄 Reconnect & Sync
 - Fix stale messages appearing out of order on reconnect
 - Browser launch uses localhost URL (survives network changes)
+- Defer heartbeat until first message (prevents timeout during slow session loads)
 
 ### 🤖 Tool Approval & Display
 - YOLO (approve-all) now works during subagent turns
@@ -25,6 +26,10 @@ All notable changes to Copilot Portal are documented here.
 ### 🔧 Build & Packaging
 - Auto-sync `package.dist.json` version in `npm run package`
 - Platform-specific devtunnel install hints (winget/brew/curl)
+
+## v0.6.2
+
+Superseded by v0.6.3 — heartbeat timeout caused reconnect loops on sessions with large history.
 
 ## v0.6.1
 
