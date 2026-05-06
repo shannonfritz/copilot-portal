@@ -2,6 +2,30 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.6.2
+
+### 🔄 Reconnect & Sync
+- Fix stale messages appearing out of order on reconnect
+- Browser launch uses localhost URL (survives network changes)
+
+### 🤖 Tool Approval & Display
+- YOLO (approve-all) now works during subagent turns
+- Tool completion shows three states: success (✅), done (✗ green), error (✗ red)
+- Failed tools show the command/path on the header line
+- Info toasts include type prefix for context (e.g. `file_created`)
+
+### 🖥️ Console Flow
+- `[c]` console: auto-restart headless CLI server when TUI exits
+- Pool pings SDK before reusing cached handles — evicts stale connections
+- Ask-user textarea styled with themed scrollbar
+
+### 📊 Session Loading
+- Show "Loading... Xs (40.0 MB)" for large sessions with file size and timer
+
+### 🔧 Build & Packaging
+- Auto-sync `package.dist.json` version in `npm run package`
+- Platform-specific devtunnel install hints (winget/brew/curl)
+
 ## v0.6.1
 
 ### 🖼️ Image Support
