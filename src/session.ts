@@ -750,6 +750,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (this.activeApprovalId) return;
 		for (const [id, p] of this.pendingApprovals) {
 			this.activeApprovalId = id;
+			this.log(`[Session] Broadcasting next queued approval: ${id}`);
 			this.broadcast(p.event);
 			break;
 		}
