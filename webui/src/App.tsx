@@ -1186,6 +1186,8 @@ export default function App() {
 	const [promptsAtBottom, setPromptsAtBottom] = useState(false);
 	const [confirmDeletePrompt, setConfirmDeletePrompt] = useState<string | null>(null);
 	const [connectingSecs, setConnectingSecs] = useState(0);
+	const [loadingHistory, setLoadingHistory] = useState<{ sizeMB: string; startTime: number } | null>(null);
+	const [loadingSecs, setLoadingSecs] = useState(0);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
 	const [cliInputInfo, setCliInputInfo] = useState<string | null>(null);
@@ -1424,6 +1426,11 @@ export default function App() {
 					return;
 				}
 
+				if (event.type === 'history_loading') {
+					setLoadingHistory({ sizeMB: (event as { sizeMB?: string }).sizeMB ?? '?', startTime: Date.now() });
+					return;
+				}
+
 				if (event.type === 'history_meta') {
 								setHistoryTruncated({ total: event.total!, shown: event.shown! });
 								return;
@@ -1452,6 +1459,7 @@ export default function App() {
 
 				if (event.type === 'history_end') {
 					inHistoryRef.current = false;
+					setLoadingHistory(null);
 					if (event.sessionId && event.sessionId !== activeSessionIdRef.current) {
 						historyBufferRef.current = []; return;
 					}
@@ -2029,6 +2037,14 @@ export default function App() {
 		const t = setInterval(() => setConnectingSecs(Math.floor((Date.now() - start) / 1000) + 1), 1000);
 		return () => clearInterval(t);
 	}, [connectionState]);
+
+	// Count seconds while loading history
+	useEffect(() => {
+		if (!loadingHistory) { setLoadingSecs(0); return; }
+		setLoadingSecs(1);
+		const t = setInterval(() => setLoadingSecs(Math.floor((Date.now() - loadingHistory.startTime) / 1000) + 1), 1000);
+		return () => clearInterval(t);
+	}, [loadingHistory]);
 
 	// Reconnect when page becomes visible/focused after being backgrounded.
 	// Also sends a heartbeat ping to detect stale connections that still report OPEN.
@@ -4172,7 +4188,7 @@ export default function App() {
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
+									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
 									value={input}

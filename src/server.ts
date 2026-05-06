@@ -139,6 +139,15 @@ export class PortalServer {
 				if (existing && existing.listenerCount === 0 && !existing.turnActive && !existing.isNew) {
 					await this.pool.evict(sessionId);
 				}
+				// Send a loading hint to the client before the potentially slow resumeSession
+				if (!this.pool.getHandle(sessionId)) {
+					const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
+					try {
+						const stat = fs.statSync(eventsPath);
+						const sizeMB = (stat.size / (1024 * 1024)).toFixed(1);
+						ws.send(JSON.stringify({ type: 'history_loading', sizeBytes: stat.size, sizeMB }));
+					} catch { /* file may not exist yet */ }
+				}
 				handle = await this.pool.connect(sessionId);
 			} catch (e) {
 				this.log(`[${clientId}] Connect error: ${e}`);
