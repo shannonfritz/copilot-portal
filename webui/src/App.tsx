@@ -1380,25 +1380,30 @@ export default function App() {
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
-			// Start application-level heartbeat (browser WS API doesn't expose protocol pings)
-			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); }
-			const hb = { interval: setInterval(() => {
-				if (ws.readyState === WebSocket.OPEN) {
-					// Skip heartbeat ping if the page is hidden — timers are unreliable when backgrounded
-					if (document.visibilityState === 'hidden') return;
-					ws.send('{"type":"ping"}');
-					hb.timeout = setTimeout(() => {
-						// No pong received — connection is stale
-						ws.close();
-					}, 5000);
-				}
-			}, 30_000), timeout: null as ReturnType<typeof setTimeout> | null };
-			heartbeatRef.current = hb;
+			// Heartbeat will be started after first message arrives (see onmessage).
+			// Starting it on onopen risks timing out during slow session loads
+			// where the server is blocked in resumeSession() for 30+ seconds.
+			if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		};
 
+		let heartbeatStarted = false;
 		ws.onmessage = (e) => {
 			hadMsg = true;
 			fastFailCount.current = 0;
+			// Any message proves the connection is alive — clear heartbeat timeout
+			if (heartbeatRef.current?.timeout) { clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current.timeout = null; }
+			// Start heartbeat after first message — server is now responsive
+			if (!heartbeatStarted) {
+				heartbeatStarted = true;
+				const hb = { interval: setInterval(() => {
+					if (ws.readyState === WebSocket.OPEN) {
+						if (document.visibilityState === 'hidden') return;
+						ws.send('{"type":"ping"}');
+						hb.timeout = setTimeout(() => { ws.close(); }, 5000);
+					}
+				}, 30_000), timeout: null as ReturnType<typeof setTimeout> | null };
+				heartbeatRef.current = hb;
+			}
 			try {
 				const event = JSON.parse(e.data as string) as {
 					type: string;
