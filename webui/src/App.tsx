@@ -1055,7 +1055,7 @@ function SessionDrawer({
 									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 										<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
 									</svg>
-									<span>{mcpServers.length > 0 ? `${mcpServers.filter(s => s.enabled).length} MCP server${mcpServers.filter(s => s.enabled).length !== 1 ? 's' : ''}` : 'No MCP servers'}</span>
+									<span>{mcpServers.length > 0 ? `${mcpServers.filter(s => s.enabled).length + 1} MCP server${mcpServers.filter(s => s.enabled).length + 1 !== 1 ? 's' : ''}` : '1 MCP server'}</span>
 								</div>
 								<span style={{ color: 'var(--text-muted)' }}>{showMcpList ? '\u25b4' : '\u25be'}</span>
 							</button>
@@ -1063,7 +1063,10 @@ function SessionDrawer({
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
 									{mcpServers.length === 0 && (
-										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No MCP servers configured</div>
+										<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+											<div className="italic">No additional MCP servers configured</div>
+											<div className="mt-1 opacity-70">Built-in: github-mcp-server (always active)</div>
+										</div>
 									)}
 									{mcpServers.map(s => (
 										<div
