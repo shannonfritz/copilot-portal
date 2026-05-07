@@ -1602,6 +1602,44 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
+
+	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */
+	private loadMcpServers(): Record<string, { command: string; args: string[]; tools: string[]; env?: Record<string, string> }> {
+		const servers: Record<string, any> = {};
+		const home = os.homedir();
+		// 1. User config
+		try {
+			const configPath = path.join(home, '.copilot', 'mcp-config.json');
+			if (fs.existsSync(configPath)) {
+				const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+				if (config.mcpServers) Object.assign(servers, config.mcpServers);
+			}
+		} catch { /* ignore */ }
+		// 2. Installed plugins
+		try {
+			const pluginsDir = path.join(home, '.copilot', 'installed-plugins');
+			if (fs.existsSync(pluginsDir)) {
+				for (const marketplace of fs.readdirSync(pluginsDir)) {
+					const mDir = path.join(pluginsDir, marketplace);
+					if (!fs.statSync(mDir).isDirectory()) continue;
+					for (const plugin of fs.readdirSync(mDir)) {
+						const mcpFile = path.join(mDir, plugin, '.mcp.json');
+						try {
+							if (fs.existsSync(mcpFile)) {
+								const config = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
+								if (config.mcpServers) Object.assign(servers, config.mcpServers);
+							}
+						} catch { /* ignore individual plugin errors */ }
+					}
+				}
+			}
+		} catch { /* ignore */ }
+		if (Object.keys(servers).length > 0) {
+			this.log(`[Pool] MCP servers loaded: ${Object.keys(servers).join(', ')}`);
+		}
+		return servers;
+	}
+
 	async discoverMcpServers(directory?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
 		try {
 			const result = await this.client.rpc.mcp.discover({ directory: directory ?? process.cwd() });
@@ -1623,6 +1661,8 @@ export class SessionPool {
 		await handle.disconnect();
 		const newSession = await this.client.resumeSession(sessionId, {
 			workingDirectory: newCwd,
+			enableConfigDiscovery: true,
+			mcpServers: this.loadMcpServers(),
 			model,
 			onPermissionRequest: (req: PermissionRequest) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req: UserInputRequest) => handle.handleUserInputRequest(req),
@@ -1803,6 +1843,8 @@ export class SessionPool {
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
 			workingDirectory: sessionCwd,
+			enableConfigDiscovery: true,
+			mcpServers: this.loadMcpServers(),
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
@@ -1811,6 +1853,8 @@ export class SessionPool {
 			this.log,
 			(id, model) => this.client.resumeSession(id, {
 				workingDirectory: sessionCwd,
+				enableConfigDiscovery: true,
+				mcpServers: this.loadMcpServers(),
 				model: model ?? handle.currentModel ?? undefined,
 				onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 				onUserInputRequest: (req) => handle.handleUserInputRequest(req),
@@ -1871,6 +1915,8 @@ export class SessionPool {
 		let handle!: SessionHandle;
 		const session = await this.client.createSession({
 			workingDirectory: cwd,
+			enableConfigDiscovery: true,
+			mcpServers: this.loadMcpServers(),
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
