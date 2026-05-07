@@ -349,6 +349,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const tsRaw = raw.createdAt ?? raw.timestamp ?? raw.ts;
 			const ts = typeof tsRaw === 'string' ? new Date(tsRaw).getTime() : tsRaw;
 			if (e.type === 'user.message') {
+				const content = (raw.data as { content?: string })?.content ?? '';
+				// Skip skill-context injections — internal system messages recorded as user.message
+				if (content.startsWith('<skill-context')) continue;
 				// Save last message's tools before flushing
 				if (roundMsgs.length > 0) {
 					roundPerMsgTools[roundMsgs.length - 1] = currentMsgTools;
@@ -497,7 +500,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				const msg = newMsgs[i];
 				if (msg.type === 'user.message') {
 					const content = (msg.data as { content?: string })?.content ?? '';
-					if (content) {
+					if (content && !content.startsWith('<skill-context')) {
 						this.broadcast({ type: 'sync', role: 'user', content });
 					}
 				} else if (msg.type === 'assistant.message') {
@@ -948,7 +951,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onUserMessage(data: unknown): void {
 		const content = (data as { content?: string })?.content ?? '';
-		if (content) {
+		if (content && !content.startsWith('<skill-context')) {
 			this.activeUserMessage = content;
 			this.activeDeltaBuffer = '';
 			this.activeReasoningBuffer = '';
