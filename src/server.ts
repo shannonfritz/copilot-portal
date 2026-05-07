@@ -1361,6 +1361,7 @@ export class PortalServer {
 				version: status.version,
 				login: auth.login ?? 'unknown',
 				defaultCwd: path.resolve(this.dataDir, 'workspaces', 'default'),
+				lanUrl: this.getURL(),
 				models: allModels
 					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
 					.map((m: any) => ({

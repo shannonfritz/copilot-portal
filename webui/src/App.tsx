@@ -174,6 +174,7 @@ interface PortalInfo {
 	version: string;
 	login: string;
 	defaultCwd?: string;
+	lanUrl?: string;
 	models: Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }>;
 }
 
@@ -2591,7 +2592,7 @@ export default function App() {
 					>
 						<h2 className="font-semibold">Open on another device</h2>
 						<div className="rounded-xl p-3" style={{ background: 'white' }}>
-							<QRCodeSVG value={window.location.href} size={220} />
+							<QRCodeSVG value={portalInfo?.lanUrl ?? window.location.href} size={220} />
 						</div>
 						<p className="max-w-xs text-center text-xs" style={{ color: 'var(--text-muted)' }}>
 							Scan to open this session on your phone or tablet
