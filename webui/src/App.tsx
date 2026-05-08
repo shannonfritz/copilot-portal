@@ -1086,7 +1086,7 @@ function SessionDrawer({
 													{featured.find(f => f.name === s.name)?.description ?? `${s.type} · ${s.source}`}
 												</div>
 											</div>
-											{s.source === 'user' && (
+											{s.source === 'user' ? (
 												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
 													onClick={async () => {
 														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
@@ -1096,6 +1096,10 @@ function SessionDrawer({
 												>
 													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
 												</button>
+											) : (
+												<span className="shrink-0 rounded px-1.5 py-0.5 text-[10px]" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+													{s.source}
+												</span>
 											)}
 										</div>
 									))}
