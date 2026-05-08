@@ -620,6 +620,10 @@ function SessionDrawer({
 	const [modelsAtBottom, setModelsAtBottom] = useState(false);
 	const [showMcpList, setShowMcpList] = useState(false);
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean }>>([]);
+	const [showMcpAdd, setShowMcpAdd] = useState(false);
+	const [mcpAddName, setMcpAddName] = useState('');
+	const [mcpAddCommand, setMcpAddCommand] = useState('');
+	const [mcpAdding, setMcpAdding] = useState(false);
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
@@ -1062,8 +1066,8 @@ function SessionDrawer({
 							</button>
 							{showMcpList && (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
-									{mcpServers.length === 0 && (
+								<div className="chat-scroll max-h-72 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+									{mcpServers.length === 0 && !showMcpAdd && (
 										<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
 											<div className="italic">No custom MCP servers configured</div>
 											<div className="mt-1 opacity-60">Built-in servers (e.g. GitHub) are always active but not listed here</div>
@@ -1084,8 +1088,74 @@ function SessionDrawer({
 													<span>{s.source}</span>
 												</div>
 											</div>
+											{s.source === 'user' && (
+												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
+													onClick={async () => {
+														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
+														setMcpServers(prev => prev.filter(x => x.name !== s.name));
+													}}
+													title="Remove server"
+												>
+													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+												</button>
+											)}
 										</div>
 									))}
+									{/* Add MCP Server */}
+									{showMcpAdd ? (
+										<div className="px-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
+											<div className="text-xs font-medium mb-2">Add MCP Server</div>
+											{/* Quick presets */}
+											<div className="flex flex-wrap gap-1 mb-2">
+												{[
+													{ label: 'WorkIQ', name: 'workiq', cmd: 'npx -y @microsoft/workiq@latest mcp' },
+													{ label: 'Playwright', name: 'playwright', cmd: 'npx -y @playwright/mcp@latest' },
+												].filter(p => !mcpServers.some(s => s.name === p.name)).map(preset => (
+													<button key={preset.name} type="button" className="rounded px-2 py-0.5 text-xs"
+														style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+														onClick={() => { setMcpAddName(preset.name); setMcpAddCommand(preset.cmd); }}
+													>{preset.label}</button>
+												))}
+											</div>
+											<input className="w-full rounded border px-2 py-1 text-xs mb-1 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+												placeholder="Server name (e.g. workiq)"
+												value={mcpAddName} onChange={e => setMcpAddName(e.target.value)} />
+											<input className="w-full rounded border px-2 py-1 text-xs mb-2 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+												placeholder="Command (e.g. npx -y @microsoft/workiq@latest mcp)"
+												value={mcpAddCommand} onChange={e => setMcpAddCommand(e.target.value)} />
+											<div className="flex gap-1">
+												<button type="button" className="rounded px-2 py-1 text-xs font-medium"
+													style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: mcpAddName && mcpAddCommand && !mcpAdding ? 1 : 0.5 }}
+													disabled={!mcpAddName || !mcpAddCommand || mcpAdding}
+													onClick={async () => {
+														setMcpAdding(true);
+														const parts = mcpAddCommand.trim().split(/\s+/);
+														const command = parts[0];
+														const args = parts.slice(1);
+														try {
+															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command, args }) });
+															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
+															setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
+														} catch {
+															// Show error inline — drawer has no notification access
+														}
+														setMcpAdding(false);
+													}}
+												>{mcpAdding ? 'Adding…' : 'Add'}</button>
+												<button type="button" className="rounded px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }}
+													onClick={() => { setShowMcpAdd(false); setMcpAddName(''); setMcpAddCommand(''); }}
+												>Cancel</button>
+											</div>
+										</div>
+									) : (
+										<button type="button" className="flex w-full items-center gap-1.5 px-3 py-2 text-xs border-t"
+											style={{ borderColor: 'var(--border)', color: 'var(--primary)' }}
+											onClick={() => setShowMcpAdd(true)}
+										>
+											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+											Add MCP Server
+										</button>
+									)}
 								</div>
 								</div>
 							)}

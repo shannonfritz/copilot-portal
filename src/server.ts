@@ -498,6 +498,37 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/mcp' && method === 'POST') {
+			const body = JSON.parse(await this.readBody(req));
+			const { name, command, args, env } = body as { name: string; command: string; args: string[]; env?: Record<string, string> };
+			if (!name || !command) {
+				this.sendJson(res, 400, { error: 'name and command are required' });
+				return;
+			}
+			try {
+				await this.pool.addMcpServer(name, { command, args: args ?? [], env });
+				this.sendJson(res, 200, { ok: true });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+		if (url.pathname === '/api/mcp' && method === 'DELETE') {
+			const name = url.searchParams.get('name');
+			if (!name) {
+				this.sendJson(res, 400, { error: 'name parameter required' });
+				return;
+			}
+			try {
+				await this.pool.removeMcpServer(name);
+				this.sendJson(res, 200, { ok: true });
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();

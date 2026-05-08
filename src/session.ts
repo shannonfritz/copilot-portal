@@ -1605,6 +1605,14 @@ export class SessionPool {
 	async getAuthStatus() { return this.client.getAuthStatus(); }
 	async listModels() { return this.client.listModels(); }
 	async getQuota() { return this.client.rpc.account.getQuota(); }
+	async addMcpServer(name: string, config: { command: string; args: string[]; tools?: string[]; env?: Record<string, string> }): Promise<void> {
+		await this.client.rpc.mcp.config.add({ name, config: { ...config, tools: config.tools ?? ['*'] } });
+		this.log(`[Pool] MCP server added: ${name}`);
+	}
+	async removeMcpServer(name: string): Promise<void> {
+		await this.client.rpc.mcp.config.remove({ name });
+		this.log(`[Pool] MCP server removed: ${name}`);
+	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */
 	private loadMcpServers(): Record<string, { command: string; args: string[]; tools: string[]; env?: Record<string, string> }> {
