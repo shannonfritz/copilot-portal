@@ -889,6 +889,62 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/restart-cli' && method === 'POST') {
+			if (!this.pool.shared) {
+				this.sendJson(res, 400, { error: 'Not in connected mode — CLI is managed by SDK' });
+				return;
+			}
+			this.log('[Server] CLI server restart requested');
+			this.sendJson(res, 200, { ok: true });
+			this.broadcastAll({ type: 'info', content: 'Restarting CLI server…' });
+			// Stop SDK client, kill CLI server, relaunch, reconnect
+			setTimeout(async () => {
+				try {
+					await this.pool.stop();
+					// Kill CLI process on port 3848
+					if (process.platform === 'win32') {
+						const { spawnSync } = await import('child_process');
+						spawnSync('pwsh', ['-NoProfile', '-Command',
+							'Get-NetTCPConnection -LocalPort 3848 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }'
+						], { stdio: 'ignore', windowsHide: true });
+					} else {
+						const { execSync } = await import('child_process');
+						try { execSync("kill $(lsof -ti:3848) 2>/dev/null", { stdio: 'ignore' }); } catch { /* no process */ }
+					}
+					// Wait for port to free
+					await new Promise(r => setTimeout(r, 1000));
+					// Relaunch CLI server
+					const { exec: execAsync } = await import('child_process');
+					if (process.platform === 'win32') {
+						const { spawnSync } = await import('child_process');
+						const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
+						if (which.status === 0) {
+							const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
+							execAsync(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
+						}
+					} else {
+						execAsync('copilot --server --port 3848 &');
+					}
+					// Wait for CLI to start
+					for (let i = 0; i < 30; i++) {
+						const ok = await new Promise<boolean>(resolve => {
+							const s = require('net').createConnection({ port: 3848, host: 'localhost' }, () => { s.destroy(); resolve(true); });
+							s.on('error', () => resolve(false));
+							s.setTimeout(500, () => { s.destroy(); resolve(false); });
+						});
+						if (ok) break;
+						await new Promise(r => setTimeout(r, 1000));
+					}
+					this.log('[Server] CLI server restarted — reconnecting SDK');
+					await this.pool.start();
+					this.log('[Server] SDK reconnected');
+				} catch (e) {
+					this.log(`[Server] CLI restart failed: ${e}`);
+				}
+			}, 500);
+			return;
+		}
+
 		if (url.pathname === '/api/guides' && method === 'GET') {
 			try {
 				const instrDir = path.join(this.dataDir, 'guides');
