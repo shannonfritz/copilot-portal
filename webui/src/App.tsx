@@ -3791,7 +3791,7 @@ export default function App() {
 					onAgentChange={setActiveAgent}
 					onMcpChanged={() => {
 						setNotification({ type: 'warning', message: 'MCP servers changed. Restart CLI to activate.', action: { label: 'Restart CLI', onClick: async () => {
-							setNotification({ type: 'info', message: 'Restarting CLI server…' });
+							setNotification(null);
 							try {
 								await apiFetch('/api/restart-cli', { method: 'POST' });
 							} catch { /* expected */ }
