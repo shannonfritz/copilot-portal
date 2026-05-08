@@ -586,6 +586,7 @@ function SessionDrawer({
 	onCreateDraft,
 	onChangeCwd,
 	onAgentChange,
+	onMcpChanged,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -606,6 +607,7 @@ function SessionDrawer({
 	onCreateDraft?: () => void;
 	onChangeCwd?: (newCwd: string) => Promise<void>;
 	onAgentChange?: (agentName: string | null) => void;
+	onMcpChanged?: () => void;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }> | null>(null);
@@ -1091,6 +1093,7 @@ function SessionDrawer({
 													onClick={async () => {
 														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
 														setMcpServers(prev => prev.filter(x => x.name !== s.name));
+														onMcpChanged?.();
 													}}
 													title="Remove server"
 												>
@@ -1118,6 +1121,7 @@ function SessionDrawer({
 													try {
 														await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
 														setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
+														onMcpChanged?.();
 													} catch { /* ignore */ }
 												}}
 											>Add</button>
@@ -1144,6 +1148,7 @@ function SessionDrawer({
 															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
 															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
 															setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
+															onMcpChanged?.();
 														} catch { /* ignore */ }
 														setMcpAdding(false);
 													}}
@@ -3774,6 +3779,12 @@ export default function App() {
 						setSessionContext({ cwd: newCwd });
 					}}
 					onAgentChange={setActiveAgent}
+					onMcpChanged={() => {
+						setNotification({ type: 'warning', message: 'MCP servers changed. Restart to activate.', action: { label: 'Restart', onClick: () => {
+							restartServer();
+							setNotification({ type: 'info', message: 'Restarting server… refresh when ready.' });
+						} } });
+					}}
 					/>
 				)}
 
