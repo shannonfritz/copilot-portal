@@ -1652,21 +1652,10 @@ export class SessionPool {
 	}
 
 	async discoverMcpServers(directory?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
-		const servers: Array<{ name: string; type: string; source: string; enabled: boolean }> = [];
-		// 1. SDK discover (returns user/project stdio servers)
 		try {
 			const result = await this.client.rpc.mcp.discover({ directory: directory ?? process.cwd() });
-			if (result.servers) servers.push(...result.servers);
-		} catch { /* ignore */ }
-		// 2. Merge in servers from our config/plugin reading that discover missed (e.g. HTTP type)
-		const loaded = this.loadMcpServers();
-		const discoveredNames = new Set(servers.map(s => s.name));
-		for (const [name, config] of Object.entries(loaded)) {
-			if (!discoveredNames.has(name)) {
-				servers.push({ name, type: config.type ?? 'stdio', source: 'user', enabled: true });
-			}
-		}
-		return servers;
+			return result.servers ?? [];
+		} catch { return []; }
 	}
 	async listSessionMcpServers(sessionId: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
 		// SDK 0.3.0 doesn't expose built-in MCP servers (e.g. github-mcp-server) via session RPC.
