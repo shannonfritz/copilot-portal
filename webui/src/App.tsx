@@ -1060,32 +1060,30 @@ function SessionDrawer({
 									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
 										<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
 									</svg>
-									<span>{mcpServers.length > 0 ? `${mcpServers.filter(s => s.enabled).length} MCP server${mcpServers.filter(s => s.enabled).length !== 1 ? 's' : ''}` : 'MCP servers'}</span>
+									<span>{mcpServers.filter(s => s.enabled).length > 0 ? `${mcpServers.filter(s => s.enabled).length} MCP server${mcpServers.filter(s => s.enabled).length !== 1 ? 's' : ''} active` : 'MCP servers'}</span>
 								</div>
 								<span style={{ color: 'var(--text-muted)' }}>{showMcpList ? '\u25b4' : '\u25be'}</span>
 							</button>
-							{showMcpList && (
+							{showMcpList && (() => {
+								const featured = [
+									{ name: 'workiq', label: 'WorkIQ', description: 'Microsoft 365 — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp' },
+									{ name: 'playwright', label: 'Playwright', description: 'Browser automation and web scraping', cmd: 'npx -y @playwright/mcp@latest' },
+								];
+								const installedNames = new Set(mcpServers.map(s => s.name));
+								const availableFeatured = featured.filter(f => !installedNames.has(f.name));
+								return (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-72 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
-									{mcpServers.length === 0 && !showMcpAdd && (
-										<div className="px-3 py-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-											<div className="italic">No custom MCP servers configured</div>
-											<div className="mt-1 opacity-60">Built-in servers (e.g. GitHub) are always active but not listed here</div>
-										</div>
-									)}
+									{/* Active servers */}
 									{mcpServers.map(s => (
-										<div
-											key={s.name}
-											className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-										>
+										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 											<span className="w-4 text-xs shrink-0" style={{ color: s.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
 												{s.enabled ? '●' : '○'}
 											</span>
 											<div className="flex-1">
-												<span>{s.name}</span>
-												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-													<span>{s.type}</span>
-													<span>{s.source}</span>
+												<span>{featured.find(f => f.name === s.name)?.label ?? s.name}</span>
+												<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+													{featured.find(f => f.name === s.name)?.description ?? `${s.type} · ${s.source}`}
 												</div>
 											</div>
 											{s.source === 'user' && (
@@ -1101,27 +1099,35 @@ function SessionDrawer({
 											)}
 										</div>
 									))}
-									{/* Add MCP Server */}
+									{/* Featured servers not yet installed */}
+									{availableFeatured.map(f => (
+										<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm" style={{ opacity: 0.7 }}>
+											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>○</span>
+											<div className="flex-1">
+												<span>{f.label}</span>
+												<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{f.description}</div>
+											</div>
+											<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
+												style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+												onClick={async () => {
+													const parts = f.cmd.split(/\s+/);
+													try {
+														await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
+														setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
+													} catch { /* ignore */ }
+												}}
+											>Add</button>
+										</div>
+									))}
+									{/* Custom add */}
 									{showMcpAdd ? (
 										<div className="px-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
-											<div className="text-xs font-medium mb-2">Add MCP Server</div>
-											{/* Quick presets */}
-											<div className="flex flex-wrap gap-1 mb-2">
-												{[
-													{ label: 'WorkIQ', name: 'workiq', cmd: 'npx -y @microsoft/workiq@latest mcp' },
-													{ label: 'Playwright', name: 'playwright', cmd: 'npx -y @playwright/mcp@latest' },
-												].filter(p => !mcpServers.some(s => s.name === p.name)).map(preset => (
-													<button key={preset.name} type="button" className="rounded px-2 py-0.5 text-xs"
-														style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}
-														onClick={() => { setMcpAddName(preset.name); setMcpAddCommand(preset.cmd); }}
-													>{preset.label}</button>
-												))}
-											</div>
+											<div className="text-xs font-medium mb-2">Add Custom MCP Server</div>
 											<input className="w-full rounded border px-2 py-1 text-xs mb-1 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-												placeholder="Server name (e.g. workiq)"
+												placeholder="Server name"
 												value={mcpAddName} onChange={e => setMcpAddName(e.target.value)} />
 											<input className="w-full rounded border px-2 py-1 text-xs mb-2 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-												placeholder="Command (e.g. npx -y @microsoft/workiq@latest mcp)"
+												placeholder="Command (e.g. npx -y @org/mcp-server)"
 												value={mcpAddCommand} onChange={e => setMcpAddCommand(e.target.value)} />
 											<div className="flex gap-1">
 												<button type="button" className="rounded px-2 py-1 text-xs font-medium"
@@ -1130,15 +1136,11 @@ function SessionDrawer({
 													onClick={async () => {
 														setMcpAdding(true);
 														const parts = mcpAddCommand.trim().split(/\s+/);
-														const command = parts[0];
-														const args = parts.slice(1);
 														try {
-															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command, args }) });
+															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
 															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
 															setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
-														} catch {
-															// Show error inline — drawer has no notification access
-														}
+														} catch { /* ignore */ }
 														setMcpAdding(false);
 													}}
 												>{mcpAdding ? 'Adding…' : 'Add'}</button>
@@ -1153,12 +1155,18 @@ function SessionDrawer({
 											onClick={() => setShowMcpAdd(true)}
 										>
 											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-											Add MCP Server
+											Add Custom Server
 										</button>
+									)}
+									{mcpServers.length === 0 && availableFeatured.length === 0 && !showMcpAdd && (
+										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>
+											No MCP servers configured
+										</div>
 									)}
 								</div>
 								</div>
-							)}
+								);
+							})()}
 						</div>
 					)}
 					{draft && (
