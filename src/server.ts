@@ -933,7 +933,7 @@ export class PortalServer {
 						await new Promise(r => setTimeout(r, 1000));
 					}
 					this.log('[Server] CLI server restarted — reconnecting SDK');
-					await this.pool.start();
+					await this.pool.restart();
 					this.log('[Server] SDK reconnected');
 				} catch (e) {
 					this.log(`[Server] CLI restart failed: ${e}`);

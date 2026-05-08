@@ -1589,6 +1589,13 @@ export class SessionPool {
 		await this.client.stop();
 	}
 
+	/** Stop the SDK client, optionally create a fresh instance, and reconnect. */
+	async restart(): Promise<void> {
+		await this.stop();
+		this.client = this.cliUrl ? new CopilotClient({ cliUrl: this.cliUrl }) : new CopilotClient();
+		await this.start();
+	}
+
 	/** Returns session IDs that currently have an active turn (agent is working). */
 	getActiveTurnSessions(): string[] {
 		return [...this.pool.entries()].filter(([, h]) => h.turnActive).map(([id]) => id);
