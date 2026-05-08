@@ -1615,7 +1615,7 @@ export class SessionPool {
 	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */
-	private loadMcpServers(): Record<string, { command: string; args: string[]; tools: string[]; env?: Record<string, string> }> {
+	private loadMcpServers(): Record<string, any> {
 		const servers: Record<string, any> = {};
 		const home = os.homedir();
 		// 1. User config
