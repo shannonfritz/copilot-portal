@@ -625,6 +625,7 @@ function SessionDrawer({
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
 	const [mcpAddName, setMcpAddName] = useState('');
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
+	const [mcpAddType, setMcpAddType] = useState<'command' | 'url'>('command');
 	const [mcpAdding, setMcpAdding] = useState(false);
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
@@ -1131,11 +1132,15 @@ function SessionDrawer({
 									{showMcpAdd ? (
 										<div className="px-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
 											<div className="text-xs font-medium mb-2">Add Custom MCP Server</div>
+											<div className="flex gap-1 mb-2">
+												<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ background: mcpAddType === 'command' ? 'var(--primary-tint)' : 'transparent', border: '1px solid var(--border)', color: mcpAddType === 'command' ? 'var(--primary)' : 'var(--text-muted)' }} onClick={() => setMcpAddType('command')}>Command</button>
+												<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ background: mcpAddType === 'url' ? 'var(--primary-tint)' : 'transparent', border: '1px solid var(--border)', color: mcpAddType === 'url' ? 'var(--primary)' : 'var(--text-muted)' }} onClick={() => setMcpAddType('url')}>URL</button>
+											</div>
 											<input className="w-full rounded border px-2 py-1 text-xs mb-1 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
 												placeholder="Server name"
 												value={mcpAddName} onChange={e => setMcpAddName(e.target.value)} />
 											<input className="w-full rounded border px-2 py-1 text-xs mb-2 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-												placeholder="Command (e.g. npx -y @org/mcp-server)"
+												placeholder={mcpAddType === 'command' ? 'Command (e.g. npx -y @org/mcp-server)' : 'URL (e.g. https://mcp.example.com)'}
 												value={mcpAddCommand} onChange={e => setMcpAddCommand(e.target.value)} />
 											<div className="flex gap-1">
 												<button type="button" className="rounded px-2 py-1 text-xs font-medium"
@@ -1143,10 +1148,15 @@ function SessionDrawer({
 													disabled={!mcpAddName || !mcpAddCommand || mcpAdding}
 													onClick={async () => {
 														setMcpAdding(true);
-														const parts = mcpAddCommand.trim().split(/\s+/);
 														try {
-															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
-															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
+															if (mcpAddType === 'url') {
+																await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), type: 'http', mcpUrl: mcpAddCommand.trim() }) });
+																setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'http', source: 'user', enabled: true }]);
+															} else {
+																const parts = mcpAddCommand.trim().split(/\s+/);
+																await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
+																setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
+															}
 															setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
 															onMcpChanged?.();
 														} catch { /* ignore */ }
