@@ -982,6 +982,8 @@ function SessionDrawer({
 												{[
 													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
 													{ name: 'playwright', label: 'Playwright', description: 'Browser automation (requires Chrome)', cmd: 'npx -y @playwright/mcp@latest', url: 'https://github.com/microsoft/playwright-mcp' },
+													{ name: 'microsoft-learn', label: 'Microsoft Learn', description: 'Official Microsoft documentation', mcpUrl: 'https://learn.microsoft.com/api/mcp', url: 'https://github.com/microsoftdocs/mcp' },
+													{ name: 'foundry', label: 'Microsoft Foundry', description: 'AI models, knowledge, evaluation', mcpUrl: 'https://mcp.ai.azure.com', url: 'https://learn.microsoft.com/azure/ai-foundry/mcp/get-started' },
 												].filter(f => !installedNames.has(f.name)).map(f => (
 													<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 														<div className="flex-1">
@@ -994,10 +996,15 @@ function SessionDrawer({
 														<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 															style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
 															onClick={async () => {
-																const parts = f.cmd.split(/\s+/);
 																try {
-																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
-																	setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
+																	if ((f as any).mcpUrl) {
+																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, type: 'http', mcpUrl: (f as any).mcpUrl }) });
+																		setMcpServers(prev => [...prev, { name: f.name, type: 'http', source: 'user', enabled: true }]);
+																	} else {
+																		const parts = ((f as any).cmd as string).split(/\s+/);
+																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
+																		setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
+																	}
 																	onMcpChanged?.();
 																} catch {}
 															}}
@@ -1028,36 +1035,39 @@ function SessionDrawer({
 														>Discover M365 Servers</button>
 													</div>
 												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
-													m365TenantId ? (
-														<>
+													<>
+														{!m365TenantId && (
 															<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
-																Add a server to sign in and discover tools
+																Tenant ID not detected. Run <code style={{ fontSize: 10 }}>az login</code> or add a server via the URL tab.
 															</div>
-															{m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 6).map(s => (
-																<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
-																	<div className="flex-1">
-																		<span>{s.label}</span>
-																		<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
-																	</div>
-																	<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
-																		style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-																		onClick={async () => {
-																			const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
-																			try {
-																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																				setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: true }]);
-																				onMcpChanged?.();
-																			} catch {}
-																		}}
-																	>Add</button>
+														)}
+														{m365TenantId && (
+															<>
+																<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
+																	Add a server — sign-in will be prompted after restart
 																</div>
-															))}
-														</>
-													) : (
-														<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>
-															Sign in with <code>az login</code> to discover your tenant
-														</div>
-													)
+																{m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 8).map(s => (
+																	<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
+																		<div className="flex-1">
+																			<span>{s.label}</span>
+																			<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
+																		</div>
+																		<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
+																			style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+																			onClick={async () => {
+																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
+																				try {
+																					await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
+																					setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: true }]);
+																					onMcpChanged?.();
+																				} catch {}
+																			}}
+																		>Add</button>
+																	</div>
+																))}
+															</>
+														)}
+													</>
 												) : (
 													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
