@@ -896,12 +896,10 @@ function SessionDrawer({
 									)}
 									{/* Active servers */}
 									{mcpServers.map(s => {
-										const feat = featured.find(f => f.name === s.name);
 										const isBuiltin = s.source === 'builtin';
 										const isRemovable = !isBuiltin && s.source !== 'plugin';
-										const label = feat?.label ?? s.name;
+										const label = s.name;
 										const desc = s.status === 'needs-auth' ? 'Needs sign-in'
-											: feat?.description ? feat.description
 											: isBuiltin ? 'Built-in'
 											: s.status === 'failed' ? 'Failed to connect'
 											: s.status === 'pending' ? 'Connecting…'
