@@ -2326,22 +2326,36 @@ export default function App() {
 							}
 							return updated;
 						});
-						// Auto-prompt sign-in for needs-auth servers
+						// Auto-trigger sign-in for needs-auth servers
 						const needsAuth = servers.filter(s => s.status === 'needs-auth');
 						if (needsAuth.length > 0) {
-							const names = needsAuth.map(s => s.name).join(', ');
-							setNotification({ type: 'warning', message: `${names} needs sign-in to connect.`, action: { label: 'Sign in', onClick: async () => {
-								setNotification(null);
+							(async () => {
+								let needsBrowser = false;
 								for (const s of needsAuth) {
 									try {
 										const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: activeSessionIdRef.current }) });
 										const data = await res.json();
 										if (data.authorizationUrl) {
-											window.open(data.authorizationUrl, '_blank');
+											needsBrowser = true;
+											const names = needsAuth.map(x => x.name).join(', ');
+											setNotification({ type: 'warning', message: `${names} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+												setNotification(null);
+												window.open(data.authorizationUrl, '_blank');
+											} } });
+											break;
 										}
 									} catch {}
 								}
-							} } });
+								if (!needsBrowser) {
+									// All servers authenticated silently — refresh MCP list
+									setTimeout(async () => {
+										try {
+											const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionIdRef.current!)}`).then(r => r.json());
+											setMcpServers(r.servers ?? []);
+										} catch {}
+									}, 2000);
+								}
+							})();
 						}
 					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
