@@ -1501,7 +1501,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			const quiet = event.type === 'assistant.message_delta' || event.type === 'assistant.streaming_delta'
 				|| event.type === 'assistant.reasoning_delta' || event.type === 'assistant.usage'
 				|| event.type === 'pending_messages.modified';
-			if (!quiet) this.log(`[Event] ${event.type}`);
+			if (!quiet) {
+				const extra = event.type === 'session.mcp_server_status_changed' && event.data
+					? ` ${(event.data as any).serverName ?? ''} → ${(event.data as any).status ?? JSON.stringify(event.data)}`
+					: '';
+				this.log(`[Event] ${event.type}${extra}`);
+			}
 			const handler = this.eventHandlers[event.type];
 			if (handler) handler(event.data, gen);
 		});
