@@ -2309,6 +2309,15 @@ export default function App() {
 					}
 				} else if ((event as any).type === 'cli_status') {
 					setCliStatus((event as any).status ?? 'disconnected');
+					// After CLI reconnects, re-fetch MCP list to get real statuses
+					if ((event as any).status === 'connected' && activeSessionIdRef.current) {
+						setTimeout(async () => {
+							try {
+								const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionIdRef.current!)}`).then(r => r.json());
+								setMcpServers(r.servers ?? []);
+							} catch {}
+						}, 2000);
+					}
 				} else if ((event as any).type === 'mcp_servers_loaded') {
 					try {
 						const servers = JSON.parse((event as any).content ?? '[]') as Array<{ name: string; status: string; source?: string }>;
