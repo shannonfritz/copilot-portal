@@ -681,7 +681,7 @@ function SessionDrawer({
 	}, [showAgentPicker, showModelPicker, showMcpList]);
 
 	return (
-		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'relative', zIndex: 20 }}>
 			{/* Bar: session name (click-to-rename) + flex spacer (click-to-toggle) + session ID + chevron */}
 			<button className="flex w-full items-center gap-2 border-none bg-transparent px-4 py-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }} onClick={onToggle} type="button">
 				{/* Session summary — read-only */}
@@ -730,7 +730,7 @@ function SessionDrawer({
 
 			{/* Expandable panel */}
 			{open && (
-				<div className="px-4 pb-4 pt-1">
+				<div className="absolute left-0 right-0 px-4 pb-4 pt-1" style={{ top: '100%', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', maxHeight: 'calc(100vh - 10rem)', overflowY: 'auto', zIndex: 20 }}>
 					{/* Version + user + session info */}
 					<div className="mb-3 flex items-center gap-2.5">
 						<div className="shrink-0">
