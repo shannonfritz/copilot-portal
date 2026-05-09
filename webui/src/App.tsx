@@ -2188,6 +2188,23 @@ export default function App() {
 							}
 							return updated;
 						});
+						// Auto-prompt sign-in for needs-auth servers
+						const needsAuth = servers.filter(s => s.status === 'needs-auth');
+						if (needsAuth.length > 0) {
+							const names = needsAuth.map(s => s.name).join(', ');
+							setNotification({ type: 'warning', message: `${names} needs sign-in to connect.`, action: { label: 'Sign in', onClick: async () => {
+								setNotification(null);
+								for (const s of needsAuth) {
+									try {
+										const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: activeSessionIdRef.current }) });
+										const data = await res.json();
+										if (data.authorizationUrl) {
+											window.open(data.authorizationUrl, '_blank');
+										}
+									} catch {}
+								}
+							} } });
+						}
 					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
