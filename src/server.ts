@@ -897,11 +897,12 @@ export class PortalServer {
 			}
 			this.log('[Server] CLI server restart requested');
 			this.sendJson(res, 200, { ok: true });
-			this.broadcastAll({ type: 'info', content: 'Restarting CLI server…' });
+			this.broadcastAll({ type: 'cli_status', status: 'restarting' });
 			// Stop SDK client, kill CLI server, relaunch, reconnect
 			setTimeout(async () => {
 				try {
 					await this.pool.stop();
+					this.broadcastAll({ type: 'cli_status', status: 'disconnected' });
 					// Kill CLI process on port 3848
 					if (process.platform === 'win32') {
 						spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -935,8 +936,10 @@ export class PortalServer {
 					this.log('[Server] CLI server restarted — reconnecting SDK');
 					await this.pool.restart();
 					this.log('[Server] SDK reconnected');
+					this.broadcastAll({ type: 'cli_status', status: 'connected' });
 				} catch (e) {
 					this.log(`[Server] CLI restart failed: ${e}`);
+					this.broadcastAll({ type: 'cli_status', status: 'error' });
 				}
 			}, 500);
 			return;
@@ -1453,6 +1456,7 @@ export class PortalServer {
 				login: auth.login ?? 'unknown',
 				defaultCwd: path.resolve(this.dataDir, 'workspaces', 'default'),
 				lanUrl: this.getURL(),
+				cliConnected: true,
 				models: allModels
 					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
 					.map((m: any) => ({

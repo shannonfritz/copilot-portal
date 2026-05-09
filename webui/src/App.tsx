@@ -1206,6 +1206,7 @@ function SessionDrawer({
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
+	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
 	const [messages, setMessagesState] = useState<Message[]>([]);
 	const messagesRef = useRef<Message[]>([]);
 	const setMessages = useCallback((arg: Message[] | ((prev: Message[]) => Message[])) => {
@@ -2117,6 +2118,8 @@ export default function App() {
 					if (event.type === 'info' && !(event as { action?: unknown }).action) {
 						setTimeout(() => setNotification(null), 8000);
 					}
+				} else if ((event as any).type === 'cli_status') {
+					setCliStatus((event as any).status ?? 'disconnected');
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
@@ -3741,18 +3744,32 @@ export default function App() {
 							</svg>
 						</button>
 						</div>
-						<div
-							className="size-2 rounded-full"
-							style={{
-								background:
-									connectionState === 'connected'
-										? 'var(--success)'
-										: connectionState === 'connecting'
-											? 'var(--tool-call)'
-											: 'var(--error)',
-							}}
-							title={connectionState}
-						/>
+						<div className="flex flex-col gap-0.5 items-center" title={`Portal: ${connectionState}\nCopilot: ${cliStatus}`}>
+							<div
+								className="rounded-full"
+								style={{
+									width: 6, height: 6,
+									background:
+										connectionState === 'connected'
+											? 'var(--success)'
+											: connectionState === 'connecting'
+												? 'var(--tool-call)'
+												: 'var(--error)',
+								}}
+							/>
+							<div
+								className="rounded-full"
+								style={{
+									width: 6, height: 6,
+									background:
+										cliStatus === 'connected'
+											? 'var(--success)'
+											: cliStatus === 'restarting'
+												? 'var(--tool-call)'
+												: 'var(--error)',
+								}}
+							/>
+						</div>
 					</div>
 					</div>
 			</header>
