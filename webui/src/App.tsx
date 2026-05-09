@@ -1176,61 +1176,65 @@ function SessionDrawer({
 											>Add</button>
 										</div>
 									))}
-									{/* Custom add */}
-									{showMcpAdd ? (
-										<div className="px-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
-											<div className="text-xs font-medium mb-2">Add Custom MCP Server</div>
-											<div className="flex gap-1 mb-2">
-												<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ background: mcpAddType === 'command' ? 'var(--primary-tint)' : 'transparent', border: '1px solid var(--border)', color: mcpAddType === 'command' ? 'var(--primary)' : 'var(--text-muted)' }} onClick={() => setMcpAddType('command')}>Command</button>
-												<button type="button" className="rounded px-2 py-0.5 text-xs" style={{ background: mcpAddType === 'url' ? 'var(--primary-tint)' : 'transparent', border: '1px solid var(--border)', color: mcpAddType === 'url' ? 'var(--primary)' : 'var(--text-muted)' }} onClick={() => setMcpAddType('url')}>URL</button>
-											</div>
-											<input className="w-full rounded border px-2 py-1 text-xs mb-1 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-												placeholder="Server name"
-												value={mcpAddName} onChange={e => setMcpAddName(e.target.value)} />
-											<input className="w-full rounded border px-2 py-1 text-xs mb-2 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-												placeholder={mcpAddType === 'command' ? 'Command (e.g. npx -y @org/mcp-server)' : 'URL (e.g. https://mcp.example.com)'}
-												value={mcpAddCommand} onChange={e => setMcpAddCommand(e.target.value)} />
-											<div className="flex gap-1">
-												<button type="button" className="rounded px-2 py-1 text-xs font-medium"
-													style={{ background: 'var(--primary)', color: 'var(--primary-contrast)', opacity: mcpAddName && mcpAddCommand && !mcpAdding ? 1 : 0.5 }}
-													disabled={!mcpAddName || !mcpAddCommand || mcpAdding}
-													onClick={async () => {
-														setMcpAdding(true);
-														try {
-															if (mcpAddType === 'url') {
-																await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), type: 'http', mcpUrl: mcpAddCommand.trim() }) });
-																setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'http', source: 'user', enabled: true }]);
-															} else {
-																const parts = mcpAddCommand.trim().split(/\s+/);
-																await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
-																setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
-															}
-															setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
-															onMcpChanged?.();
-														} catch { /* ignore */ }
-														setMcpAdding(false);
-													}}
-												>{mcpAdding ? 'Adding…' : 'Add'}</button>
-												<button type="button" className="rounded px-2 py-1 text-xs" style={{ color: 'var(--text-muted)' }}
-													onClick={() => { setShowMcpAdd(false); setMcpAddName(''); setMcpAddCommand(''); }}
-												>Cancel</button>
-											</div>
-										</div>
-									) : (
-										<button type="button" className="flex w-full items-center gap-1.5 px-3 py-2 text-xs border-t"
-											style={{ borderColor: 'var(--border)', color: 'var(--primary)' }}
-											onClick={() => setShowMcpAdd(true)}
-										>
-											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-											Add Custom Server
-										</button>
-									)}
 									{mcpServers.length === 0 && availableFeatured.length === 0 && !showMcpAdd && (
 										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>
 											No MCP servers configured
 										</div>
 									)}
 								</div>
+								{/* Custom add — outside scroll area so buttons are always visible */}
+								{showMcpAdd ? (
+									<div className="px-3 py-2 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+										<div className="flex mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+											<button type="button" className="px-3 py-1.5 text-xs font-medium"
+												style={{ color: mcpAddType === 'command' ? 'var(--text)' : 'var(--text-muted)', borderBottom: mcpAddType === 'command' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }}
+												onClick={() => setMcpAddType('command')}>Command</button>
+											<button type="button" className="px-3 py-1.5 text-xs font-medium"
+												style={{ color: mcpAddType === 'url' ? 'var(--text)' : 'var(--text-muted)', borderBottom: mcpAddType === 'url' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1 }}
+												onClick={() => setMcpAddType('url')}>URL</button>
+										</div>
+										<input className="w-full rounded border px-2 py-1 text-xs mb-1 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+											placeholder="Server name"
+											value={mcpAddName} onChange={e => setMcpAddName(e.target.value)} />
+										<input className="w-full rounded border px-2 py-1 text-xs mb-2 outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+											placeholder={mcpAddType === 'command' ? 'npx -y @org/mcp-server' : 'https://mcp.example.com/server'}
+											value={mcpAddCommand} onChange={e => setMcpAddCommand(e.target.value)}
+											onKeyDown={e => { if (e.key === 'Enter' && mcpAddName && mcpAddCommand && !mcpAdding) { e.preventDefault(); (e.target as HTMLInputElement).closest('div')?.querySelector<HTMLButtonElement>('[data-add]')?.click(); } }} />
+										<div className="flex gap-1 justify-end">
+											<button type="button" className="rounded px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }}
+												onClick={() => { setShowMcpAdd(false); setMcpAddName(''); setMcpAddCommand(''); }}
+											>Cancel</button>
+											<button type="button" data-add className="rounded px-3 py-1 text-xs font-medium"
+												style={{ background: 'var(--primary)', color: 'var(--button-contrast)', opacity: mcpAddName && mcpAddCommand && !mcpAdding ? 1 : 0.5 }}
+												disabled={!mcpAddName || !mcpAddCommand || mcpAdding}
+												onClick={async () => {
+													setMcpAdding(true);
+													try {
+														if (mcpAddType === 'url') {
+															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), type: 'http', mcpUrl: mcpAddCommand.trim() }) });
+															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'http', source: 'user', enabled: true }]);
+														} else {
+															const parts = mcpAddCommand.trim().split(/\s+/);
+															await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
+															setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
+														}
+														setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
+														onMcpChanged?.();
+													} catch { /* ignore */ }
+													setMcpAdding(false);
+												}}
+											>{mcpAdding ? 'Adding…' : 'Add'}</button>
+										</div>
+									</div>
+								) : (
+									<button type="button" className="flex w-full items-center gap-1.5 px-3 py-2 text-xs border-t"
+										style={{ borderColor: 'var(--border)', color: 'var(--primary)', background: 'var(--surface)', borderRadius: '0 0 0.5rem 0.5rem' }}
+										onClick={() => setShowMcpAdd(true)}
+									>
+										<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+										Add Custom Server
+									</button>
+								)}
 								</div>
 								);
 							})()}
