@@ -853,197 +853,6 @@ function SessionDrawer({
 						</div>
 					)} */}
 
-					{/* Model selector */}
-					{draft && (
-						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-								<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-							</svg>
-							AI Model
-						</label>
-					)}
-					<div className="relative" ref={modelPickerRef}>
-						{/* Context window usage — above model button */}
-						{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
-							const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
-							const systemTotal = systemTokens + toolDefinitionsTokens;
-							const free = tokenLimit - currentTokens;
-							const pct = Math.round(currentTokens / tokenLimit * 100);
-							const sysPct = Math.round(systemTotal / tokenLimit * 100);
-							const convPct = Math.round(conversationTokens / tokenLimit * 100);
-							const freePct = Math.round(free / tokenLimit * 100);
-							return (
-								<div className="px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderBottom: 'none', borderRadius: '0.5rem 0.5rem 0 0', color: 'var(--text-muted)' }}>
-									<div className="flex items-center justify-between mb-1">
-										<span>Context: {pct}%</span>
-										<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
-									</div>
-									<div className="flex rounded-full overflow-hidden" style={{ height: 6, background: 'var(--border)' }}>
-										<div style={{ width: `${sysPct}%`, background: 'var(--accent)', opacity: 0.6 }} title={`System/Tools: ${sysPct}%`} />
-										<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
-									</div>
-									<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
-										<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}% <span className="font-mono">{(systemTotal / 1000).toFixed(0)}k</span></span>
-										<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}% <span className="font-mono">{(conversationTokens / 1000).toFixed(0)}k</span></span>
-										<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}% <span className="font-mono">{(free / 1000).toFixed(0)}k</span></span>
-									</div>
-								</div>
-							);
-						})()}
-						<button
-							type="button"
-							className="flex w-full items-center justify-between px-3 py-2 text-sm"
-							style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderTop: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? 'none' : undefined, borderRadius: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? (showModelPicker ? '0' : '0 0 0.5rem 0.5rem') : (showModelPicker ? '0.5rem 0.5rem 0 0' : '0.5rem') }}
-							onClick={() => {
-								const opening = !showModelPicker;
-								setShowModelPicker(opening);
-								if (opening && onFetchModels) onFetchModels().then(setLiveModels).catch(() => {});
-							}}
-						>
-							<div className="flex items-center gap-2">
-								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-								</svg>
-								<span>{currentModelName}</span>
-							</div>
-							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
-						</button>
-						{showModelPicker && (
-							<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-							<div
-								className="chat-scroll max-h-72 overflow-y-auto py-1"
-								style={{ background: 'var(--surface)' }}
-								onScroll={e => {
-									const el = e.currentTarget;
-									setModelsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
-								}}
-							>
-								{models.map(m => (
-									<button
-										key={m.id}
-										type="button"
-										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-										style={{ background: m.id === currentModelId ? 'var(--primary-tint)' : 'transparent' }}
-										onClick={() => { onChangeModel(m.id); setShowModelPicker(false); }}
-									>
-										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>
-											{m.id === currentModelId ? '\u2713' : ''}
-										</span>
-										<div className="flex-1 text-left">
-											<span>{m.name}</span>
-											{(!!m.contextWindow || m.vision || m.reasoning || (m.multiplier != null && m.multiplier > 0)) && (
-												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-													{m.multiplier != null && (m.multiplier > 0 || !!m.contextWindow) && <span>{m.multiplier}×</span>}
-													{m.contextWindow ? <span>{(m.contextWindow / 1000).toFixed(0)}k</span> : null}
-													{m.vision && <span>vision</span>}
-													{m.reasoning && <span>thinking</span>}
-												</div>
-											)}
-										</div>
-									</button>
-								))}
-							</div>
-							{!modelsAtBottom && (
-								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
-							)}
-							</div>
-						)}
-					</div>
-					{/* Agent selector — only for active sessions (not draft) */}
-					{!draft && activeSessionId && (
-						<div className="relative mt-3" ref={agentPickerRef}>
-							<button
-								type="button"
-								className="flex w-full items-center justify-between px-3 py-2 text-sm"
-								style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showAgentPicker ? '0.5rem 0.5rem 0 0' : '0.5rem' }}
-								onClick={() => {
-									const opening = !showAgentPicker;
-									setShowAgentPicker(opening);
-									if (opening) {
-										apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).then((data: { agents: typeof agents; current: typeof currentAgent }) => {
-											setAgents(data.agents);
-											setCurrentAgent(data.current);
-											onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
-										}).catch(() => {});
-									}
-								}}
-							>
-								<div className="flex items-center gap-2">
-									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-										<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
-									</svg>
-									<span>{currentAgent?.displayName ?? currentAgent?.name ?? 'Default'}</span>
-								</div>
-								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
-							</button>
-							{showAgentPicker && (
-								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-								<div
-									className="chat-scroll max-h-56 overflow-y-auto py-1"
-									style={{ background: 'var(--surface)' }}
-									onScroll={e => {
-										const el = e.currentTarget;
-										setAgentsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
-									}}
-								>
-									<button
-										type="button"
-										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
-										style={{ background: !currentAgent ? 'var(--primary-tint)' : 'transparent' }}
-										onClick={async () => {
-											const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => null);
-											if (res?.ok) {
-												const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
-												setCurrentAgent(check?.current ?? null);
-												onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? null);
-											}
-											setShowAgentPicker(false);
-										}}
-									>
-										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{!currentAgent ? '\u2713' : ''}</span>
-										<span>Default</span>
-									</button>
-									{agents.map(a => (
-										<button
-											key={a.name}
-											type="button"
-											className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left"
-											style={{ background: currentAgent?.name === a.name ? 'var(--primary-tint)' : 'transparent' }}
-											onClick={async () => {
-												const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
-													method: 'POST',
-													headers: { 'Content-Type': 'application/json' },
-													body: JSON.stringify({ name: a.name }),
-												}).catch(() => null);
-												if (res?.ok) {
-													const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
-													setCurrentAgent(check?.current ?? a);
-													onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? a.displayName ?? a.name);
-												}
-												setShowAgentPicker(false);
-											}}
-										>
-											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
-											<div className="flex-1">
-												<div className="flex items-center gap-2">
-													<span>{a.displayName || a.name}</span>
-													{a.source && <span className="text-[10px] opacity-50">{a.source}</span>}
-												</div>
-												{a.description && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.description}</div>}
-											</div>
-										</button>
-									))}
-									{agents.length === 0 && (
-										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No custom agents found</div>
-									)}
-								</div>
-								{!agentsAtBottom && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
-								)}
-								</div>
-							)}
-						</div>
-					)}
 					{/* MCP Servers — read-only list for active sessions */}
 					{!draft && activeSessionId && (
 						<div className="relative mt-3" ref={mcpPickerRef}>
@@ -1238,6 +1047,197 @@ function SessionDrawer({
 								</div>
 								);
 							})()}
+						</div>
+					)}
+					{/* Model selector */}
+					{draft && (
+						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+							<svg className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+								<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+							</svg>
+							AI Model
+						</label>
+					)}
+					<div className="relative" ref={modelPickerRef}>
+						{/* Context window usage — above model button */}
+						{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
+							const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
+							const systemTotal = systemTokens + toolDefinitionsTokens;
+							const free = tokenLimit - currentTokens;
+							const pct = Math.round(currentTokens / tokenLimit * 100);
+							const sysPct = Math.round(systemTotal / tokenLimit * 100);
+							const convPct = Math.round(conversationTokens / tokenLimit * 100);
+							const freePct = Math.round(free / tokenLimit * 100);
+							return (
+								<div className="px-3 py-1.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderBottom: 'none', borderRadius: '0.5rem 0.5rem 0 0', color: 'var(--text-muted)' }}>
+									<div className="flex items-center justify-between mb-1">
+										<span>Context: {pct}%</span>
+										<span className="font-mono">{(currentTokens / 1000).toFixed(0)}k / {(tokenLimit / 1000).toFixed(0)}k</span>
+									</div>
+									<div className="flex rounded-full overflow-hidden" style={{ height: 6, background: 'var(--border)' }}>
+										<div style={{ width: `${sysPct}%`, background: 'var(--accent)', opacity: 0.6 }} title={`System/Tools: ${sysPct}%`} />
+										<div style={{ width: `${convPct}%`, background: 'var(--primary)' }} title={`Messages: ${convPct}%`} />
+									</div>
+									<div className="flex gap-3 mt-1" style={{ fontSize: 10 }}>
+										<span><span style={{ color: 'var(--accent)', opacity: 0.6 }}>■</span> System {sysPct}% <span className="font-mono">{(systemTotal / 1000).toFixed(0)}k</span></span>
+										<span><span style={{ color: 'var(--primary)' }}>■</span> Messages {convPct}% <span className="font-mono">{(conversationTokens / 1000).toFixed(0)}k</span></span>
+										<span><span style={{ color: 'var(--border)' }}>■</span> Free {freePct}% <span className="font-mono">{(free / 1000).toFixed(0)}k</span></span>
+									</div>
+								</div>
+							);
+						})()}
+						<button
+							type="button"
+							className="flex w-full items-center justify-between px-3 py-2 text-sm"
+							style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderTop: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? 'none' : undefined, borderRadius: (contextUsage && contextUsage.tokenLimit > 0 && !draft) ? (showModelPicker ? '0' : '0 0 0.5rem 0.5rem') : (showModelPicker ? '0.5rem 0.5rem 0 0' : '0.5rem') }}
+							onClick={() => {
+								const opening = !showModelPicker;
+								setShowModelPicker(opening);
+								if (opening && onFetchModels) onFetchModels().then(setLiveModels).catch(() => {});
+							}}
+						>
+							<div className="flex items-center gap-2">
+								<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+									<circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+								</svg>
+								<span>{currentModelName}</span>
+							</div>
+							<span style={{ color: 'var(--text-muted)' }}>{showModelPicker ? '\u25b4' : '\u25be'}</span>
+						</button>
+						{showModelPicker && (
+							<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+							<div
+								className="chat-scroll max-h-72 overflow-y-auto py-1"
+								style={{ background: 'var(--surface)' }}
+								onScroll={e => {
+									const el = e.currentTarget;
+									setModelsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+								}}
+							>
+								{models.map(m => (
+									<button
+										key={m.id}
+										type="button"
+										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+										style={{ background: m.id === currentModelId ? 'var(--primary-tint)' : 'transparent' }}
+										onClick={() => { onChangeModel(m.id); setShowModelPicker(false); }}
+									>
+										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>
+											{m.id === currentModelId ? '\u2713' : ''}
+										</span>
+										<div className="flex-1 text-left">
+											<span>{m.name}</span>
+											{(!!m.contextWindow || m.vision || m.reasoning || (m.multiplier != null && m.multiplier > 0)) && (
+												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+													{m.multiplier != null && (m.multiplier > 0 || !!m.contextWindow) && <span>{m.multiplier}×</span>}
+													{m.contextWindow ? <span>{(m.contextWindow / 1000).toFixed(0)}k</span> : null}
+													{m.vision && <span>vision</span>}
+													{m.reasoning && <span>thinking</span>}
+												</div>
+											)}
+										</div>
+									</button>
+								))}
+							</div>
+							{!modelsAtBottom && (
+								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+							)}
+							</div>
+						)}
+					</div>
+					{/* Agent selector — only for active sessions (not draft) */}
+					{!draft && activeSessionId && (
+						<div className="relative mt-3" ref={agentPickerRef}>
+							<button
+								type="button"
+								className="flex w-full items-center justify-between px-3 py-2 text-sm"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showAgentPicker ? '0.5rem 0.5rem 0 0' : '0.5rem' }}
+								onClick={() => {
+									const opening = !showAgentPicker;
+									setShowAgentPicker(opening);
+									if (opening) {
+										apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).then((data: { agents: typeof agents; current: typeof currentAgent }) => {
+											setAgents(data.agents);
+											setCurrentAgent(data.current);
+											onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
+										}).catch(() => {});
+									}
+								}}
+							>
+								<div className="flex items-center gap-2">
+									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+									</svg>
+									<span>{currentAgent?.displayName ?? currentAgent?.name ?? 'Default'}</span>
+								</div>
+								<span style={{ color: 'var(--text-muted)' }}>{showAgentPicker ? '\u25b4' : '\u25be'}</span>
+							</button>
+							{showAgentPicker && (
+								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div
+									className="chat-scroll max-h-56 overflow-y-auto py-1"
+									style={{ background: 'var(--surface)' }}
+									onScroll={e => {
+										const el = e.currentTarget;
+										setAgentsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+									}}
+								>
+									<button
+										type="button"
+										className="flex w-full items-center gap-2 px-3 py-2 text-sm"
+										style={{ background: !currentAgent ? 'var(--primary-tint)' : 'transparent' }}
+										onClick={async () => {
+											const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/deselect`, { method: 'POST' }).catch(() => null);
+											if (res?.ok) {
+												const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
+												setCurrentAgent(check?.current ?? null);
+												onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? null);
+											}
+											setShowAgentPicker(false);
+										}}
+									>
+										<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{!currentAgent ? '\u2713' : ''}</span>
+										<span>Default</span>
+									</button>
+									{agents.map(a => (
+										<button
+											key={a.name}
+											type="button"
+											className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left"
+											style={{ background: currentAgent?.name === a.name ? 'var(--primary-tint)' : 'transparent' }}
+											onClick={async () => {
+												const res = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents/select`, {
+													method: 'POST',
+													headers: { 'Content-Type': 'application/json' },
+													body: JSON.stringify({ name: a.name }),
+												}).catch(() => null);
+												if (res?.ok) {
+													const check = await apiFetch(`/api/sessions/${encodeURIComponent(activeSessionId!)}/agents`).then(r => r.json()).catch(() => null);
+													setCurrentAgent(check?.current ?? a);
+													onAgentChange?.(check?.current?.displayName ?? check?.current?.name ?? a.displayName ?? a.name);
+												}
+												setShowAgentPicker(false);
+											}}
+										>
+											<span className="w-4 text-xs shrink-0" style={{ color: 'var(--primary)' }}>{currentAgent?.name === a.name ? '\u2713' : ''}</span>
+											<div className="flex-1">
+												<div className="flex items-center gap-2">
+													<span>{a.displayName || a.name}</span>
+													{a.source && <span className="text-[10px] opacity-50">{a.source}</span>}
+												</div>
+												{a.description && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.description}</div>}
+											</div>
+										</button>
+									))}
+									{agents.length === 0 && (
+										<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>No custom agents found</div>
+									)}
+								</div>
+								{!agentsAtBottom && (
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+								)}
+								</div>
+							)}
 						</div>
 					)}
 					{draft && (
