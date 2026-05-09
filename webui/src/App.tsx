@@ -981,7 +981,7 @@ function SessionDrawer({
 												{/* Static presets */}
 												{[
 													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
-													{ name: 'playwright', label: 'Playwright', description: 'Browser automation (requires Chrome)', cmd: 'npx -y @playwright/mcp@latest', url: 'https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-server-playwright' },
+													{ name: 'playwright', label: 'Playwright', description: 'Browser automation (requires Chrome)', cmd: 'npx -y @playwright/mcp@latest', url: 'https://github.com/microsoft/playwright-mcp' },
 												].filter(f => !installedNames.has(f.name)).map(f => (
 													<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 														<div className="flex-1">
@@ -1028,35 +1028,36 @@ function SessionDrawer({
 														>Discover M365 Servers</button>
 													</div>
 												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
-													<div className="px-3 py-2">
-														{m365TenantId ? (
-															<div className="text-xs italic" style={{ color: 'var(--text-muted)' }}>No M365 servers with active tools found</div>
-														) : (
-															<>
-																<div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Sign in to Microsoft 365 to discover available servers</div>
-																<button type="button" className="w-full rounded px-3 py-1.5 text-xs font-medium"
-																	style={{ background: 'var(--primary-tint)', color: 'var(--primary)', border: '1px solid var(--border)' }}
-																	onClick={async () => {
-																		// Add a temp Teams server to trigger OAuth, get tenant ID
-																		setM365Loading(true);
-																		try {
-																			// Use az CLI tenant as fallback
-																			const tenantRes = await apiFetch('/api/mcp/discover-m365');
-																			const tenantData = await tenantRes.json();
-																			if (tenantData.tenantId) {
-																				// We have a tenant from az CLI — add Teams to trigger OAuth
-																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantData.tenantId}/servers/mcp_TeamsServer`;
-																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '_m365_auth_probe', type: 'http', mcpUrl: url }) });
+													m365TenantId ? (
+														<>
+															<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
+																Add a server to sign in and discover tools
+															</div>
+															{m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 6).map(s => (
+																<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
+																	<div className="flex-1">
+																		<span>{s.label}</span>
+																		<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
+																	</div>
+																	<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
+																		style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+																		onClick={async () => {
+																			const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
+																			try {
+																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
+																				setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: true }]);
 																				onMcpChanged?.();
-																				setM365TenantId(tenantData.tenantId);
-																			}
-																		} catch {}
-																		setM365Loading(false);
-																	}}
-																>Sign in with Microsoft 365</button>
-															</>
-														)}
-													</div>
+																			} catch {}
+																		}}
+																	>Add</button>
+																</div>
+															))}
+														</>
+													) : (
+														<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>
+															Sign in with <code>az login</code> to discover your tenant
+														</div>
+													)
 												) : (
 													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
