@@ -988,7 +988,7 @@ function SessionDrawer({
 										</div>
 									)}
 								</div>
-								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
 								</div>
 								{/* Add server — outside scroll area */}
 								{showMcpAdd ? (
@@ -1163,7 +1163,7 @@ function SessionDrawer({
 													))
 												)}
 											</div>
-											<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+											<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
 											</div>
 										) : (
 											<div className="px-3 py-2">
@@ -1309,7 +1309,7 @@ function SessionDrawer({
 								))}
 							</div>
 							{!modelsAtBottom && (
-								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
 							)}
 							</div>
 						)}
@@ -1403,7 +1403,7 @@ function SessionDrawer({
 									)}
 								</div>
 								{!agentsAtBottom && (
-									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+									<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
 								)}
 								</div>
 							)}
