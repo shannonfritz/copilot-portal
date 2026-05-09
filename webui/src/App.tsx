@@ -1020,10 +1020,10 @@ function SessionDrawer({
 														Discovering servers…
 													</div>
 												) : m365Servers === null ? (
-													<div className="px-3 py-2">
-														<button type="button" className="w-full rounded px-3 py-1.5 text-xs font-medium"
-															style={{ background: 'var(--primary-tint)', color: 'var(--primary)', border: '1px solid var(--border)' }}
-															onClick={async () => {
+													(() => {
+														// Auto-discover on first render
+														if (!m365Loading) {
+															setTimeout(async () => {
 																setM365Loading(true);
 																try {
 																	const res = await apiFetch('/api/mcp/discover-m365');
@@ -1032,9 +1032,15 @@ function SessionDrawer({
 																	setM365Servers(data.servers ?? []);
 																} catch { setM365Servers([]); }
 																setM365Loading(false);
-															}}
-														>Discover M365 Servers</button>
-													</div>
+															}, 0);
+														}
+														return (
+															<div className="flex items-center justify-center gap-2 px-3 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+																<svg className="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
+																Discovering servers…
+															</div>
+														);
+													})()
 												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
 													<>
 														{!m365TenantId && (

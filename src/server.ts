@@ -559,9 +559,11 @@ export class PortalServer {
 
 		if (url.pathname === '/api/mcp/discover-m365' && method === 'GET') {
 			try {
+				this.log('[Server] M365 discovery requested');
 				const result = await this.discoverM365Servers();
 				this.sendJson(res, 200, result);
 			} catch (e) {
+				this.log(`[Server] M365 discovery failed: ${e}`);
 				this.sendJson(res, 500, { error: String(e) });
 			}
 			return;
