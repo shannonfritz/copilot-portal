@@ -627,6 +627,7 @@ function SessionDrawer({
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
 	const [mcpAddType, setMcpAddType] = useState<'command' | 'url'>('command');
 	const [mcpAdding, setMcpAdding] = useState(false);
+	const [mcpLoading, setMcpLoading] = useState(false);
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
@@ -653,9 +654,10 @@ function SessionDrawer({
 				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 			}).catch(() => {});
 			// Fetch MCP servers
+			setMcpLoading(true);
 			apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
 				setMcpServers(data.servers ?? []);
-			}).catch(() => {});
+			}).catch(() => {}).finally(() => setMcpLoading(false));
 		}
 	}, [open, activeSessionId]);
 
@@ -1053,9 +1055,10 @@ function SessionDrawer({
 									const opening = !showMcpList;
 									setShowMcpList(opening);
 									if (opening) {
+										setMcpLoading(true);
 										apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
 											setMcpServers(data.servers ?? []);
-										}).catch(() => {});
+										}).catch(() => {}).finally(() => setMcpLoading(false));
 									}
 								}}
 							>
@@ -1077,6 +1080,13 @@ function SessionDrawer({
 								return (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-72 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+									{/* Loading indicator */}
+									{mcpLoading && mcpServers.length === 0 && (
+										<div className="flex items-center justify-center gap-2 px-3 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
+											<svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
+											Loading MCP servers…
+										</div>
+									)}
 									{/* Active servers */}
 									{mcpServers.map(s => {
 										const feat = featured.find(f => f.name === s.name);
