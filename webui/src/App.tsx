@@ -730,7 +730,7 @@ function SessionDrawer({
 
 			{/* Expandable panel */}
 			{open && (
-				<div className="absolute left-0 right-0 px-4 pb-4 pt-1" style={{ top: '100%', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', maxHeight: 'calc(100vh - 10rem)', overflowY: 'auto', zIndex: 20 }}>
+				<div className="absolute left-0 right-0 px-4 pb-4 pt-1" style={{ top: '100%', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', zIndex: 20 }}>
 					{/* Version + user + session info */}
 					<div className="mb-3 flex items-center gap-2.5">
 						<div className="shrink-0">
