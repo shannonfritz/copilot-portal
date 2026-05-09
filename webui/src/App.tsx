@@ -980,13 +980,16 @@ function SessionDrawer({
 											<div className="chat-scroll max-h-52 overflow-y-auto">
 												{/* Static presets */}
 												{[
-													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp' },
-													{ name: 'playwright', label: 'Playwright', description: 'Browser automation and web scraping', cmd: 'npx -y @playwright/mcp@latest' },
+													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
+													{ name: 'playwright', label: 'Playwright', description: 'Browser automation (requires Chrome)', cmd: 'npx -y @playwright/mcp@latest', url: 'https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-server-playwright' },
 												].filter(f => !installedNames.has(f.name)).map(f => (
 													<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 														<div className="flex-1">
 															<span>{f.label}</span>
-															<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{f.description}</div>
+															<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+																{f.description}
+																{f.url && <> · <a href={f.url} target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>docs</a></>}
+															</div>
 														</div>
 														<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 															style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
@@ -1025,8 +1028,34 @@ function SessionDrawer({
 														>Discover M365 Servers</button>
 													</div>
 												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
-													<div className="px-3 py-2 text-xs italic" style={{ color: 'var(--text-muted)' }}>
-														{m365TenantId ? 'No M365 servers available — sign in to an M365 MCP first' : 'Sign in to an M365 MCP server to discover available servers'}
+													<div className="px-3 py-2">
+														{m365TenantId ? (
+															<div className="text-xs italic" style={{ color: 'var(--text-muted)' }}>No M365 servers with active tools found</div>
+														) : (
+															<>
+																<div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Sign in to Microsoft 365 to discover available servers</div>
+																<button type="button" className="w-full rounded px-3 py-1.5 text-xs font-medium"
+																	style={{ background: 'var(--primary-tint)', color: 'var(--primary)', border: '1px solid var(--border)' }}
+																	onClick={async () => {
+																		// Add a temp Teams server to trigger OAuth, get tenant ID
+																		setM365Loading(true);
+																		try {
+																			// Use az CLI tenant as fallback
+																			const tenantRes = await apiFetch('/api/mcp/discover-m365');
+																			const tenantData = await tenantRes.json();
+																			if (tenantData.tenantId) {
+																				// We have a tenant from az CLI — add Teams to trigger OAuth
+																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantData.tenantId}/servers/mcp_TeamsServer`;
+																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '_m365_auth_probe', type: 'http', mcpUrl: url }) });
+																				onMcpChanged?.();
+																				setM365TenantId(tenantData.tenantId);
+																			}
+																		} catch {}
+																		setM365Loading(false);
+																	}}
+																>Sign in with Microsoft 365</button>
+															</>
+														)}
 													</div>
 												) : (
 													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
@@ -2234,7 +2263,8 @@ export default function App() {
 						setMcpServers(prev => {
 							const updated = prev.map(s => {
 								const match = servers.find(x => x.name === s.name);
-								return match ? { ...s, enabled: match.status === 'connected', status: match.status } : s;
+								// Preserve existing source (e.g. 'plugin') — session event may not include it
+								return match ? { ...s, enabled: match.status === 'connected', status: match.status, source: s.source !== 'unknown' ? s.source : (match.source ?? s.source) } : s;
 							});
 							// Add any new servers not in the list
 							for (const s of servers) {

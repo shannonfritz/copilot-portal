@@ -1657,23 +1657,31 @@ export class SessionPool {
 		return result;
 	}
 	async listMcpServers(sessionId?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean; status: string }>> {
-		// Try session-scoped RPC first (returns live status)
+		// Try session-scoped RPC for live status
+		let liveServers: Array<{ name: string; status: string; source?: string }> | null = null;
 		if (sessionId) {
 			const handle = this.pool.get(sessionId);
 			if (handle) {
-				const servers = await handle.listMcpServers();
-				this.log(`[Pool] session.mcp.list: ${JSON.stringify(servers.map(s => ({ name: s.name, status: s.status })))}`);
-				return servers.map(s => ({
-					name: s.name,
-					type: s.source === 'builtin' ? 'builtin' : 'unknown',
-					source: s.source ?? 'unknown',
-					enabled: s.status === 'connected',
-					status: s.status,
-				}));
+				try {
+					liveServers = await handle.listMcpServers();
+					this.log(`[Pool] session.mcp.list: ${JSON.stringify(liveServers.map(s => ({ name: s.name, status: s.status })))}`);
+				} catch { /* fall through */ }
 			}
 		}
-		// Fall back to config discovery (no status)
-		const discovered = await this.discoverMcpServers();
+		// Get source info from config discovery (knows about plugins vs user)
+		let discovered: Array<{ name: string; type: string; source: string; enabled: boolean }> = [];
+		try { discovered = await this.discoverMcpServers(); } catch {}
+		const sourceMap = new Map(discovered.map(s => [s.name, s.source]));
+
+		if (liveServers) {
+			return liveServers.map(s => ({
+				name: s.name,
+				type: s.source === 'builtin' ? 'builtin' : 'unknown',
+				source: s.source ?? sourceMap.get(s.name) ?? 'unknown',
+				enabled: s.status === 'connected',
+				status: s.status,
+			}));
+		}
 		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'unknown' }));
 	}
 
