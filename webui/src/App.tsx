@@ -620,6 +620,8 @@ function SessionDrawer({
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
 	const [modelsAtBottom, setModelsAtBottom] = useState(false);
+	const [mcpListAtBottom, setMcpListAtBottom] = useState(false);
+	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(false);
 	const [showMcpList, setShowMcpList] = useState(false);
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
@@ -887,7 +889,8 @@ function SessionDrawer({
 								return (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="relative">
-								<div className="chat-scroll max-h-60 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+								<div className="chat-scroll max-h-60 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
+									onScroll={e => { const el = e.currentTarget; setMcpListAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 									{/* Loading indicator */}
 									{mcpLoading && (
 										<div className="flex items-center justify-center gap-2 px-3 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -988,7 +991,7 @@ function SessionDrawer({
 										</div>
 									)}
 								</div>
-								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
+								{!mcpListAtBottom && <div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />}
 								</div>
 								{/* Add server — outside scroll area */}
 								{showMcpAdd ? (
@@ -1002,7 +1005,8 @@ function SessionDrawer({
 										</div>
 										{mcpAddType === 'featured' ? (
 											<div className="relative">
-											<div className="chat-scroll max-h-52 overflow-y-auto">
+											<div className="chat-scroll max-h-52 overflow-y-auto"
+												onScroll={e => { const el = e.currentTarget; setMcpFeaturedAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 												{/* Static presets */}
 												{[
 													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
@@ -1163,7 +1167,7 @@ function SessionDrawer({
 													))
 												)}
 											</div>
-											<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />
+											{!mcpFeaturedAtBottom && <div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />}
 											</div>
 										) : (
 											<div className="px-3 py-2">
