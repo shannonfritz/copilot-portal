@@ -2311,24 +2311,9 @@ export default function App() {
 					}
 				} else if ((event as any).type === 'cli_status') {
 					setCliStatus((event as any).status ?? 'disconnected');
-					// After CLI reconnects, poll MCP list until servers are loaded (they take 5-10s)
-					if ((event as any).status === 'connected' && activeSessionIdRef.current) {
-						let attempts = 0;
-						const poll = setInterval(async () => {
-							attempts++;
-							try {
-								const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionIdRef.current!)}`).then(r => r.json());
-								const servers = r.servers ?? [];
-								if (servers.length > 0) {
-									setMcpServers(servers);
-									// Stop polling once we have a reasonably complete list (builtin + others)
-									if (servers.some((s: any) => s.source === 'builtin') || attempts >= 5) {
-										clearInterval(poll);
-									}
-								}
-							} catch {}
-							if (attempts >= 8) clearInterval(poll);
-						}, 3000);
+					// After CLI reconnects, prompt user to reload for clean state
+					if ((event as any).status === 'connected') {
+						setNotification({ type: 'info', message: 'CLI server reconnected.', action: { label: 'Reload', onClick: () => window.location.reload() } });
 					}
 				} else if ((event as any).type === 'mcp_servers_loaded') {
 					try {
