@@ -1366,6 +1366,23 @@ export class PortalServer {
 
 	/** Discover M365 MCP servers by reading tenant ID from cached OAuth tokens and probing Agent365. */
 	private async discoverM365Servers(): Promise<{ tenantId: string | null; servers: Array<{ name: string; label: string; toolCount: number; description: string }> }> {
+		const knownServers: Array<{ name: string; label: string; description: string }> = [
+			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search' },
+			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP' },
+			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
+			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders' },
+			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports' },
+			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
+			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
+			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
+			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot' },
+			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
+			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
+			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
+			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
+			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
+		];
+
 		const home = os.homedir();
 		const oauthDir = path.join(home, '.copilot', 'mcp-oauth-config');
 
@@ -1389,9 +1406,32 @@ export class PortalServer {
 				if (result.status === 0) tenantId = result.stdout.toString().trim();
 			} catch { /* no az */ }
 		}
+		// Fallback: resolve tenant from GitHub user's company domain
+		if (!tenantId) {
+			try {
+				const auth = await this.pool.getAuthStatus();
+				if (auth.login) {
+					// Try to get company from GitHub API
+					const ghResult = spawnSync('gh', ['api', 'user', '--jq', '.company'], { stdio: 'pipe', windowsHide: true, timeout: 5000 });
+					if (ghResult.status === 0) {
+						const company = ghResult.stdout.toString().trim().replace(/^@/, '').toLowerCase();
+						if (company) {
+							const domain = company.includes('.') ? company : `${company}.com`;
+							const resp = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
+							if (resp.ok) {
+								const data = await resp.json() as { token_endpoint?: string };
+								const match = data.token_endpoint?.match(/\/([a-f0-9-]{36})\//);
+								if (match) tenantId = match[1];
+							}
+						}
+					}
+				}
+			} catch { /* skip */ }
+		}
 
 		if (!tenantId) {
-			return { tenantId: null, servers: [] };
+			// Return known servers without tenant — UI can prompt for domain
+			return { tenantId: null, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
 		}
 
 		// 2. Read the OAuth token for probing
@@ -1408,22 +1448,6 @@ export class PortalServer {
 			}
 		}
 
-		const knownServers: Array<{ name: string; label: string; description: string }> = [
-			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search' },
-			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP' },
-			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
-			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders' },
-			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports' },
-			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
-			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
-			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
-			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot' },
-			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
-			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
-			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
-			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
-			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
-		];
 
 		if (!accessToken) {
 			// No token — return known servers without tool counts

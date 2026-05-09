@@ -1037,8 +1037,49 @@ function SessionDrawer({
 												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
 													<>
 														{!m365TenantId && (
-															<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
-																Tenant ID not detected. Run <code style={{ fontSize: 10 }}>az login</code> or add a server via the URL tab.
+															<div className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+																<div className="mb-1">Enter your work email domain to discover servers:</div>
+																<div className="flex gap-1">
+																	<input className="flex-1 rounded border px-2 py-1 text-xs outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+																		placeholder="e.g. microsoft.com"
+																		id="m365-domain-input"
+																		onKeyDown={async (e) => {
+																			if (e.key !== 'Enter') return;
+																			const domain = (e.target as HTMLInputElement).value.trim();
+																			if (!domain) return;
+																			try {
+																				const resp = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
+																				if (resp.ok) {
+																					const data = await resp.json();
+																					const match = data.token_endpoint?.match(/\/([a-f0-9-]{36})\//);
+																					if (match) {
+																						setM365TenantId(match[1]);
+																						setM365Servers(prev => prev); // force re-render
+																					}
+																				}
+																			} catch {}
+																		}}
+																	/>
+																	<button type="button" className="rounded px-2 py-1 text-xs font-medium"
+																		style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+																		onClick={async () => {
+																			const input = document.getElementById('m365-domain-input') as HTMLInputElement;
+																			const domain = input?.value?.trim();
+																			if (!domain) return;
+																			try {
+																				const resp = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
+																				if (resp.ok) {
+																					const data = await resp.json();
+																					const match = data.token_endpoint?.match(/\/([a-f0-9-]{36})\//);
+																					if (match) {
+																						setM365TenantId(match[1]);
+																						setM365Servers(prev => prev);
+																					}
+																				}
+																			} catch {}
+																		}}
+																	>Lookup</button>
+																</div>
 															</div>
 														)}
 														{m365TenantId && (
