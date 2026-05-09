@@ -3744,7 +3744,7 @@ export default function App() {
 							</svg>
 						</button>
 						</div>
-						<div className="flex flex-col gap-0.5 items-center" title={`Portal: ${connectionState}\nCopilot: ${cliStatus}`}>
+						<div className="flex flex-col gap-1 items-center" title={`Portal: ${connectionState}\nCopilot: ${cliStatus}`}>
 							<div
 								className="rounded-full"
 								style={{
