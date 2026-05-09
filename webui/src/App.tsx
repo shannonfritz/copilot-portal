@@ -1106,6 +1106,22 @@ function SessionDrawer({
 															const data = await res.json();
 															if (data.authorizationUrl) {
 																window.open(data.authorizationUrl, '_blank');
+																// Poll for status update after OAuth
+																const poll = setInterval(async () => {
+																	try {
+																		const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json());
+																		const updated = r.servers?.find((x: any) => x.name === s.name);
+																		if (updated && updated.status !== 'needs-auth') {
+																			clearInterval(poll);
+																			setMcpServers(r.servers);
+																		}
+																	} catch {}
+																}, 3000);
+																setTimeout(() => clearInterval(poll), 60000);
+															} else {
+																// Already authenticated — refresh list
+																const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json());
+																setMcpServers(r.servers ?? []);
 															}
 														} catch {}
 													}}
