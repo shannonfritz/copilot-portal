@@ -621,7 +621,7 @@ function SessionDrawer({
 	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
 	const [modelsAtBottom, setModelsAtBottom] = useState(false);
 	const [showMcpList, setShowMcpList] = useState(false);
-	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean }>>([]);
+	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
 	const [mcpAddName, setMcpAddName] = useState('');
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
@@ -1080,15 +1080,28 @@ function SessionDrawer({
 									{/* Active servers */}
 									{mcpServers.map(s => (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
-											<span className="w-4 text-xs shrink-0" style={{ color: s.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
-												{s.enabled ? '●' : '○'}
+											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
+												{s.status === 'needs-auth' ? '⚠' : s.status === 'connected' || s.enabled ? '●' : s.status === 'failed' ? '✗' : '○'}
 											</span>
 											<div className="flex-1">
 												<span>{featured.find(f => f.name === s.name)?.label ?? s.name}</span>
-												<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-													{featured.find(f => f.name === s.name)?.description ?? `${s.type} · ${s.source}`}
+												<div style={{ fontSize: 11, color: s.status === 'needs-auth' ? 'var(--warning)' : 'var(--text-muted)' }}>
+													{s.status === 'needs-auth' ? 'Needs sign-in' : featured.find(f => f.name === s.name)?.description ?? `${s.type} · ${s.source}`}
 												</div>
 											</div>
+											{s.status === 'needs-auth' && (
+												<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+													onClick={async () => {
+														try {
+															const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name }) });
+															const data = await res.json();
+															if (data.authorizationUrl) {
+																window.open(data.authorizationUrl, '_blank');
+															}
+														} catch {}
+													}}
+												>Sign in</button>
+											)}
 											{s.source === 'user' ? (
 												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
 													onClick={async () => {
@@ -2120,6 +2133,23 @@ export default function App() {
 					}
 				} else if ((event as any).type === 'cli_status') {
 					setCliStatus((event as any).status ?? 'disconnected');
+				} else if ((event as any).type === 'mcp_servers_loaded') {
+					try {
+						const servers = JSON.parse((event as any).content ?? '[]') as Array<{ name: string; status: string; source?: string }>;
+						setMcpServers(prev => {
+							const updated = prev.map(s => {
+								const match = servers.find(x => x.name === s.name);
+								return match ? { ...s, enabled: match.status === 'connected', status: match.status } : s;
+							});
+							// Add any new servers not in the list
+							for (const s of servers) {
+								if (!updated.find(x => x.name === s.name)) {
+									updated.push({ name: s.name, type: 'unknown', source: s.source ?? 'unknown', enabled: s.status === 'connected', status: s.status });
+								}
+							}
+							return updated;
+						});
+					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {

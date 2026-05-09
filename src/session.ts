@@ -1453,6 +1453,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.broadcast({ type: 'context_usage', content: JSON.stringify(d) });
 	}
 
+	private onMcpServersLoaded(data: unknown): void {
+		const d = data as { servers?: Array<{ name: string; status: string; source?: string }> };
+		if (d?.servers) {
+			this.broadcast({ type: 'mcp_servers_loaded' as any, content: JSON.stringify(d.servers) });
+		}
+	}
+
 	// --- Event dispatch ---
 
 	/** Maps SDK event types to handler methods. */
@@ -1489,6 +1496,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'assistant.turn_end':               () => this.onAssistantTurnEnd(),
 		'assistant.usage':                  (d) => this.onAssistantUsage(d),
 		'session.usage_info':               (d) => this.onSessionUsageInfo(d),
+		'session.mcp_servers_loaded':       (d) => this.onMcpServersLoaded(d),
 	};
 
 	private attachListeners(): void {
@@ -1631,6 +1639,11 @@ export class SessionPool {
 	async removeMcpServer(name: string): Promise<void> {
 		await this.client.rpc.mcp.config.remove({ name });
 		this.log(`[Pool] MCP server removed: ${name}`);
+	}
+	async mcpOAuthLogin(serverName: string): Promise<{ authorizationUrl?: string }> {
+		const result = await this.client.rpc.mcp.oauth.login({ serverName });
+		this.log(`[Pool] MCP OAuth login for ${serverName}: ${result.authorizationUrl ? 'browser auth needed' : 'already authenticated'}`);
+		return result;
 	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */

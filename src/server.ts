@@ -537,6 +537,23 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/mcp/login' && method === 'POST') {
+			try {
+				const body = JSON.parse(await this.readBody(req));
+				const { serverName } = body as { serverName: string };
+				if (!serverName) {
+					this.sendJson(res, 400, { error: 'serverName is required' });
+					return;
+				}
+				this.log(`[Server] MCP OAuth login requested for: ${serverName}`);
+				const result = await this.pool.mcpOAuthLogin(serverName);
+				this.sendJson(res, 200, result);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();
