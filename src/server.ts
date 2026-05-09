@@ -557,6 +557,16 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/mcp/discover-m365' && method === 'GET') {
+			try {
+				const result = await this.discoverM365Servers();
+				this.sendJson(res, 200, result);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();
@@ -1352,6 +1362,98 @@ export class PortalServer {
 			});
 			res.end(data);
 		});
+	}
+
+	/** Discover M365 MCP servers by reading tenant ID from cached OAuth tokens and probing Agent365. */
+	private async discoverM365Servers(): Promise<{ tenantId: string | null; servers: Array<{ name: string; label: string; toolCount: number; description: string }> }> {
+		const home = os.homedir();
+		const oauthDir = path.join(home, '.copilot', 'mcp-oauth-config');
+
+		// 1. Extract tenant ID from cached OAuth tokens
+		let tenantId: string | null = null;
+		if (fs.existsSync(oauthDir)) {
+			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
+				try {
+					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
+					if (tokens.accessToken) {
+						const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString());
+						if (payload.tid) { tenantId = payload.tid; break; }
+					}
+				} catch { /* skip */ }
+			}
+		}
+		// Fallback: try az CLI
+		if (!tenantId) {
+			try {
+				const result = spawnSync('az', ['account', 'show', '--query', 'tenantId', '-o', 'tsv'], { stdio: 'pipe', windowsHide: true, timeout: 5000 });
+				if (result.status === 0) tenantId = result.stdout.toString().trim();
+			} catch { /* no az */ }
+		}
+
+		if (!tenantId) {
+			return { tenantId: null, servers: [] };
+		}
+
+		// 2. Read the OAuth token for probing
+		let accessToken: string | null = null;
+		if (fs.existsSync(oauthDir)) {
+			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
+				try {
+					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
+					if (tokens.accessToken && tokens.expiresAt > Date.now() / 1000) {
+						accessToken = tokens.accessToken;
+						break;
+					}
+				} catch { /* skip */ }
+			}
+		}
+
+		const knownServers: Array<{ name: string; label: string; description: string }> = [
+			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search' },
+			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP' },
+			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
+			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders' },
+			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports' },
+			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
+			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
+			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
+			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot' },
+			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
+			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
+			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
+			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
+			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
+		];
+
+		if (!accessToken) {
+			// No token — return known servers without tool counts
+			return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
+		}
+
+		// 3. Probe each server for tool counts
+		const base = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantId}/servers`;
+		const headers = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
+		const toolsBody = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/list', params: {} });
+
+		const results = await Promise.allSettled(knownServers.map(async (s) => {
+			try {
+				const resp = await fetch(`${base}/${s.name}`, { method: 'POST', headers, body: toolsBody });
+				if (!resp.ok) return { ...s, toolCount: 0 };
+				const text = await resp.text();
+				const json = JSON.parse(text.replace(/^event: message\ndata: /, ''));
+				return { ...s, toolCount: json.result?.tools?.length ?? 0 };
+			} catch {
+				return { ...s, toolCount: 0 };
+			}
+		}));
+
+		const servers = results
+			.map(r => r.status === 'fulfilled' ? r.value : null)
+			.filter((s): s is NonNullable<typeof s> => s !== null)
+			.sort((a, b) => b.toolCount - a.toolCount);
+
+		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${servers.filter(s => s.toolCount > 0).length} servers with tools`);
+		return { tenantId, servers };
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {
