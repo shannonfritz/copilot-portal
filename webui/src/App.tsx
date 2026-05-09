@@ -888,7 +888,7 @@ function SessionDrawer({
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-72 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
 									{/* Loading indicator */}
-									{mcpLoading && mcpServers.length === 0 && (
+									{mcpLoading && (
 										<div className="flex items-center justify-center gap-2 px-3 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
 											<svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
 											Loading MCP servers…
