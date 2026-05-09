@@ -1000,7 +1000,7 @@ function SessionDrawer({
 																try {
 																	if ((f as any).mcpUrl) {
 																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, type: 'http', mcpUrl: (f as any).mcpUrl }) });
-																		setMcpServers(prev => [...prev, { name: f.name, type: 'http', source: 'user', enabled: true }]);
+																		setMcpServers(prev => [...prev, { name: f.name, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
 																	} else {
 																		const parts = ((f as any).cmd as string).split(/\s+/);
 																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
@@ -1100,7 +1100,7 @@ function SessionDrawer({
 																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
 																				try {
 																					await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																					setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: true }]);
+																					setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
 																					onMcpChanged?.();
 																				} catch {}
 																			}}
@@ -1125,7 +1125,7 @@ function SessionDrawer({
 																	const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
 																	try {
 																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																		setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: true }]);
+																		setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
 																		onMcpChanged?.();
 																	} catch {}
 																}}
@@ -1152,7 +1152,7 @@ function SessionDrawer({
 															try {
 																if (mcpAddType === 'url') {
 																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), type: 'http', mcpUrl: mcpAddCommand.trim() }) });
-																	setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'http', source: 'user', enabled: true }]);
+																	setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'http', source: 'user', enabled: false, status: 'pending' }]);
 																} else {
 																	const parts = mcpAddCommand.trim().split(/\s+/);
 																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: mcpAddName.trim(), command: parts[0], args: parts.slice(1) }) });
