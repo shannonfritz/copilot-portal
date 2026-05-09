@@ -1205,13 +1205,21 @@ function SessionDrawer({
 										</div>
 									</div>
 								) : (
-									<button type="button" className="flex w-full items-center gap-1.5 px-3 py-2 text-xs border-t"
-										style={{ borderColor: 'var(--border)', color: 'var(--primary)', background: 'var(--surface)', borderRadius: '0 0 0.5rem 0.5rem' }}
-										onClick={() => { setShowMcpAdd(true); setMcpAddType('featured'); }}
-									>
-										<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-										Add Server
-									</button>
+									<div className="flex items-center border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)', borderRadius: '0 0 0.5rem 0.5rem' }}>
+										<button type="button" className="flex flex-1 items-center gap-1.5 px-3 py-2 text-xs"
+											style={{ color: 'var(--primary)' }}
+											onClick={() => { setShowMcpAdd(true); setMcpAddType('featured'); }}
+										>
+											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+											Add Server
+										</button>
+										<button type="button" className="px-3 py-2 text-[10px]"
+											style={{ color: 'var(--text-muted)' }}
+											onClick={async () => {
+												try { await apiFetch('/api/restart-cli', { method: 'POST' }); } catch {}
+											}}
+										>Restart CLI</button>
+									</div>
 								)}
 								</div>
 								);
