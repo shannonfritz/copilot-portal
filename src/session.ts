@@ -1502,9 +1502,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				|| event.type === 'assistant.reasoning_delta' || event.type === 'assistant.usage'
 				|| event.type === 'pending_messages.modified';
 			if (!quiet) {
-				const extra = event.type === 'session.mcp_server_status_changed' && event.data
-					? ` ${(event.data as any).serverName ?? ''} → ${(event.data as any).status ?? JSON.stringify(event.data)}`
-					: '';
+				let extra = '';
+				if (event.type === 'session.mcp_server_status_changed' && event.data) {
+					extra = ` ${(event.data as any).serverName ?? ''} → ${(event.data as any).status ?? JSON.stringify(event.data)}`;
+				} else if (event.type === 'session.tools_updated' && event.data) {
+					const tools = (event.data as any).tools;
+					if (Array.isArray(tools)) extra = ` (${tools.length} tools: ${tools.slice(0, 5).map((t: any) => t.name ?? t).join(', ')}${tools.length > 5 ? '…' : ''})`;
+				} else if (event.type === 'session.mcp_servers_loaded' && event.data) {
+					extra = ` ${JSON.stringify(event.data)}`;
+				}
 				this.log(`[Event] ${event.type}${extra}`);
 			}
 			const handler = this.eventHandlers[event.type];
