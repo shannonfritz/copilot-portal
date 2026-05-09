@@ -697,6 +697,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.currentAgent = null;
 	}
 
+	// MCP management (session-scoped RPCs)
+	async listMcpServers(): Promise<Array<{ name: string; status: string; source?: string }>> {
+		const result = await this.session.rpc.mcp.list();
+		return result.servers ?? [];
+	}
+	async mcpOAuthLogin(serverName: string): Promise<{ authorizationUrl?: string }> {
+		return await this.session.rpc.mcp.oauth.login({ serverName });
+	}
+
 	getPendingApprovalEvents(): PortalEvent[] {
 		// Only return the currently-active approval (the one being shown to clients).
 		// Others are queued and will be sent automatically after the current one resolves.
@@ -1640,20 +1649,32 @@ export class SessionPool {
 		await this.client.rpc.mcp.config.remove({ name });
 		this.log(`[Pool] MCP server removed: ${name}`);
 	}
-	async mcpOAuthLogin(serverName: string): Promise<{ authorizationUrl?: string }> {
-		const result = await this.client.rpc.mcp.oauth.login({ serverName });
+	async mcpOAuthLogin(serverName: string, sessionId: string): Promise<{ authorizationUrl?: string }> {
+		const handle = this.pool.get(sessionId);
+		if (!handle) throw new Error(`No active session ${sessionId} for MCP OAuth`);
+		const result = await handle.mcpOAuthLogin(serverName);
 		this.log(`[Pool] MCP OAuth login for ${serverName}: ${result.authorizationUrl ? 'browser auth needed' : 'already authenticated'}`);
 		return result;
 	}
-	async listMcpServers(): Promise<Array<{ name: string; type: string; source: string; enabled: boolean; status: string }>> {
-		const result = await this.client.rpc.mcp.list();
-		return (result.servers ?? []).map((s: any) => ({
-			name: s.name,
-			type: s.source === 'builtin' ? 'builtin' : 'unknown',
-			source: s.source ?? 'unknown',
-			enabled: s.status === 'connected',
-			status: s.status,
-		}));
+	async listMcpServers(sessionId?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean; status: string }>> {
+		// Try session-scoped RPC first (returns live status)
+		if (sessionId) {
+			const handle = this.pool.get(sessionId);
+			if (handle) {
+				const servers = await handle.listMcpServers();
+				this.log(`[Pool] session.mcp.list: ${JSON.stringify(servers.map(s => ({ name: s.name, status: s.status })))}`);
+				return servers.map(s => ({
+					name: s.name,
+					type: s.source === 'builtin' ? 'builtin' : 'unknown',
+					source: s.source ?? 'unknown',
+					enabled: s.status === 'connected',
+					status: s.status,
+				}));
+			}
+		}
+		// Fall back to config discovery (no status)
+		const discovered = await this.discoverMcpServers();
+		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'unknown' }));
 	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */

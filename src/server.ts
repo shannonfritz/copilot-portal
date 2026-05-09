@@ -487,17 +487,13 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/mcp' && method === 'GET') {
+			const sessionId = url.searchParams.get('session') ?? undefined;
 			try {
-				const servers = await this.pool.listMcpServers();
+				const servers = await this.pool.listMcpServers(sessionId);
 				this.sendJson(res, 200, { servers });
-			} catch {
-				// Fall back to config-based discovery
-				try {
-					const servers = await this.pool.discoverMcpServers();
-					this.sendJson(res, 200, { servers });
-				} catch {
-					this.sendJson(res, 200, { servers: [] });
-				}
+			} catch (e) {
+				this.log(`[Server] /api/mcp failed: ${e}`);
+				this.sendJson(res, 200, { servers: [] });
 			}
 			return;
 		}
@@ -543,13 +539,17 @@ export class PortalServer {
 		if (url.pathname === '/api/mcp/login' && method === 'POST') {
 			try {
 				const body = JSON.parse(await this.readBody(req));
-				const { serverName } = body as { serverName: string };
+				const { serverName, sessionId } = body as { serverName: string; sessionId?: string };
 				if (!serverName) {
 					this.sendJson(res, 400, { error: 'serverName is required' });
 					return;
 				}
-				this.log(`[Server] MCP OAuth login requested for: ${serverName}`);
-				const result = await this.pool.mcpOAuthLogin(serverName);
+				if (!sessionId) {
+					this.sendJson(res, 400, { error: 'sessionId is required' });
+					return;
+				}
+				this.log(`[Server] MCP OAuth login requested for: ${serverName} (session: ${sessionId.slice(0, 8)})`);
+				const result = await this.pool.mcpOAuthLogin(serverName, sessionId);
 				this.sendJson(res, 200, result);
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });

@@ -1093,7 +1093,7 @@ function SessionDrawer({
 												<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
 													onClick={async () => {
 														try {
-															const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name }) });
+															const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: activeSessionId }) });
 															const data = await res.json();
 															if (data.authorizationUrl) {
 																window.open(data.authorizationUrl, '_blank');
