@@ -674,7 +674,7 @@ function SessionDrawer({
 				setShowModelPicker(false);
 			}
 			if (showMcpList && mcpPickerRef.current && !mcpPickerRef.current.contains(e.target as Node)) {
-				setShowMcpList(false);
+				setShowMcpList(false); setShowMcpAdd(false);
 			}
 		};
 		document.addEventListener('mousedown', handler);
@@ -866,6 +866,7 @@ function SessionDrawer({
 								onClick={() => {
 									const opening = !showMcpList;
 									setShowMcpList(opening);
+									if (!opening) setShowMcpAdd(false);
 									if (opening) {
 										setMcpLoading(true);
 										apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
