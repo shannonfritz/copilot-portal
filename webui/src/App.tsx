@@ -3830,7 +3830,7 @@ export default function App() {
 							</svg>
 						</button>
 						</div>
-						<div className="flex flex-col gap-1 items-center" title={`Portal: ${connectionState}\nCopilot: ${cliStatus}`}>
+						<div className="flex flex-col gap-1 items-center" title={`Portal: ${connectionState}\nCopilot: ${connectionState !== 'connected' ? 'unreachable' : cliStatus}`}>
 							<div
 								className="rounded-full"
 								style={{
@@ -3848,11 +3848,13 @@ export default function App() {
 								style={{
 									width: 6, height: 6,
 									background:
-										cliStatus === 'connected'
-											? 'var(--success)'
-											: cliStatus === 'restarting'
-												? 'var(--tool-call)'
-												: 'var(--error)',
+										connectionState !== 'connected'
+											? 'var(--error)'
+											: cliStatus === 'connected'
+												? 'var(--success)'
+												: cliStatus === 'restarting'
+													? 'var(--tool-call)'
+													: 'var(--error)',
 								}}
 							/>
 						</div>
