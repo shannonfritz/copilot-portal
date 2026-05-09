@@ -1058,7 +1058,7 @@ function SessionDrawer({
 							AI Model
 						</label>
 					)}
-					<div className="relative" ref={modelPickerRef}>
+					<div className="relative mt-3" ref={modelPickerRef}>
 						{/* Context window usage — above model button */}
 						{contextUsage && contextUsage.tokenLimit > 0 && !draft && (() => {
 							const { tokenLimit, currentTokens, systemTokens, conversationTokens, toolDefinitionsTokens } = contextUsage;
