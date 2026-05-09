@@ -1078,16 +1078,25 @@ function SessionDrawer({
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="chat-scroll max-h-72 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
 									{/* Active servers */}
-									{mcpServers.map(s => (
+									{mcpServers.map(s => {
+										const feat = featured.find(f => f.name === s.name);
+										const isBuiltin = s.source === 'builtin';
+										const isRemovable = !isBuiltin && s.source !== 'plugin';
+										const label = feat?.label ?? s.name;
+										const desc = s.status === 'needs-auth' ? 'Needs sign-in'
+											: feat?.description ? feat.description
+											: isBuiltin ? 'Built-in'
+											: s.status === 'failed' ? 'Failed to connect'
+											: s.status === 'pending' ? 'Connecting…'
+											: null;
+										return (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
-											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.enabled ? 'var(--success)' : 'var(--text-muted)' }}>
-												{s.status === 'needs-auth' ? '⚠' : s.status === 'connected' || s.enabled ? '●' : s.status === 'failed' ? '✗' : '○'}
+											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
+												{s.status === 'needs-auth' ? '⚠' : s.status === 'connected' ? '●' : s.status === 'failed' ? '✗' : '○'}
 											</span>
 											<div className="flex-1">
-												<span>{featured.find(f => f.name === s.name)?.label ?? s.name}</span>
-												<div style={{ fontSize: 11, color: s.status === 'needs-auth' ? 'var(--warning)' : 'var(--text-muted)' }}>
-													{s.status === 'needs-auth' ? 'Needs sign-in' : featured.find(f => f.name === s.name)?.description ?? `${s.type} · ${s.source}`}
-												</div>
+												<span>{label}</span>
+												{desc && <div style={{ fontSize: 11, color: s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>{desc}</div>}
 											</div>
 											{s.status === 'needs-auth' && (
 												<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
@@ -1102,7 +1111,7 @@ function SessionDrawer({
 													}}
 												>Sign in</button>
 											)}
-											{s.source === 'user' ? (
+											{isRemovable ? (
 												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
 													onClick={async () => {
 														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
@@ -1113,13 +1122,13 @@ function SessionDrawer({
 												>
 													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
 												</button>
-											) : (
+											) : !isRemovable && s.source && s.source !== 'unknown' ? (
 												<span className="shrink-0 rounded px-1.5 py-0.5 text-[10px]" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
 													{s.source}
 												</span>
-											)}
+											) : null}
 										</div>
-									))}
+									);})}
 									{/* Featured servers not yet installed */}
 									{availableFeatured.map(f => (
 										<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm" style={{ opacity: 0.7 }}>
