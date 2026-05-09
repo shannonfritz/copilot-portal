@@ -1029,7 +1029,7 @@ function SessionDrawer({
 														{m365TenantId ? 'No M365 servers available — sign in to an M365 MCP first' : 'Sign in to an M365 MCP server to discover available servers'}
 													</div>
 												) : (
-													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name)).map(s => (
+													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 															<div className="flex-1">
 																<span>{s.label}</span>
