@@ -1665,7 +1665,11 @@ export class SessionPool {
 				try {
 					liveServers = await handle.listMcpServers();
 					this.log(`[Pool] session.mcp.list: ${JSON.stringify(liveServers.map(s => ({ name: s.name, status: s.status })))}`);
-				} catch { /* fall through */ }
+				} catch (e) {
+					this.log(`[Pool] session.mcp.list failed: ${e}`);
+				}
+			} else {
+				this.log(`[Pool] No session handle for ${sessionId.slice(0, 8)} — using config discovery`);
 			}
 		}
 		// Get source info from config discovery (knows about plugins vs user)
@@ -1674,15 +1678,23 @@ export class SessionPool {
 		const sourceMap = new Map(discovered.map(s => [s.name, s.source]));
 
 		if (liveServers) {
-			return liveServers.map(s => ({
+			// Merge: live servers (with status) + discovered-only servers (config but not in session yet)
+			const result = liveServers.map(s => ({
 				name: s.name,
 				type: s.source === 'builtin' ? 'builtin' : 'unknown',
 				source: s.source ?? sourceMap.get(s.name) ?? 'unknown',
 				enabled: s.status === 'connected',
 				status: s.status,
 			}));
+			// Add any discovered servers not in the live list (e.g. just added, not loaded yet)
+			for (const d of discovered) {
+				if (!result.find(r => r.name === d.name)) {
+					result.push({ ...d, status: 'pending' });
+				}
+			}
+			return result;
 		}
-		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'unknown' }));
+		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'pending' }));
 	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */
