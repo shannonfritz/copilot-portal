@@ -899,11 +899,32 @@ function SessionDrawer({
 										const isBuiltin = s.source === 'builtin';
 										const isRemovable = !isBuiltin && s.source !== 'plugin';
 										const label = s.name;
-										const desc = s.status === 'needs-auth' ? 'Needs sign-in'
-											: isBuiltin ? 'Built-in'
+										const knownDescriptions: Record<string, string> = {
+											'github-mcp-server': 'Repositories, issues, PRs, code search',
+											'workiq': 'M365 read-only — emails, meetings, Teams, documents',
+											'WorkIQ': 'M365 read-only — emails, meetings, Teams, documents',
+											'playwright': 'Browser automation and web scraping',
+											'Playwright': 'Browser automation and web scraping',
+											'Teams': 'Messages, channels, chats, files, search',
+											'Calendar': 'Events, meeting times, rooms, RSVP',
+											'Planner': 'Plans, goals, tasks, groups',
+											'Mail': 'Email messages and folders',
+											'People': 'User details, manager, reports',
+											'Word': 'Create documents, comments',
+											'Excel': 'Create workbooks, comments',
+											'PowerPoint': 'Presentations',
+											'M365 Copilot': 'Ask Microsoft 365 Copilot',
+											'microsoft-learn': 'Official Microsoft documentation',
+											'foundry': 'AI models, knowledge, evaluation',
+										};
+										const summary = knownDescriptions[s.name];
+										const statusText = s.status === 'needs-auth' ? 'Needs sign-in'
 											: s.status === 'failed' ? 'Failed to connect'
 											: s.status === 'pending' ? 'Connecting…'
 											: null;
+										const desc = statusText
+											? (summary ? `${statusText} · ${summary}` : statusText)
+											: (summary ?? (isBuiltin ? 'Built-in' : null));
 										return (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
