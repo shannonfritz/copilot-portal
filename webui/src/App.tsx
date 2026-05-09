@@ -1008,7 +1008,6 @@ function SessionDrawer({
 													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
 													{ name: 'playwright', label: 'Playwright', description: 'Browser automation (requires Chrome)', cmd: 'npx -y @playwright/mcp@latest', url: 'https://github.com/microsoft/playwright-mcp' },
 													{ name: 'microsoft-learn', label: 'Microsoft Learn', description: 'Official Microsoft documentation', mcpUrl: 'https://learn.microsoft.com/api/mcp', url: 'https://github.com/microsoftdocs/mcp' },
-													{ name: 'foundry', label: 'Microsoft Foundry', description: 'AI models, knowledge, evaluation', mcpUrl: 'https://mcp.ai.azure.com', url: 'https://learn.microsoft.com/azure/ai-foundry/mcp/get-started' },
 												].filter(f => !installedNames.has(f.name)).map(f => (
 													<div key={f.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 														<div className="flex-1">
