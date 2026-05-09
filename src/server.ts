@@ -487,14 +487,17 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/mcp' && method === 'GET') {
-			const sessionId = url.searchParams.get('session') ?? undefined;
 			try {
-				const servers = sessionId
-					? await this.pool.listSessionMcpServers(sessionId)
-					: await this.pool.discoverMcpServers();
+				const servers = await this.pool.listMcpServers();
 				this.sendJson(res, 200, { servers });
 			} catch {
-				this.sendJson(res, 200, { servers: [] });
+				// Fall back to config-based discovery
+				try {
+					const servers = await this.pool.discoverMcpServers();
+					this.sendJson(res, 200, { servers });
+				} catch {
+					this.sendJson(res, 200, { servers: [] });
+				}
 			}
 			return;
 		}

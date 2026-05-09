@@ -1645,6 +1645,16 @@ export class SessionPool {
 		this.log(`[Pool] MCP OAuth login for ${serverName}: ${result.authorizationUrl ? 'browser auth needed' : 'already authenticated'}`);
 		return result;
 	}
+	async listMcpServers(): Promise<Array<{ name: string; type: string; source: string; enabled: boolean; status: string }>> {
+		const result = await this.client.rpc.mcp.list();
+		return (result.servers ?? []).map((s: any) => ({
+			name: s.name,
+			type: s.source === 'builtin' ? 'builtin' : 'unknown',
+			source: s.source ?? 'unknown',
+			enabled: s.status === 'connected',
+			status: s.status,
+		}));
+	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */
 	private loadMcpServers(): Record<string, any> {
