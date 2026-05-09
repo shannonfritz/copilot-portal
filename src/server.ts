@@ -559,7 +559,7 @@ export class PortalServer {
 
 		if (url.pathname === '/api/mcp/discover-m365' && method === 'GET') {
 			try {
-				this.log('[Server] M365 discovery requested');
+				this.log('[Server] M365 MCP server discovery started');
 				const result = await this.discoverM365Servers();
 				this.sendJson(res, 200, result);
 			} catch (e) {
