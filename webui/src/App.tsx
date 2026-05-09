@@ -886,6 +886,7 @@ function SessionDrawer({
 								const installedNames = new Set(mcpServers.map(s => s.name));
 								return (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div className="relative">
 								<div className="chat-scroll max-h-60 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
 									{/* Loading indicator */}
 									{mcpLoading && (
@@ -987,6 +988,8 @@ function SessionDrawer({
 										</div>
 									)}
 								</div>
+								<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
+								</div>
 								{/* Add server — outside scroll area */}
 								{showMcpAdd ? (
 									<div className="border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
@@ -998,6 +1001,7 @@ function SessionDrawer({
 											))}
 										</div>
 										{mcpAddType === 'featured' ? (
+											<div className="relative">
 											<div className="chat-scroll max-h-52 overflow-y-auto">
 												{/* Static presets */}
 												{[
@@ -1159,6 +1163,8 @@ function SessionDrawer({
 														</div>
 													))
 												)}
+											</div>
+											<div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 80%)' }} />
 											</div>
 										) : (
 											<div className="px-3 py-2">
