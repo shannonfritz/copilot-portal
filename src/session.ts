@@ -1738,7 +1738,7 @@ export class SessionPool {
 			return await this._doConnect(sessionId);
 		} catch (e) {
 			const msg = String(e);
-			if (msg.includes('Connection is closed') || msg.includes('not connected') || msg.includes('Server port not available')) {
+			if (msg.includes('Connection is closed') || msg.includes('not connected') || msg.includes('Server port not available') || msg.includes('disposed')) {
 				this.log(`[Pool] SDK connection lost — restarting client...`);
 				try {
 					await this.client.stop().catch(() => {});

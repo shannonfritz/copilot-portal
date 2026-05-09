@@ -321,7 +321,7 @@ export class PortalServer {
 				handle.send(prompt, attachments).catch(async (e) => {
 					const errMsg = String(e);
 					this.log(`[${clientId}] Send error: ${errMsg}`);
-					if (errMsg.includes('Connection is closed') || errMsg.includes('not connected')) {
+					if (errMsg.includes('Connection is closed') || errMsg.includes('not connected') || errMsg.includes('disposed')) {
 						this.log(`[${clientId}] Connection lost — attempting reconnect...`);
 						try {
 							const oldHandle = handleRef.current;
