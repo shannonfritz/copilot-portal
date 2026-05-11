@@ -1784,6 +1784,31 @@ export default function App() {
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
+			// Check for MCP servers needing auth after session loads
+			setTimeout(async () => {
+				try {
+					const sid = activeSessionIdRef.current;
+					if (!sid) return;
+					const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(sid)}`).then(r => r.json());
+					const servers = r.servers ?? [];
+					const needsAuth = servers.filter((s: any) => s.status === 'needs-auth');
+					if (needsAuth.length > 0) {
+						for (const s of needsAuth) {
+							try {
+								const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: sid }) });
+								const data = await res.json();
+								if (data.authorizationUrl) {
+									setNotification({ type: 'warning', message: `${s.name} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+										setNotification(null);
+										window.open(data.authorizationUrl, '_blank');
+									} } });
+									break; // Show one at a time
+								}
+							} catch {}
+						}
+					}
+				} catch {}
+			}, 8000); // Wait for MCP servers to initialize
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
