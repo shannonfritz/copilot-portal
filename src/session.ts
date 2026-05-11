@@ -1673,8 +1673,8 @@ export class SessionPool {
 				try {
 					liveServers = await handle.listMcpServers();
 					this.log(`[Pool] session.mcp.list: ${JSON.stringify(liveServers.map(s => ({ name: s.name, status: s.status })))}`);
-				} catch (e) {
-					this.log(`[Pool] session.mcp.list failed: ${e}`);
+				} catch {
+					// Session may not be fully registered yet — fall through to config discovery
 				}
 			} else {
 				this.log(`[Pool] No session handle for ${sessionId.slice(0, 8)} — using config discovery`);
