@@ -620,8 +620,8 @@ function SessionDrawer({
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
 	const [agentsAtBottom, setAgentsAtBottom] = useState(false);
 	const [modelsAtBottom, setModelsAtBottom] = useState(false);
-	const [mcpListAtBottom, setMcpListAtBottom] = useState(false);
-	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(false);
+	const [mcpListAtBottom, setMcpListAtBottom] = useState(true);
+	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(true);
 	const [showMcpList, setShowMcpList] = useState(false);
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
@@ -890,7 +890,8 @@ function SessionDrawer({
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="relative">
 								<div className="chat-scroll max-h-60 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
-									onScroll={e => { const el = e.currentTarget; setMcpListAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
+									onScroll={e => { const el = e.currentTarget; setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
+									ref={el => { if (el) setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 									{/* Loading indicator */}
 									{mcpLoading && (
 										<div className="flex items-center justify-center gap-2 px-3 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -1006,7 +1007,8 @@ function SessionDrawer({
 										{mcpAddType === 'featured' ? (
 											<div className="relative">
 											<div className="chat-scroll max-h-52 overflow-y-auto"
-												onScroll={e => { const el = e.currentTarget; setMcpFeaturedAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
+												onScroll={e => { const el = e.currentTarget; setMcpFeaturedAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
+												ref={el => { if (el) setMcpFeaturedAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 												{/* Static presets */}
 												{[
 													{ name: 'workiq', label: 'WorkIQ', description: 'M365 read-only — emails, meetings, Teams, documents', cmd: 'npx -y @microsoft/workiq@latest mcp', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
