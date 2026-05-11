@@ -1469,6 +1469,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
+	private onMcpServerStatusChanged(data: unknown): void {
+		const d = data as { serverName?: string; status?: string };
+		if (d?.serverName && d?.status) {
+			this.broadcast({ type: 'mcp_server_status_changed' as any, content: JSON.stringify(d) });
+		}
+	}
+
 	// --- Event dispatch ---
 
 	/** Maps SDK event types to handler methods. */
@@ -1506,6 +1513,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'assistant.usage':                  (d) => this.onAssistantUsage(d),
 		'session.usage_info':               (d) => this.onSessionUsageInfo(d),
 		'session.mcp_servers_loaded':       (d) => this.onMcpServersLoaded(d),
+		'session.mcp_server_status_changed': (d) => this.onMcpServerStatusChanged(d),
 	};
 
 	private attachListeners(): void {

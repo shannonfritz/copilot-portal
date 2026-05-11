@@ -2403,6 +2403,29 @@ export default function App() {
 							})();
 						}
 					} catch {}
+				} else if ((event as any).type === 'mcp_server_status_changed') {
+					try {
+						const d = JSON.parse((event as any).content ?? '{}') as { serverName?: string; status?: string };
+						if (d.serverName && d.status === 'needs-auth') {
+							// Auto-trigger OAuth login for this server
+							(async () => {
+								try {
+									const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: d.serverName, sessionId: activeSessionIdRef.current }) });
+									const data = await res.json();
+									if (data.authorizationUrl) {
+										setNotification({ type: 'warning', message: `${d.serverName} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+											setNotification(null);
+											window.open(data.authorizationUrl, '_blank');
+										} } });
+									}
+								} catch {}
+							})();
+						}
+						// Update server status in MCP list
+						if (d.serverName && d.status) {
+							setMcpServers(prev => prev.map(s => s.name === d.serverName ? { ...s, enabled: d.status === 'connected', status: d.status } : s));
+						}
+					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
