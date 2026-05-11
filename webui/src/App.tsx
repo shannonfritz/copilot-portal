@@ -2460,6 +2460,10 @@ export default function App() {
 						// Update server status in MCP list
 						if (d.serverName && d.status) {
 							setMcpServers(prev => prev.map(s => s.name === d.serverName ? { ...s, enabled: d.status === 'connected', status: d.status } : s));
+							// Clear sign-in notification when server connects
+							if (d.status === 'connected') {
+								setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
+							}
 						}
 					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
