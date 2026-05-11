@@ -921,25 +921,28 @@ function SessionDrawer({
 										const isBuiltin = s.source === 'builtin';
 										const isRemovable = !isBuiltin && s.source !== 'plugin';
 										const label = s.name;
-										const knownDescriptions: Record<string, string> = {
-											'github-mcp-server': 'Repositories, issues, PRs, code search',
-											'workiq': 'M365 read-only — emails, meetings, Teams, documents',
-											'WorkIQ': 'M365 read-only — emails, meetings, Teams, documents',
-											'playwright': 'Browser automation and web scraping',
-											'Playwright': 'Browser automation and web scraping',
-											'Teams': 'Messages, channels, chats, files, search',
-											'Calendar': 'Events, meeting times, rooms, RSVP',
-											'Planner': 'Plans, goals, tasks, groups',
-											'Mail': 'Email messages and folders',
-											'People': 'User details, manager, reports',
-											'Word': 'Create documents, comments',
-											'Excel': 'Create workbooks, comments',
-											'PowerPoint': 'Presentations',
-											'M365 Copilot': 'Ask Microsoft 365 Copilot',
-											'microsoft-learn': 'Official Microsoft documentation',
-											'foundry': 'AI models, knowledge, evaluation',
+										const knownInfo: Record<string, { desc: string; url?: string }> = {
+											'github-mcp-server': { desc: 'Repositories, issues, PRs, code search', url: 'https://github.com/github/github-mcp-server' },
+											'workiq': { desc: 'M365 read-only — emails, meetings, Teams, documents', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
+											'WorkIQ': { desc: 'M365 read-only — emails, meetings, Teams, documents', url: 'https://www.npmjs.com/package/@microsoft/workiq' },
+											'playwright': { desc: 'Browser automation and web scraping', url: 'https://github.com/microsoft/playwright-mcp' },
+											'Playwright': { desc: 'Browser automation and web scraping', url: 'https://github.com/microsoft/playwright-mcp' },
+											'Teams': { desc: 'Messages, channels, chats, files, search', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_TeamsServer' },
+											'Calendar': { desc: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_CalendarTools' },
+											'Planner': { desc: 'Plans, goals, tasks, groups' },
+											'Mail': { desc: 'Email messages and folders', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_MailTools' },
+											'People': { desc: 'User details, manager, reports', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_MeServer' },
+											'Word': { desc: 'Create documents, comments' },
+											'Excel': { desc: 'Create workbooks, comments' },
+											'PowerPoint': { desc: 'Presentations' },
+											'M365 Copilot': { desc: 'Ask Microsoft 365 Copilot', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_M365Copilot' },
+											'microsoft-learn': { desc: 'Official Microsoft documentation', url: 'https://github.com/microsoftdocs/mcp' },
+											'foundry': { desc: 'AI models, knowledge, evaluation' },
+											'Automations': { desc: 'Event triggers and automation rules' },
 										};
-										const summary = knownDescriptions[s.name];
+										const info = knownInfo[s.name];
+										const summary = info?.desc;
+										const docsUrl = info?.url;
 										const statusText = s.status === 'needs-auth' ? 'Needs sign-in'
 											: s.status === 'failed' ? 'Failed to connect'
 											: s.status === 'pending' ? 'Connecting…'
@@ -954,7 +957,10 @@ function SessionDrawer({
 											</span>
 											<div className="flex-1">
 												<span>{label}</span>
-												{desc && <div style={{ fontSize: 11, color: s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>{desc}</div>}
+												{desc && <div style={{ fontSize: 11, color: s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
+													{desc}
+													{docsUrl && <> · <a href={docsUrl} target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>docs</a></>}
+												</div>}
 											</div>
 											{s.status === 'needs-auth' && (
 												<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
@@ -1173,6 +1179,7 @@ function SessionDrawer({
 																<span>{s.label}</span>
 																<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
 																	{s.description}{s.toolCount > 0 ? ` · ${s.toolCount} tools` : ''}
+																	{(s as any).url && <> · <a href={(s as any).url} target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>docs</a></>}
 																</div>
 															</div>
 															<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
