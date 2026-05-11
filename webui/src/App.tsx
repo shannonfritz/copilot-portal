@@ -1008,17 +1008,22 @@ function SessionDrawer({
 											{isRemovable ? (
 												<>
 													<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
-														onClick={() => {
-															const cfg = (s as any).config;
-															if (cfg?.type === 'http' && cfg.url) {
-																setMcpAddType('url');
-																setMcpAddName(`${s.name} (copy)`);
-																setMcpAddCommand(cfg.url);
-															} else if (cfg?.command) {
-																setMcpAddType('command');
-																setMcpAddName(`${s.name} (copy)`);
-																setMcpAddCommand(cfg.command);
-															}
+														onClick={async () => {
+															// Fetch fresh config for this server
+															try {
+																const r = await apiFetch('/api/mcp').then(r => r.json());
+																const srv = (r.servers ?? []).find((x: any) => x.name === s.name);
+																const cfg = srv?.config;
+																if (cfg?.type === 'http' && cfg.url) {
+																	setMcpAddType('url');
+																	setMcpAddName(`${s.name} (copy)`);
+																	setMcpAddCommand(cfg.url);
+																} else if (cfg?.command) {
+																	setMcpAddType('command');
+																	setMcpAddName(`${s.name} (copy)`);
+																	setMcpAddCommand(cfg.command);
+																}
+															} catch {}
 															setShowMcpAdd(true);
 														}}
 														title="Clone server"
