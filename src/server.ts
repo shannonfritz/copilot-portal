@@ -1370,15 +1370,15 @@ export class PortalServer {
 	/** Discover M365 MCP servers by reading tenant ID from cached OAuth tokens and probing Agent365. */
 	private async discoverM365Servers(): Promise<{ tenantId: string | null; servers: Array<{ name: string; label: string; toolCount: number; description: string; url?: string }> }> {
 		const knownServers: Array<{ name: string; label: string; description: string; url?: string }> = [
-			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_TeamsServer' },
-			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_CalendarTools' },
+			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search', url: 'https://github.com/microsoft/mcp#-microsoft-teams' },
+			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/microsoft/mcp#-microsoft-365-calendar' },
 			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
-			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_MailTools' },
-			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_MeServer' },
+			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders', url: 'https://github.com/microsoft/mcp#-microsoft-365-mail' },
+			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports', url: 'https://github.com/microsoft/mcp#-microsoft-365-user' },
 			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
 			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
 			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
-			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot', url: 'https://github.com/bap-microsoft/MCP-Platform/tree/main/src/Services/WebApi/MCPServers/FirstParty/CodeBased/mcp_M365Copilot' },
+			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot', url: 'https://github.com/microsoft/mcp#-microsoft-365-copilot-chat' },
 			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
 			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
 			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
