@@ -61,7 +61,6 @@ function enableAutoStart(): string {
 		const r = spawnSync('schtasks', [
 			'/create', '/tn', TASK_NAME, '/f',
 			'/sc', 'onlogon',
-			'/rl', 'highest',
 			'/tr', `cmd /c "cd /d "${portalDir}" && start-portal.cmd"`,
 		], { stdio: 'pipe', windowsHide: true });
 		if (r.status !== 0) throw new Error(r.stderr?.toString() ?? 'schtasks failed');
