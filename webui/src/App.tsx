@@ -1808,7 +1808,7 @@ export default function App() {
 						}
 					}
 				} catch {}
-			}, 8000); // Wait for MCP servers to initialize
+			}, 4000); // Wait for MCP servers to initialize
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
