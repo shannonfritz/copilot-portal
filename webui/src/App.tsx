@@ -929,16 +929,16 @@ function SessionDrawer({
 											'Playwright': { desc: 'Browser automation and web scraping', url: 'https://github.com/microsoft/playwright-mcp' },
 											'Teams': { desc: 'Messages, channels, chats, files, search', url: 'https://github.com/microsoft/mcp#-microsoft-teams' },
 											'Calendar': { desc: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/microsoft/mcp#-microsoft-365-calendar' },
-											'Planner': { desc: 'Plans, goals, tasks, groups' },
+											'Planner': { desc: 'Plans, goals, tasks, groups', url: 'https://github.com/microsoft/mcp' },
 											'Mail': { desc: 'Email messages and folders', url: 'https://github.com/microsoft/mcp#-microsoft-365-mail' },
 											'People': { desc: 'User details, manager, reports', url: 'https://github.com/microsoft/mcp#-microsoft-365-user' },
-											'Word': { desc: 'Create documents, comments' },
-											'Excel': { desc: 'Create workbooks, comments' },
-											'PowerPoint': { desc: 'Presentations' },
+											'Word': { desc: 'Create documents, comments', url: 'https://github.com/microsoft/mcp' },
+											'Excel': { desc: 'Create workbooks, comments', url: 'https://github.com/microsoft/mcp' },
+											'PowerPoint': { desc: 'Presentations', url: 'https://github.com/microsoft/mcp' },
 											'M365 Copilot': { desc: 'Ask Microsoft 365 Copilot', url: 'https://github.com/microsoft/mcp#-microsoft-365-copilot-chat' },
 											'microsoft-learn': { desc: 'Official Microsoft documentation', url: 'https://github.com/microsoftdocs/mcp' },
-											'foundry': { desc: 'AI models, knowledge, evaluation' },
-											'Automations': { desc: 'Event triggers and automation rules' },
+											'foundry': { desc: 'AI models, knowledge, evaluation', url: 'https://github.com/microsoft/mcp' },
+											'Automations': { desc: 'Event triggers and automation rules', url: 'https://github.com/microsoft/mcp' },
 										};
 										const info = knownInfo[s.name];
 										const summary = info?.desc;
