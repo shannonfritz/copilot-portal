@@ -2425,9 +2425,9 @@ export default function App() {
 								// New server (e.g. builtin) — add it
 								return [...prev, { name: d.serverName!, type: 'unknown', source: d.serverName === 'github-mcp-server' ? 'builtin' : 'unknown', enabled: d.status === 'connected', status: d.status }];
 							});
-							// Clear sign-in notification when server connects
+							// Clear sign-in notification only when THE server that needs sign-in connects
 							if (d.status === 'connected') {
-								setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
+								setNotification(prev => prev?.type === 'warning' && prev?.message?.includes(d.serverName!) ? null : prev);
 							}
 						}
 					} catch {}
