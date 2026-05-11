@@ -1688,7 +1688,16 @@ export class SessionPool {
 		}
 		// Get source info from config discovery (knows about plugins vs user)
 		let discovered: Array<{ name: string; type: string; source: string; enabled: boolean }> = [];
-		try { discovered = await this.discoverMcpServers(); } catch {}
+		try {
+			// Use mcp.discover for stdio servers + supplement with loadMcpServers for HTTP servers
+			discovered = await this.discoverMcpServers();
+			const configServers = this.loadMcpServers();
+			for (const [name, config] of Object.entries(configServers)) {
+				if (!discovered.find(s => s.name === name)) {
+					discovered.push({ name, type: config.type ?? 'stdio', source: 'user', enabled: true });
+				}
+			}
+		} catch {}
 		const sourceMap = new Map(discovered.map(s => [s.name, s.source]));
 
 		if (liveServers) {
