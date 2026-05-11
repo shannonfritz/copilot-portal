@@ -973,6 +973,17 @@ function SessionDrawer({
 													}}
 												>Sign in</button>
 											)}
+											{s.status === 'failed' && (
+												<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--primary-tint)', color: 'var(--primary)', border: '1px solid var(--border)' }}
+													onClick={async () => {
+														try {
+															await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: activeSessionId }) });
+															const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json());
+															setMcpServers(r.servers ?? []);
+														} catch {}
+													}}
+												>Retry</button>
+											)}
 											{isRemovable ? (
 												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
 													onClick={() => confirmMcpChange(async () => {
