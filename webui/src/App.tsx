@@ -894,7 +894,7 @@ function SessionDrawer({
 								return (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 								<div className="relative">
-								<div className="chat-scroll max-h-60 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
+								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
 									onScroll={e => { const el = e.currentTarget; setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
 									ref={el => { if (el) setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 									{/* Loading indicator */}
@@ -1021,7 +1021,7 @@ function SessionDrawer({
 										</div>
 										{mcpAddType === 'featured' ? (
 											<div className="relative">
-											<div className="chat-scroll max-h-52 overflow-y-auto"
+											<div className="chat-scroll max-h-56 overflow-y-auto"
 												onScroll={e => { const el = e.currentTarget; setMcpFeaturedAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
 												ref={el => { if (el) setMcpFeaturedAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 												{/* Static presets */}
@@ -1294,7 +1294,7 @@ function SessionDrawer({
 						{showModelPicker && (
 							<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
 							<div
-								className="chat-scroll max-h-72 overflow-y-auto py-1"
+								className="chat-scroll max-h-56 overflow-y-auto py-1"
 								style={{ background: 'var(--surface)' }}
 								onScroll={e => {
 									const el = e.currentTarget;
