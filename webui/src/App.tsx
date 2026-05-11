@@ -1068,7 +1068,7 @@ function SessionDrawer({
 															</div>
 														);
 													})()
-												) : m365Servers.filter(s => s.toolCount !== 0).length === 0 ? (
+												) : m365Servers.length === 0 ? (
 													<>
 														{!m365TenantId && (
 															<div className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -1144,12 +1144,12 @@ function SessionDrawer({
 														)}
 													</>
 												) : (
-													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
+													m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 															<div className="flex-1">
 																<span>{s.label}</span>
 																<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-																	{s.description}{s.toolCount > 0 ? ` · ${s.toolCount} tools` : ''}
+																	{s.description}
 																</div>
 															</div>
 															<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
@@ -1797,6 +1797,7 @@ export default function App() {
 					if (ws.readyState === WebSocket.OPEN) {
 						if (document.visibilityState === 'hidden') return;
 						ws.send('{"type":"ping"}');
+						if (hb.timeout) clearTimeout(hb.timeout);
 						hb.timeout = setTimeout(() => { ws.close(); }, 5000);
 					}
 				}, 30_000), timeout: null as ReturnType<typeof setTimeout> | null };

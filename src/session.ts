@@ -1782,16 +1782,24 @@ export class SessionPool {
 	}
 
 	/** Returns handle from pool, or connects to the session and caches it. Concurrent calls for the same sessionId share a single in-flight promise. */
-	async connect(sessionId: string): Promise<SessionHandle> {
+	async connect(sessionId: string, evictIfIdle = false): Promise<SessionHandle> {
 		if (this.pool.has(sessionId)) {
-			// Verify the SDK connection is still alive before reusing
-			try {
-				await this.client.ping();
-				this.log(`[Pool] Reusing: ${sessionId.slice(0, 8)}`);
-				return this.pool.get(sessionId)!;
-			} catch {
-				this.log(`[Pool] Stale handle for ${sessionId.slice(0, 8)} — evicting and reconnecting`);
+			const existing = this.pool.get(sessionId)!;
+			// Evict idle handles if requested (fresh snapshot with CLI messages)
+			if (evictIfIdle && existing.listenerCount === 0 && !existing.turnActive && !existing.isNew) {
+				this.log(`[Pool] Evicting idle: ${sessionId.slice(0, 8)}`);
+				await existing.disconnect();
 				this.pool.delete(sessionId);
+			} else {
+				// Verify the SDK connection is still alive before reusing
+				try {
+					await this.client.ping();
+					this.log(`[Pool] Reusing: ${sessionId.slice(0, 8)}`);
+					return existing;
+				} catch {
+					this.log(`[Pool] Stale handle for ${sessionId.slice(0, 8)} — evicting and reconnecting`);
+					this.pool.delete(sessionId);
+				}
 			}
 		}
 		if (this.connecting.has(sessionId)) {

@@ -136,10 +136,6 @@ export class PortalServer {
 			// the session before it's ever been saved, causing a session_not_found error.
 			let handle;
 			try {
-				const existing = this.pool.getHandle(sessionId);
-				if (existing && existing.listenerCount === 0 && !existing.turnActive && !existing.isNew) {
-					await this.pool.evict(sessionId);
-				}
 				// Send a loading hint to the client before the potentially slow resumeSession
 				if (!this.pool.getHandle(sessionId)) {
 					const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
@@ -149,7 +145,7 @@ export class PortalServer {
 						ws.send(JSON.stringify({ type: 'history_loading', sizeBytes: stat.size, sizeMB }));
 					} catch { /* file may not exist yet */ }
 				}
-				handle = await this.pool.connect(sessionId);
+				handle = await this.pool.connect(sessionId, true);
 			} catch (e) {
 				this.log(`[${clientId}] Connect error: ${e}`);
 				const msg = String(e);
@@ -540,12 +536,12 @@ export class PortalServer {
 			try {
 				const body = JSON.parse(await this.readBody(req));
 				const { serverName, sessionId } = body as { serverName: string; sessionId?: string };
-				if (!serverName) {
-					this.sendJson(res, 400, { error: 'serverName is required' });
+				if (!serverName || !/^[\w\-. ]+$/.test(serverName)) {
+					this.sendJson(res, 400, { error: 'Invalid serverName' });
 					return;
 				}
-				if (!sessionId) {
-					this.sendJson(res, 400, { error: 'sessionId is required' });
+				if (!sessionId || !/^[\w\-]+$/.test(sessionId)) {
+					this.sendJson(res, 400, { error: 'Invalid sessionId' });
 					return;
 				}
 				this.log(`[Server] MCP OAuth login requested for: ${serverName} (session: ${sessionId.slice(0, 8)})`);
@@ -1394,9 +1390,12 @@ export class PortalServer {
 			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
 				try {
 					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
-					if (tokens.accessToken) {
-						const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString());
-						if (payload.tid) { tenantId = payload.tid; break; }
+					if (tokens.accessToken && typeof tokens.accessToken === 'string') {
+						const parts = tokens.accessToken.split('.');
+						if (parts.length === 3) {
+							const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+							if (payload.tid) { tenantId = payload.tid; break; }
+						}
 					}
 				} catch { /* skip */ }
 			}
@@ -1432,54 +1431,11 @@ export class PortalServer {
 		}
 
 		if (!tenantId) {
-			// Return known servers without tenant — UI can prompt for domain
 			return { tenantId: null, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
 		}
 
-		// 2. Read the OAuth token for probing
-		let accessToken: string | null = null;
-		if (fs.existsSync(oauthDir)) {
-			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
-				try {
-					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
-					if (tokens.accessToken && tokens.expiresAt > Date.now() / 1000) {
-						accessToken = tokens.accessToken;
-						break;
-					}
-				} catch { /* skip */ }
-			}
-		}
-
-
-		if (!accessToken) {
-			// No token — return known servers without tool counts
-			return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
-		}
-
-		// 3. Probe each server for tool counts
-		const base = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantId}/servers`;
-		const headers = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
-		const toolsBody = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/list', params: {} });
-
-		const results = await Promise.allSettled(knownServers.map(async (s) => {
-			try {
-				const resp = await fetch(`${base}/${s.name}`, { method: 'POST', headers, body: toolsBody });
-				if (!resp.ok) return { ...s, toolCount: 0 };
-				const text = await resp.text();
-				const json = JSON.parse(text.replace(/^event: message\ndata: /, ''));
-				return { ...s, toolCount: json.result?.tools?.length ?? 0 };
-			} catch {
-				return { ...s, toolCount: 0 };
-			}
-		}));
-
-		const servers = results
-			.map(r => r.status === 'fulfilled' ? r.value : null)
-			.filter((s): s is NonNullable<typeof s> => s !== null)
-			.sort((a, b) => b.toolCount - a.toolCount);
-
-		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${servers.filter(s => s.toolCount > 0).length} servers with tools`);
-		return { tenantId, servers };
+		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${knownServers.length} servers in catalog`);
+		return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -1707,7 +1663,9 @@ export class PortalServer {
 	broadcastAll(msg: object): void {
 		const data = JSON.stringify(msg);
 		for (const client of this.wss.clients) {
-			if (client.readyState === WebSocket.OPEN) client.send(data);
+			if (client.readyState === WebSocket.OPEN) {
+				try { client.send(data); } catch { client.terminate(); }
+			}
 		}
 	}
 
