@@ -1367,30 +1367,40 @@ export class PortalServer {
 		});
 	}
 
-	/** Discover M365 MCP servers by reading tenant ID from cached OAuth tokens and probing Agent365. */
+	/** Discover M365 MCP servers by parsing OAuth token scopes and probing Agent365. */
 	private async discoverM365Servers(): Promise<{ tenantId: string | null; servers: Array<{ name: string; label: string; toolCount: number; description: string; url?: string }> }> {
-		const knownServers: Array<{ name: string; label: string; description: string; url?: string }> = [
-			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search', url: 'https://github.com/microsoft/mcp#-microsoft-teams' },
-			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/microsoft/mcp#-microsoft-365-calendar' },
-			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
-			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders', url: 'https://github.com/microsoft/mcp#-microsoft-365-mail' },
-			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports', url: 'https://github.com/microsoft/mcp#-microsoft-365-user' },
-			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
-			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
-			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
-			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot', url: 'https://github.com/microsoft/mcp#-microsoft-365-copilot-chat' },
-			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
-			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
-			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
-			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
-			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
-		];
+		// Scope name → server URL name (where they differ)
+		const scopeToServer: Record<string, string> = {
+			'Calendar': 'mcp_CalendarTools',
+			'CopilotMCP': 'mcp_M365Copilot',
+			'TaskPersonalization': 'mcp_TaskPersonalizationServer',
+		};
+		// Known metadata for discovered servers
+		const serverMeta: Record<string, { label: string; description: string; url?: string }> = {
+			'Teams': { label: 'Teams', description: 'Messages, channels, chats, files, search', url: 'https://github.com/microsoft/mcp#-microsoft-teams' },
+			'Calendar': { label: 'Calendar', description: 'Events, meeting times, rooms, RSVP', url: 'https://github.com/microsoft/mcp#-microsoft-365-calendar' },
+			'Planner': { label: 'Planner', description: 'Plans, goals, tasks, groups', url: 'https://github.com/microsoft/mcp' },
+			'Mail': { label: 'Mail', description: 'Email messages and folders', url: 'https://github.com/microsoft/mcp#-microsoft-365-mail' },
+			'Me': { label: 'People', description: 'User details, manager, reports', url: 'https://github.com/microsoft/mcp#-microsoft-365-user' },
+			'Word': { label: 'Word', description: 'Create documents, comments', url: 'https://github.com/microsoft/mcp' },
+			'Excel': { label: 'Excel', description: 'Create workbooks, comments', url: 'https://github.com/microsoft/mcp' },
+			'Powerpoint': { label: 'PowerPoint', description: 'Presentations', url: 'https://github.com/microsoft/mcp' },
+			'CopilotMCP': { label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot', url: 'https://github.com/microsoft/mcp#-microsoft-365-copilot-chat' },
+			'OneDrive': { label: 'OneDrive', description: 'File storage and sharing', url: 'https://github.com/microsoft/mcp' },
+			'SharePoint': { label: 'SharePoint', description: 'Sites and document libraries', url: 'https://github.com/microsoft/mcp' },
+			'TaskPersonalization': { label: 'Automations', description: 'Event triggers and automation rules', url: 'https://github.com/microsoft/mcp' },
+			'WebSearch': { label: 'Web Search', description: 'Search the web', url: 'https://github.com/microsoft/mcp' },
+			'Knowledge': { label: 'Knowledge', description: 'Organizational knowledge', url: 'https://github.com/microsoft/mcp' },
+			'Files': { label: 'Files', description: 'File management', url: 'https://github.com/microsoft/mcp' },
+		};
 
 		const home = os.homedir();
 		const oauthDir = path.join(home, '.copilot', 'mcp-oauth-config');
 
-		// 1. Extract tenant ID from cached OAuth tokens
+		// 1. Extract tenant ID and server list from cached OAuth token scopes
 		let tenantId: string | null = null;
+		let accessToken: string | null = null;
+		let discoveredScopes: string[] = [];
 		if (fs.existsSync(oauthDir)) {
 			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
 				try {
@@ -1398,14 +1408,29 @@ export class PortalServer {
 					if (tokens.accessToken && typeof tokens.accessToken === 'string') {
 						const parts = tokens.accessToken.split('.');
 						if (parts.length === 3) {
-							const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-							if (payload.tid) { tenantId = payload.tid; break; }
+							const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+							const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+							const payload = JSON.parse(Buffer.from(padded, 'base64').toString());
+							if (payload.tid && !tenantId) tenantId = payload.tid;
+							// Extract MCP server names from scopes
+							if (payload.scp) {
+								const scopes = (payload.scp as string).split(' ');
+								for (const scope of scopes) {
+									const match = scope.match(/^McpServers\.(.+)\.All$/);
+									if (match && !discoveredScopes.includes(match[1])) {
+										discoveredScopes.push(match[1]);
+									}
+								}
+							}
+							if (tokens.expiresAt > Date.now() / 1000 && !accessToken) {
+								accessToken = tokens.accessToken;
+							}
 						}
 					}
 				} catch { /* skip */ }
 			}
 		}
-		// Fallback: try az CLI
+		// Fallback: try az CLI for tenant
 		if (!tenantId) {
 			try {
 				const result = spawnSync('az', ['account', 'show', '--query', 'tenantId', '-o', 'tsv'], { stdio: 'pipe', windowsHide: true, timeout: 5000 });
@@ -1435,35 +1460,36 @@ export class PortalServer {
 			} catch { /* skip */ }
 		}
 
-		if (!tenantId) {
-			return { tenantId: null, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
-		}
+		// Build server list from discovered scopes
+		const buildServerList = () => discoveredScopes.map(scope => {
+			const serverName = scopeToServer[scope] ?? `mcp_${scope}Server`;
+			const meta = serverMeta[scope];
+			return {
+				name: serverName,
+				label: meta?.label ?? scope,
+				description: meta?.description ?? scope,
+				url: meta?.url,
+				toolCount: -1,
+			};
+		});
 
-		// Read cached OAuth token for probing tool counts
-		let accessToken: string | null = null;
-		if (fs.existsSync(oauthDir)) {
-			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
-				try {
-					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
-					if (tokens.accessToken && tokens.expiresAt > Date.now() / 1000) {
-						accessToken = tokens.accessToken;
-						break;
-					}
-				} catch {}
-			}
+		if (!tenantId) {
+			return { tenantId: null, servers: discoveredScopes.length > 0 ? buildServerList() : [] };
 		}
 
 		if (!accessToken) {
-			this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, no token for probing`);
-			return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
+			const servers = buildServerList();
+			this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${servers.length} servers from scopes (no token for probing)`);
+			return { tenantId, servers };
 		}
 
-		// Probe each server for tool counts
+		// Probe each discovered server for tool counts
+		const serversToProbe = buildServerList();
 		const base = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantId}/servers`;
 		const headers = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
 		const toolsBody = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/list', params: {} });
 
-		const results = await Promise.allSettled(knownServers.map(async (s) => {
+		const results = await Promise.allSettled(serversToProbe.map(async (s) => {
 			try {
 				const resp = await fetch(`${base}/${s.name}`, { method: 'POST', headers, body: toolsBody });
 				if (!resp.ok) return { ...s, toolCount: 0 };
