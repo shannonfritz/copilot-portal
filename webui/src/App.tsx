@@ -939,6 +939,9 @@ function SessionDrawer({
 											'microsoft-learn': { desc: 'Official Microsoft documentation', url: 'https://github.com/microsoftdocs/mcp' },
 											'foundry': { desc: 'AI models, knowledge, evaluation', url: 'https://github.com/microsoft/mcp' },
 											'Automations': { desc: 'Event triggers and automation rules', url: 'https://github.com/microsoft/mcp' },
+											'Admin Center': { desc: 'Microsoft 365 admin tools', url: 'https://github.com/microsoft/mcp#%EF%B8%8F-microsoft-admin-center' },
+											'Knowledge': { desc: 'Organizational knowledge', url: 'https://github.com/microsoft/mcp' },
+											'Web Search': { desc: 'Search the web', url: 'https://github.com/microsoft/mcp' },
 										};
 										const info = knownInfo[s.name];
 										const summary = info?.desc;

@@ -1374,6 +1374,10 @@ export class PortalServer {
 			'Calendar': 'mcp_CalendarTools',
 			'CopilotMCP': 'mcp_M365Copilot',
 			'TaskPersonalization': 'mcp_TaskPersonalizationServer',
+			'Mail': 'mcp_MailTools',
+			'Knowledge': 'mcp_KnowledgeTools',
+			'WebSearch': 'mcp_WebSearchTools',
+			'Admin365Graph': 'mcp_AdminTools',
 		};
 		// Known metadata for discovered servers
 		const serverMeta: Record<string, { label: string; description: string; url?: string }> = {
@@ -1392,6 +1396,7 @@ export class PortalServer {
 			'WebSearch': { label: 'Web Search', description: 'Search the web', url: 'https://github.com/microsoft/mcp' },
 			'Knowledge': { label: 'Knowledge', description: 'Organizational knowledge', url: 'https://github.com/microsoft/mcp' },
 			'Files': { label: 'Files', description: 'File management', url: 'https://github.com/microsoft/mcp' },
+			'Admin365Graph': { label: 'Admin Center', description: 'Microsoft 365 admin tools', url: 'https://github.com/microsoft/mcp#%EF%B8%8F-microsoft-admin-center' },
 		};
 
 		const home = os.homedir();
