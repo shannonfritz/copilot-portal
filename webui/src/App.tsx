@@ -2409,13 +2409,18 @@ export default function App() {
 									const data = await res.json();
 									if (data.authorizationUrl) {
 										mcpAuthPendingRef.current.set(d.serverName!, data.authorizationUrl);
-										const pending = mcpAuthPendingRef.current;
-										const names = [...pending.keys()].join(', ');
-										setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
-											setNotification(null);
-											for (const url of pending.values()) window.open(url, '_blank');
-											pending.clear();
-										} } });
+										// Show banner for all pending — Sign in opens only the first
+										const showPendingBanner = () => {
+											const pending = mcpAuthPendingRef.current;
+											if (pending.size === 0) return;
+											const names = [...pending.keys()].join(', ');
+											const firstUrl = [...pending.values()][0];
+											setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+												setNotification(null);
+												window.open(firstUrl, '_blank');
+											} } });
+										};
+										showPendingBanner();
 									}
 								} catch {}
 							})();
@@ -2430,18 +2435,20 @@ export default function App() {
 								// New server (e.g. builtin) — add it
 								return [...prev, { name: d.serverName!, type: 'unknown', source: d.serverName === 'github-mcp-server' ? 'builtin' : 'unknown', enabled: d.status === 'connected', status: d.status }];
 							});
-							// Clear from pending auth when server connects
+							// Remove from pending auth when server connects, re-show banner for remaining
 							if (d.status === 'connected') {
 								mcpAuthPendingRef.current.delete(d.serverName!);
-								if (mcpAuthPendingRef.current.size === 0) {
+								const pending = mcpAuthPendingRef.current;
+								if (pending.size === 0) {
 									setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
 								} else {
-									// Update banner with remaining servers
-									const names = [...mcpAuthPendingRef.current.keys()].join(', ');
-									const pending = mcpAuthPendingRef.current;
-									setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in')
-										? { ...prev, message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.` }
-										: prev);
+									// Re-show banner for next server
+									const names = [...pending.keys()].join(', ');
+									const firstUrl = [...pending.values()][0];
+									setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+										setNotification(null);
+										window.open(firstUrl, '_blank');
+									} } });
 								}
 							}
 						}
