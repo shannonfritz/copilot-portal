@@ -663,10 +663,6 @@ function SessionDrawer({
 				setCurrentAgent(data.current);
 				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 			}).catch(() => {});
-			// Fetch MCP server count for summary
-			apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
-				setMcpServers(data.servers ?? []);
-			}).catch(() => {});
 		}
 	}, [open, activeSessionId]);
 
