@@ -1751,9 +1751,6 @@ export class SessionPool {
 				}
 			}
 		} catch { /* ignore */ }
-		if (Object.keys(servers).length > 0) {
-			this.log(`[Pool] MCP servers loaded: ${Object.keys(servers).join(', ')}`);
-		}
 		return servers;
 	}
 
@@ -1965,11 +1962,14 @@ export class SessionPool {
 		const allSessions = await this.client.listSessions();
 		const meta = allSessions.find(s => s.sessionId === sessionId);
 		const sessionCwd = meta?.context?.cwd;
+		const mcpServers = this.loadMcpServers();
+		const mcpNames = Object.keys(mcpServers);
+		if (mcpNames.length > 0) this.log(`[Pool] MCP servers: ${mcpNames.join(', ')}`);
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
 			workingDirectory: sessionCwd,
 			enableConfigDiscovery: true,
-			mcpServers: this.loadMcpServers(),
+			mcpServers,
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
