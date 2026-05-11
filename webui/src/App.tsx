@@ -1066,7 +1066,7 @@ function SessionDrawer({
 													</div>
 												))}
 												{/* M365 section */}
-												<div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Microsoft 365</div>
+												<div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Microsoft Agent 365</div>
 												{m365Loading ? (
 													<div className="flex items-center justify-center gap-2 px-3 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
 														<svg className="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
