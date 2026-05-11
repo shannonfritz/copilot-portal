@@ -1688,6 +1688,7 @@ export class SessionPool {
 		}
 		// Get source info from config discovery (knows about plugins vs user)
 		let discovered: Array<{ name: string; type: string; source: string; enabled: boolean }> = [];
+		const configMap = new Map<string, { type: string; url?: string; command?: string }>();
 		try {
 			// Use mcp.discover for stdio/plugin servers + read config file for HTTP servers
 			discovered = await this.discoverMcpServers();
@@ -1696,9 +1697,12 @@ export class SessionPool {
 				if (fs.existsSync(configPath)) {
 					const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 					for (const [name, cfg] of Object.entries(config.mcpServers ?? {})) {
+						const c = cfg as any;
 						if (!discovered.find(s => s.name === name)) {
-							discovered.push({ name, type: (cfg as any).type ?? 'stdio', source: 'user', enabled: true });
+							discovered.push({ name, type: c.type ?? 'stdio', source: 'user', enabled: true });
 						}
+						// Store config details for clone feature
+						configMap.set(name, c.type === 'http' ? { type: 'http', url: c.url } : { type: 'stdio', command: [c.command, ...(c.args ?? [])].join(' ') });
 					}
 				}
 			} catch {}
@@ -1706,23 +1710,22 @@ export class SessionPool {
 		const sourceMap = new Map(discovered.map(s => [s.name, s.source]));
 
 		if (liveServers) {
-			// Merge: live servers (with status) + discovered-only servers (config but not in session yet)
 			const result = liveServers.map(s => ({
 				name: s.name,
 				type: s.source === 'builtin' ? 'builtin' : 'unknown',
 				source: s.source ?? sourceMap.get(s.name) ?? 'unknown',
 				enabled: s.status === 'connected',
 				status: s.status,
+				...(configMap.get(s.name) ? { config: configMap.get(s.name) } : {}),
 			}));
-			// Add any discovered servers not in the live list (e.g. just added, not loaded yet)
 			for (const d of discovered) {
 				if (!result.find(r => r.name === d.name)) {
-					result.push({ ...d, status: 'pending' });
+					result.push({ ...d, status: 'pending', ...(configMap.get(d.name) ? { config: configMap.get(d.name) } : {}) });
 				}
 			}
 			return result;
 		}
-		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'pending' }));
+		return discovered.map(s => ({ ...s, status: s.enabled ? 'connected' : 'pending', ...(configMap.get(s.name) ? { config: configMap.get(s.name) } : {}) }));
 	}
 
 	/** Gather MCP server configs from ~/.copilot/mcp-config.json and installed plugins */

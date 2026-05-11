@@ -1006,15 +1006,35 @@ function SessionDrawer({
 												>Retry</button>
 											)}
 											{isRemovable ? (
-												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
-													onClick={() => confirmMcpChange(async () => {
-														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
-														setMcpServers(prev => prev.filter(x => x.name !== s.name));
-													})}
-													title="Remove server"
-												>
-													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
-												</button>
+												<>
+													<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
+														onClick={() => {
+															const cfg = (s as any).config;
+															if (cfg?.type === 'http' && cfg.url) {
+																setMcpAddType('url');
+																setMcpAddName(`${s.name} (copy)`);
+																setMcpAddCommand(cfg.url);
+															} else if (cfg?.command) {
+																setMcpAddType('command');
+																setMcpAddName(`${s.name} (copy)`);
+																setMcpAddCommand(cfg.command);
+															}
+															setShowMcpAdd(true);
+														}}
+														title="Clone server"
+													>
+														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+													</button>
+													<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
+														onClick={() => confirmMcpChange(async () => {
+															await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
+															setMcpServers(prev => prev.filter(x => x.name !== s.name));
+														})}
+														title="Remove server"
+													>
+														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+													</button>
+												</>
 											) : !isRemovable && s.source && s.source !== 'unknown' ? (
 												<span className="shrink-0 rounded px-1.5 py-0.5 text-[10px]" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
 													{s.source}
