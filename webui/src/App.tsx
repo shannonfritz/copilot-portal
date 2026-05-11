@@ -663,6 +663,18 @@ function SessionDrawer({
 				setCurrentAgent(data.current);
 				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 			}).catch(() => {});
+			// Seed MCP server list from config (names + sources)
+			apiFetch('/api/mcp').then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
+				setMcpServers(prev => {
+					const fetched = data.servers ?? [];
+					if (prev.length === 0) return fetched;
+					const result = [...prev];
+					for (const s of fetched) {
+						if (!result.find(x => x.name === s.name)) result.push(s);
+					}
+					return result;
+				});
+			}).catch(() => {});
 		}
 	}, [open, activeSessionId]);
 
@@ -1767,22 +1779,6 @@ export default function App() {
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
-			// Seed MCP server list from config (names + sources only)
-			// Real-time events (mcp_server_status_changed) will update statuses
-			setTimeout(async () => {
-				try {
-					const r = await apiFetch('/api/mcp').then(r => r.json());
-					const fetched = r.servers ?? [];
-					setMcpServers(prev => {
-						if (prev.length === 0) return fetched;
-						const result = [...prev];
-						for (const s of fetched) {
-							if (!result.find(x => x.name === s.name)) result.push(s);
-						}
-						return result;
-					});
-				} catch {}
-			}, 500);
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
