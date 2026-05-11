@@ -1778,7 +1778,22 @@ export default function App() {
 					const sid = activeSessionIdRef.current;
 					if (!sid) return;
 					const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(sid)}`).then(r => r.json());
-					setMcpServers(r.servers ?? []);
+					const fetched = r.servers ?? [];
+					setMcpServers(prev => {
+						if (prev.length === 0) return fetched;
+						// Merge: keep existing status if already set by real-time events
+						const result = [...prev];
+						for (const s of fetched) {
+							const existing = result.find(x => x.name === s.name);
+							if (!existing) {
+								result.push(s);
+							} else if (existing.status === 'pending' || !existing.status) {
+								// Only update if we don't have a real status yet
+								Object.assign(existing, { ...s, status: s.status, enabled: s.enabled });
+							}
+						}
+						return result;
+					});
 				} catch {}
 			}, 2000);
 			// Heartbeat will be started after first message arrives (see onmessage).
