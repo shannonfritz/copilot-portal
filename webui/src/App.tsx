@@ -1147,7 +1147,7 @@ function SessionDrawer({
 																<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
 																	Add a server — sign-in will be prompted after restart
 																</div>
-																{m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 8).map(s => (
+																{m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 8).map(s => (
 																	<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
 																		<div className="flex-1">
 																			<span>{s.label}</span>
@@ -1167,12 +1167,12 @@ function SessionDrawer({
 														)}
 													</>
 												) : (
-													m365Servers.filter(s => !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
+													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 															<div className="flex-1">
 																<span>{s.label}</span>
 																<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-																	{s.description}
+																	{s.description}{s.toolCount > 0 ? ` · ${s.toolCount} tools` : ''}
 																</div>
 															</div>
 															<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"

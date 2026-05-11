@@ -1373,11 +1373,17 @@ export class PortalServer {
 			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search' },
 			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP' },
 			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
+			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders' },
 			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports' },
 			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
 			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
+			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
 			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot' },
+			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
+			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
 			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
+			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
+			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
 		];
 
 		const home = os.homedir();
@@ -1433,8 +1439,49 @@ export class PortalServer {
 			return { tenantId: null, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
 		}
 
-		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${knownServers.length} servers in catalog`);
-		return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
+		// Read cached OAuth token for probing tool counts
+		let accessToken: string | null = null;
+		if (fs.existsSync(oauthDir)) {
+			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
+				try {
+					const tokens = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf8'));
+					if (tokens.accessToken && tokens.expiresAt > Date.now() / 1000) {
+						accessToken = tokens.accessToken;
+						break;
+					}
+				} catch {}
+			}
+		}
+
+		if (!accessToken) {
+			this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, no token for probing`);
+			return { tenantId, servers: knownServers.map(s => ({ ...s, toolCount: -1 })) };
+		}
+
+		// Probe each server for tool counts
+		const base = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantId}/servers`;
+		const headers = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
+		const toolsBody = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/list', params: {} });
+
+		const results = await Promise.allSettled(knownServers.map(async (s) => {
+			try {
+				const resp = await fetch(`${base}/${s.name}`, { method: 'POST', headers, body: toolsBody });
+				if (!resp.ok) return { ...s, toolCount: 0 };
+				const text = await resp.text();
+				const json = JSON.parse(text.replace(/^event: message\ndata: /, ''));
+				return { ...s, toolCount: json.result?.tools?.length ?? 0 };
+			} catch {
+				return { ...s, toolCount: 0 };
+			}
+		}));
+
+		const servers = results
+			.map(r => r.status === 'fulfilled' ? r.value : null)
+			.filter((s): s is NonNullable<typeof s> => s !== null)
+			.sort((a, b) => b.toolCount - a.toolCount);
+
+		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${servers.filter(s => s.toolCount > 0).length}/${servers.length} servers with tools`);
+		return { tenantId, servers };
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {
