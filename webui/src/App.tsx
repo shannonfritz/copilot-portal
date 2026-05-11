@@ -587,6 +587,8 @@ function SessionDrawer({
 	onChangeCwd,
 	onAgentChange,
 	onMcpChanged,
+	mcpServers,
+	setMcpServers,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -608,6 +610,8 @@ function SessionDrawer({
 	onChangeCwd?: (newCwd: string) => Promise<void>;
 	onAgentChange?: (agentName: string | null) => void;
 	onMcpChanged?: () => void;
+	mcpServers: Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>;
+	setMcpServers: React.Dispatch<React.SetStateAction<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }> | null>(null);
@@ -623,7 +627,6 @@ function SessionDrawer({
 	const [mcpListAtBottom, setMcpListAtBottom] = useState(true);
 	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(true);
 	const [showMcpList, setShowMcpList] = useState(false);
-	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
 	const [mcpAddName, setMcpAddName] = useState('');
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
@@ -1446,6 +1449,7 @@ export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
+	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [messages, setMessagesState] = useState<Message[]>([]);
 	const messagesRef = useRef<Message[]>([]);
 	const setMessages = useCallback((arg: Message[] | ((prev: Message[]) => Message[])) => {
@@ -4111,6 +4115,8 @@ export default function App() {
 						apiFetch('/api/restart-cli', { method: 'POST' }).catch(() => {});
 						// cli_status 'connected' event will trigger auto-reload
 					}}
+					mcpServers={mcpServers}
+					setMcpServers={setMcpServers}
 					/>
 				)}
 
