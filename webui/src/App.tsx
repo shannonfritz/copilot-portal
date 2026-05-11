@@ -636,6 +636,11 @@ function SessionDrawer({
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
+
+	const confirmMcpChange = (action: () => Promise<void>) => {
+		if (!confirm('This will restart the Copilot CLI and reload the page. Continue?')) return;
+		action().then(() => onMcpChanged?.());
+	};
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
 	const currentModelName = models.find(m => m.id === currentModelId)?.name ?? currentModelId ?? '…';
@@ -970,11 +975,10 @@ function SessionDrawer({
 											)}
 											{isRemovable ? (
 												<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
-													onClick={async () => {
+													onClick={() => confirmMcpChange(async () => {
 														await apiFetch(`/api/mcp?name=${encodeURIComponent(s.name)}`, { method: 'DELETE' }).catch(() => {});
 														setMcpServers(prev => prev.filter(x => x.name !== s.name));
-														onMcpChanged?.();
-													}}
+													})}
 													title="Remove server"
 												>
 													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
@@ -1025,19 +1029,16 @@ function SessionDrawer({
 														</div>
 														<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 															style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-															onClick={async () => {
-																try {
-																	if ((f as any).mcpUrl) {
-																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, type: 'http', mcpUrl: (f as any).mcpUrl }) });
-																		setMcpServers(prev => [...prev, { name: f.name, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
-																	} else {
-																		const parts = ((f as any).cmd as string).split(/\s+/);
-																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
-																		setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
-																	}
-																	onMcpChanged?.();
-																} catch {}
-															}}
+															onClick={() => confirmMcpChange(async () => {
+																if ((f as any).mcpUrl) {
+																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, type: 'http', mcpUrl: (f as any).mcpUrl }) });
+																	setMcpServers(prev => [...prev, { name: f.name, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
+																} else {
+																	const parts = ((f as any).cmd as string).split(/\s+/);
+																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name, command: parts[0], args: parts.slice(1) }) });
+																	setMcpServers(prev => [...prev, { name: f.name, type: 'stdio', source: 'user', enabled: true }]);
+																}
+															})}
 														>Add</button>
 													</div>
 												))}
@@ -1131,14 +1132,11 @@ function SessionDrawer({
 																		</div>
 																		<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 																			style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-																			onClick={async () => {
+																			onClick={() => confirmMcpChange(async () => {
 																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
-																				try {
-																					await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																					setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
-																					onMcpChanged?.();
-																				} catch {}
-																			}}
+																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
+																				setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
+																			})}
 																		>Add</button>
 																	</div>
 																))}
@@ -1156,14 +1154,11 @@ function SessionDrawer({
 															</div>
 															<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
 																style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-																onClick={async () => {
+																onClick={() => confirmMcpChange(async () => {
 																	const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
-																	try {
-																		await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																		setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
-																		onMcpChanged?.();
-																	} catch {}
-																}}
+																	await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
+																	setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
+																})}
 															>Add</button>
 														</div>
 													))
@@ -1184,7 +1179,7 @@ function SessionDrawer({
 													<button type="button" data-add className="rounded px-3 py-1 text-xs font-medium"
 														style={{ background: 'var(--primary)', color: 'var(--button-contrast)', opacity: mcpAddName && mcpAddCommand && !mcpAdding ? 1 : 0.5 }}
 														disabled={!mcpAddName || !mcpAddCommand || mcpAdding}
-														onClick={async () => {
+														onClick={() => confirmMcpChange(async () => {
 															setMcpAdding(true);
 															try {
 																if (mcpAddType === 'url') {
@@ -1196,10 +1191,8 @@ function SessionDrawer({
 																	setMcpServers(prev => [...prev, { name: mcpAddName.trim(), type: 'stdio', source: 'user', enabled: true }]);
 																}
 																setMcpAddName(''); setMcpAddCommand(''); setShowMcpAdd(false);
-																onMcpChanged?.();
-															} catch {}
-															setMcpAdding(false);
-														}}
+															} finally { setMcpAdding(false); }
+														})}
 													>{mcpAdding ? 'Adding…' : 'Add'}</button>
 												</div>
 											</div>
@@ -2358,7 +2351,8 @@ export default function App() {
 					setCliStatus((event as any).status ?? 'disconnected');
 					// After CLI reconnects, prompt user to reload for clean state
 					if ((event as any).status === 'connected') {
-						setNotification({ type: 'info', message: 'CLI server reconnected.', action: { label: 'Reload', onClick: () => window.location.reload() } });
+						// Auto-reload after CLI restart to get fresh MCP state
+						window.location.reload();
 					}
 				} else if ((event as any).type === 'mcp_servers_loaded') {
 					try {
@@ -4098,12 +4092,10 @@ export default function App() {
 					}}
 					onAgentChange={setActiveAgent}
 					onMcpChanged={() => {
-						setNotification({ type: 'warning', message: 'MCP servers changed. Restart CLI to activate.', action: { label: 'Restart CLI', onClick: async () => {
-							setNotification(null);
-							try {
-								await apiFetch('/api/restart-cli', { method: 'POST' });
-							} catch { /* expected */ }
-						} } });
+						// Auto-restart CLI and reload after MCP config changes
+						setNotification({ type: 'info', message: 'Restarting CLI server…' });
+						apiFetch('/api/restart-cli', { method: 'POST' }).catch(() => {});
+						// cli_status 'connected' event will trigger auto-reload
 					}}
 					/>
 				)}
