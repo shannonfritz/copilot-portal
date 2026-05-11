@@ -589,6 +589,8 @@ function SessionDrawer({
 	onMcpChanged,
 	mcpServers,
 	setMcpServers,
+	mcpConfirm,
+	setMcpConfirm,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -612,6 +614,8 @@ function SessionDrawer({
 	onMcpChanged?: () => void;
 	mcpServers: Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>;
 	setMcpServers: React.Dispatch<React.SetStateAction<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>>;
+	mcpConfirm: { message: string; onConfirm: () => void } | null;
+	setMcpConfirm: React.Dispatch<React.SetStateAction<{ message: string; onConfirm: () => void } | null>>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }> | null>(null);
@@ -639,8 +643,6 @@ function SessionDrawer({
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
-
-	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
 	const confirmMcpChange = (action: () => Promise<void>) => {
 		setMcpConfirm({
@@ -1241,21 +1243,6 @@ function SessionDrawer({
 										>Restart CLI</button>
 									</div>
 								)}
-								{mcpConfirm && (
-									<div className="border-t px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--warning-tint)' }}>
-										<div className="text-xs mb-2" style={{ color: 'var(--text)' }}>
-											⚠ {mcpConfirm.message}
-										</div>
-										<div className="flex gap-2 justify-end">
-											<button type="button" className="rounded px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }}
-												onClick={() => setMcpConfirm(null)}
-											>Cancel</button>
-											<button type="button" className="rounded px-3 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-												onClick={mcpConfirm.onConfirm}
-											>Continue</button>
-										</div>
-									</div>
-								)}
 								</div>
 								);
 							})()}
@@ -1472,6 +1459,7 @@ export default function App() {
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
+	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 	const [messages, setMessagesState] = useState<Message[]>([]);
 	const messagesRef = useRef<Message[]>([]);
 	const setMessages = useCallback((arg: Message[] | ((prev: Message[]) => Message[])) => {
@@ -3730,6 +3718,32 @@ export default function App() {
 				</div>
 			)}
 
+			{/* MCP confirm dialog */}
+			{mcpConfirm && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center p-4"
+					style={{ background: 'var(--overlay)' }}
+					onClick={() => setMcpConfirm(null)}
+				>
+					<div
+						className="w-full max-w-sm rounded-2xl p-5"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,0.4)' }}
+						onClick={e => e.stopPropagation()}
+					>
+						<div className="text-sm font-semibold mb-2">Confirm</div>
+						<div className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>{mcpConfirm.message}</div>
+						<div className="flex gap-2 justify-end">
+							<button type="button" className="rounded-lg px-4 py-2 text-sm" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+								onClick={() => setMcpConfirm(null)}
+							>Cancel</button>
+							<button type="button" className="rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+								onClick={mcpConfirm.onConfirm}
+							>OK</button>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
@@ -4139,6 +4153,8 @@ export default function App() {
 					}}
 					mcpServers={mcpServers}
 					setMcpServers={setMcpServers}
+					mcpConfirm={mcpConfirm}
+					setMcpConfirm={setMcpConfirm}
 					/>
 				)}
 
