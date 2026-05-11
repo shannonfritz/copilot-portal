@@ -1689,14 +1689,19 @@ export class SessionPool {
 		// Get source info from config discovery (knows about plugins vs user)
 		let discovered: Array<{ name: string; type: string; source: string; enabled: boolean }> = [];
 		try {
-			// Use mcp.discover for stdio servers + supplement with loadMcpServers for HTTP servers
+			// Use mcp.discover for stdio/plugin servers + read config file for HTTP servers
 			discovered = await this.discoverMcpServers();
-			const configServers = this.loadMcpServers();
-			for (const [name, config] of Object.entries(configServers)) {
-				if (!discovered.find(s => s.name === name)) {
-					discovered.push({ name, type: config.type ?? 'stdio', source: 'user', enabled: true });
+			try {
+				const configPath = path.join(os.homedir(), '.copilot', 'mcp-config.json');
+				if (fs.existsSync(configPath)) {
+					const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+					for (const [name, cfg] of Object.entries(config.mcpServers ?? {})) {
+						if (!discovered.find(s => s.name === name)) {
+							discovered.push({ name, type: (cfg as any).type ?? 'stdio', source: 'user', enabled: true });
+						}
+					}
 				}
-			}
+			} catch {}
 		} catch {}
 		const sourceMap = new Map(discovered.map(s => [s.name, s.source]));
 
@@ -1751,6 +1756,9 @@ export class SessionPool {
 				}
 			}
 		} catch { /* ignore */ }
+		if (Object.keys(servers).length > 0) {
+			this.log(`[Pool] MCP servers loaded: ${Object.keys(servers).join(', ')}`);
+		}
 		return servers;
 	}
 
@@ -1963,8 +1971,6 @@ export class SessionPool {
 		const meta = allSessions.find(s => s.sessionId === sessionId);
 		const sessionCwd = meta?.context?.cwd;
 		const mcpServers = this.loadMcpServers();
-		const mcpNames = Object.keys(mcpServers);
-		if (mcpNames.length > 0) this.log(`[Pool] MCP servers: ${mcpNames.join(', ')}`);
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
 			workingDirectory: sessionCwd,
