@@ -663,7 +663,12 @@ function SessionDrawer({
 				setCurrentAgent(data.current);
 				onAgentChange?.(data.current?.displayName ?? data.current?.name ?? null);
 			}).catch(() => {});
-			// Seed MCP server list from config (names + sources)
+		}
+	}, [open, activeSessionId]);
+
+	// Seed MCP server list from config — only on session change
+	useEffect(() => {
+		if (activeSessionId && !draft) {
 			apiFetch('/api/mcp').then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
 				setMcpServers(prev => {
 					const fetched = data.servers ?? [];
@@ -676,7 +681,7 @@ function SessionDrawer({
 				});
 			}).catch(() => {});
 		}
-	}, [open, activeSessionId]);
+	}, [activeSessionId]);
 
 	// Click-away to close pickers
 	useEffect(() => {
