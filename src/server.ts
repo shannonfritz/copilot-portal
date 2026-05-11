@@ -1373,17 +1373,11 @@ export class PortalServer {
 			{ name: 'mcp_TeamsServer', label: 'Teams', description: 'Messages, channels, chats, files, search' },
 			{ name: 'mcp_CalendarTools', label: 'Calendar', description: 'Events, meeting times, rooms, RSVP' },
 			{ name: 'mcp_PlannerServer', label: 'Planner', description: 'Plans, goals, tasks, groups' },
-			{ name: 'mcp_MailServer', label: 'Mail', description: 'Email messages and folders' },
 			{ name: 'mcp_MeServer', label: 'People', description: 'User details, manager, reports' },
 			{ name: 'mcp_WordServer', label: 'Word', description: 'Create documents, comments' },
 			{ name: 'mcp_ExcelServer', label: 'Excel', description: 'Create workbooks, comments' },
-			{ name: 'mcp_PowerpointServer', label: 'PowerPoint', description: 'Presentations' },
 			{ name: 'mcp_M365Copilot', label: 'M365 Copilot', description: 'Ask Microsoft 365 Copilot' },
-			{ name: 'mcp_OneDriveServer', label: 'OneDrive', description: 'File storage and sharing' },
-			{ name: 'mcp_SharePointServer', label: 'SharePoint', description: 'Sites and document libraries' },
 			{ name: 'mcp_TaskPersonalizationServer', label: 'Automations', description: 'Event triggers and automation rules' },
-			{ name: 'mcp_WebSearchServer', label: 'Web Search', description: 'Search the web' },
-			{ name: 'mcp_KnowledgeServer', label: 'Knowledge', description: 'Organizational knowledge' },
 		];
 
 		const home = os.homedir();
