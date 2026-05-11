@@ -1771,31 +1771,22 @@ export default function App() {
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
-			// Seed MCP server list after session loads (names + sources)
+			// Seed MCP server list from config (names + sources only)
 			// Real-time events (mcp_server_status_changed) will update statuses
 			setTimeout(async () => {
 				try {
-					const sid = activeSessionIdRef.current;
-					if (!sid) return;
-					const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(sid)}`).then(r => r.json());
+					const r = await apiFetch('/api/mcp').then(r => r.json());
 					const fetched = r.servers ?? [];
 					setMcpServers(prev => {
 						if (prev.length === 0) return fetched;
-						// Merge: keep existing status if already set by real-time events
 						const result = [...prev];
 						for (const s of fetched) {
-							const existing = result.find(x => x.name === s.name);
-							if (!existing) {
-								result.push(s);
-							} else if (existing.status === 'pending' || !existing.status) {
-								// Only update if we don't have a real status yet
-								Object.assign(existing, { ...s, status: s.status, enabled: s.enabled });
-							}
+							if (!result.find(x => x.name === s.name)) result.push(s);
 						}
 						return result;
 					});
 				} catch {}
-			}, 2000);
+			}, 500);
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
