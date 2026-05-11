@@ -1067,8 +1067,8 @@ function SessionDrawer({
 													(() => {
 														// Auto-discover on first render
 														if (!m365Loading) {
+															setM365Loading(true);
 															setTimeout(async () => {
-																setM365Loading(true);
 																try {
 																	const res = await apiFetch('/api/mcp/discover-m365');
 																	const data = await res.json();
