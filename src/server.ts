@@ -205,7 +205,7 @@ export class PortalServer {
 			// Replay history + pending requests.
 			// We capture sessionId at this point — it never changes for this connection.
 			const historySessionId = sessionId;
-			handle.getHistory(historyLimit).then((events) => {
+			handle.getHistory(historyLimit).then(async (events) => {
 				if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 				ws.send(JSON.stringify({ type: 'history_start', sessionId: historySessionId }));
 				for (const e of events) {
@@ -224,6 +224,11 @@ export class PortalServer {
 				// Send current approval rules and approveAll state for this session
 				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
 				ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: handle.getApproveAll() }));
+				// Send current MCP server list
+				try {
+					const mcpServers = await handle.listMcpServers();
+					ws.send(JSON.stringify({ type: 'mcp_servers_loaded', content: JSON.stringify(mcpServers) }));
+				} catch {}
 			}).catch(async (e) => {
 				const errMsg = String(e);
 				if (errMsg.includes('Session not found') || errMsg.includes('not found')) {

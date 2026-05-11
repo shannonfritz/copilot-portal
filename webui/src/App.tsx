@@ -2401,9 +2401,16 @@ export default function App() {
 								} catch {}
 							})();
 						}
-						// Update server status in MCP list
+						// Update server status in MCP list (or add if new)
 						if (d.serverName && d.status) {
-							setMcpServers(prev => prev.map(s => s.name === d.serverName ? { ...s, enabled: d.status === 'connected', status: d.status } : s));
+							setMcpServers(prev => {
+								const exists = prev.find(s => s.name === d.serverName);
+								if (exists) {
+									return prev.map(s => s.name === d.serverName ? { ...s, enabled: d.status === 'connected', status: d.status } : s);
+								}
+								// New server (e.g. builtin) — add it
+								return [...prev, { name: d.serverName!, type: 'unknown', source: d.serverName === 'github-mcp-server' ? 'builtin' : 'unknown', enabled: d.status === 'connected', status: d.status }];
+							});
 							// Clear sign-in notification when server connects
 							if (d.status === 'connected') {
 								setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
