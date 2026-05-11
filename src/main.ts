@@ -58,12 +58,12 @@ function isAutoStartEnabled(): boolean {
 function enableAutoStart(): string {
 	if (process.platform === 'win32') {
 		const cmd = path.join(portalDir, 'start-portal.cmd');
-		const r = spawnSync('schtasks', [
-			'/create', '/tn', TASK_NAME, '/f',
-			'/sc', 'onlogon',
-			'/tr', `cmd /c "cd /d "${portalDir}" && start-portal.cmd"`,
-		], { stdio: 'pipe', windowsHide: true });
-		if (r.status !== 0) throw new Error(r.stderr?.toString() ?? 'schtasks failed');
+		const ps = `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c cd /d "${portalDir}" && start-portal.cmd'
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName '${TASK_NAME}' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null`;
+		const r = spawnSync('pwsh', ['-NoProfile', '-Command', ps], { stdio: 'pipe', windowsHide: true });
+		if (r.status !== 0) throw new Error(r.stderr?.toString().trim() ?? 'Failed to create scheduled task');
 		return 'Scheduled task created — Portal will start at logon';
 	} else if (process.platform === 'darwin') {
 		const agentsDir = path.join(os.homedir(), 'Library', 'LaunchAgents');
@@ -117,7 +117,7 @@ WantedBy=default.target`;
 
 function disableAutoStart(): string {
 	if (process.platform === 'win32') {
-		spawnSync('schtasks', ['/delete', '/tn', TASK_NAME, '/f'], { stdio: 'pipe', windowsHide: true });
+		spawnSync('pwsh', ['-NoProfile', '-Command', `Unregister-ScheduledTask -TaskName '${TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue`], { stdio: 'pipe', windowsHide: true });
 		return 'Scheduled task removed';
 	} else if (process.platform === 'darwin') {
 		const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.copilot-portal.plist');
