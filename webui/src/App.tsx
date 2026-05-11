@@ -640,9 +640,16 @@ function SessionDrawer({
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
 
+	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
 	const confirmMcpChange = (action: () => Promise<void>) => {
-		if (!confirm('This will restart the Copilot CLI and reload the page. Continue?')) return;
-		action().then(() => onMcpChanged?.());
+		setMcpConfirm({
+			message: 'This will restart the Copilot CLI and reload the page.',
+			onConfirm: () => {
+				setMcpConfirm(null);
+				action().then(() => onMcpChanged?.());
+			},
+		});
 	};
 	const models = liveModels ?? info?.models ?? [];
 	const currentModelId = activeModel ?? models[0]?.id ?? null;
@@ -1232,6 +1239,21 @@ function SessionDrawer({
 												try { await apiFetch('/api/restart-cli', { method: 'POST' }); } catch {}
 											}}
 										>Restart CLI</button>
+									</div>
+								)}
+								{mcpConfirm && (
+									<div className="border-t px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--warning-tint)' }}>
+										<div className="text-xs mb-2" style={{ color: 'var(--text)' }}>
+											⚠ {mcpConfirm.message}
+										</div>
+										<div className="flex gap-2 justify-end">
+											<button type="button" className="rounded px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }}
+												onClick={() => setMcpConfirm(null)}
+											>Cancel</button>
+											<button type="button" className="rounded px-3 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+												onClick={mcpConfirm.onConfirm}
+											>Continue</button>
+										</div>
 									</div>
 								)}
 								</div>
