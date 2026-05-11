@@ -2,6 +2,49 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.7.0
+
+### 🔌 MCP Server Management
+- **Featured server catalog** with one-click add for WorkIQ, Playwright, and Microsoft Learn
+- **Microsoft Agent 365 discovery** — dynamically discovers available M365 MCP servers from OAuth token scopes (Teams, Calendar, Mail, Planner, Excel, Word, People, Admin Center, and more)
+- **OAuth sign-in flow** — auto-triggers login for servers needing authentication; sequential sign-in for multiple servers with combined notification banner
+- **Add/Remove servers** with confirmation dialog, automatic CLI restart, and page reload
+- **Server status indicators** — connected (●), needs sign-in (⚠), failed (✗), pending (○)
+- **Clone button** — duplicate an MCP server config to the URL/Command tab for easy cross-tenant setup
+- **Retry button** for failed servers
+- **Persistent Restart CLI** link in the MCP picker footer
+- Descriptions and docs links for all known servers
+
+### 🔗 Connection Indicators
+- **Two-dot status indicator** — top dot for Portal server, bottom dot for CLI/Copilot server
+- CLI dot follows Portal status (red when Portal disconnected)
+- CLI server restart via `/api/restart-cli` endpoint with full reconnect flow
+
+### 📐 Drawer & Layout
+- **Session drawer overlays messages** instead of pushing content down
+- Drawer pickers (MCP, Model, Agent) all standardized to same max height
+- Scroll fade effect at bottom of picker lists (hidden when scrolled to bottom or content fits)
+- Drawer order: CWD → MCP → Model → Agent
+- MCP add form uses tabbed layout (Featured | Command | URL) with styled tab navigation
+
+### 🔒 Security & Robustness
+- JWT token parsing validates 3-part format before decoding
+- Session connect race condition fixed with atomic evict-if-idle
+- Broadcast catches send errors and terminates dead WS connections
+- Heartbeat timeout properly cleared before creating new one
+- MCP server name and session ID validated against regex patterns
+- Removed external OAuth token probing (static catalog approach)
+
+### 🖥️ Auto-start
+- **`[s]` auto-start toggle** — cross-platform (Windows Task Scheduler, macOS Launch Agent, Linux systemd)
+- Portal auto-starts at login after reboot/updates
+
+### 🎨 UI Polish
+- Full-screen modal confirm dialog for MCP changes (replaces browser `confirm()`)
+- Loading spinner for MCP server list
+- MCP server descriptions in active server list with docs links
+- Connection indicator tooltip shows both Portal and CLI status
+
 ## v0.6.3
 
 ### 🔄 Reconnect & Sync

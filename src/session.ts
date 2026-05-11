@@ -265,9 +265,6 @@ export class SessionHandle {
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
 		const events = await this.session.getMessages();
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
-		// Log the first user.message event to inspect available timestamp fields
-		const firstMsg = events.find((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
-		if (firstMsg) this.log(`[History] Event keys: ${JSON.stringify(Object.keys(firstMsg))} | sample: ${JSON.stringify(firstMsg).slice(0, 300)}`);
 		const relevantEvents = events.filter((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
 const total = relevantEvents.length;
 const slicedEvents = (limit != null && total > limit)
