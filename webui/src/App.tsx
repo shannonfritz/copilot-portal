@@ -873,12 +873,6 @@ function SessionDrawer({
 									const opening = !showMcpList;
 									setShowMcpList(opening);
 									if (!opening) setShowMcpAdd(false);
-									if (opening) {
-										setMcpLoading(true);
-										apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionId!)}`).then(r => r.json()).then((data: { servers: typeof mcpServers }) => {
-											setMcpServers(data.servers ?? []);
-										}).catch(() => {}).finally(() => setMcpLoading(false));
-									}
 								}}
 							>
 								<div className="flex items-center gap-2">
@@ -897,13 +891,6 @@ function SessionDrawer({
 								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
 									onScroll={e => { const el = e.currentTarget; setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
 									ref={el => { if (el) setMcpListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
-									{/* Loading indicator */}
-									{mcpLoading && (
-										<div className="flex items-center justify-center gap-2 px-3 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>
-											<svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
-											Loading MCP servers…
-										</div>
-									)}
 									{/* Active servers */}
 									{mcpServers.map(s => {
 										const isBuiltin = s.source === 'builtin';
@@ -1784,31 +1771,16 @@ export default function App() {
 			}).catch(() => {});
 			pollUpdates();
 			setTimeout(pollUpdates, 15000);
-			// Check for MCP servers needing auth after session loads
+			// Seed MCP server list after session loads (names + sources)
+			// Real-time events (mcp_server_status_changed) will update statuses
 			setTimeout(async () => {
 				try {
 					const sid = activeSessionIdRef.current;
 					if (!sid) return;
 					const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(sid)}`).then(r => r.json());
-					const servers = r.servers ?? [];
-					const needsAuth = servers.filter((s: any) => s.status === 'needs-auth');
-					if (needsAuth.length > 0) {
-						for (const s of needsAuth) {
-							try {
-								const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: sid }) });
-								const data = await res.json();
-								if (data.authorizationUrl) {
-									setNotification({ type: 'warning', message: `${s.name} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
-										setNotification(null);
-										window.open(data.authorizationUrl, '_blank');
-									} } });
-									break; // Show one at a time
-								}
-							} catch {}
-						}
-					}
+					setMcpServers(r.servers ?? []);
 				} catch {}
-			}, 4000); // Wait for MCP servers to initialize
+			}, 2000);
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
@@ -2407,37 +2379,6 @@ export default function App() {
 							}
 							return updated;
 						});
-						// Auto-trigger sign-in for needs-auth servers
-						const needsAuth = servers.filter(s => s.status === 'needs-auth');
-						if (needsAuth.length > 0) {
-							(async () => {
-								let needsBrowser = false;
-								for (const s of needsAuth) {
-									try {
-										const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: s.name, sessionId: activeSessionIdRef.current }) });
-										const data = await res.json();
-										if (data.authorizationUrl) {
-											needsBrowser = true;
-											const names = needsAuth.map(x => x.name).join(', ');
-											setNotification({ type: 'warning', message: `${names} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
-												setNotification(null);
-												window.open(data.authorizationUrl, '_blank');
-											} } });
-											break;
-										}
-									} catch {}
-								}
-								if (!needsBrowser) {
-									// All servers authenticated silently — refresh MCP list
-									setTimeout(async () => {
-										try {
-											const r = await apiFetch(`/api/mcp?session=${encodeURIComponent(activeSessionIdRef.current!)}`).then(r => r.json());
-											setMcpServers(r.servers ?? []);
-										} catch {}
-									}, 2000);
-								}
-							})();
-						}
 					} catch {}
 				} else if ((event as any).type === 'mcp_server_status_changed') {
 					try {
