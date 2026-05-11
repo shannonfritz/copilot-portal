@@ -541,7 +541,7 @@ export class PortalServer {
 			try {
 				const body = JSON.parse(await this.readBody(req));
 				const { serverName, sessionId } = body as { serverName: string; sessionId?: string };
-				if (!serverName || !/^[\w\-. ]+$/.test(serverName)) {
+				if (!serverName || !/^[\w\-. ()]+$/.test(serverName)) {
 					this.sendJson(res, 400, { error: 'Invalid serverName' });
 					return;
 				}
