@@ -1,8 +1,11 @@
 import { PortalServer } from './server.js';
 import { TunnelManager } from './tunnel.js';
 import qrcode from 'qrcode-terminal';
-import { exec, spawnSync } from 'node:child_process';
+import { exec, execSync, spawnSync } from 'node:child_process';
 import * as net from 'node:net';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 const args = process.argv.slice(2);
 process.title = 'Copilot Portal';
@@ -34,6 +37,102 @@ const DATA_DIR = getArg('--data');
 const LAUNCH = args.includes('--launch');
 const NO_QR = args.includes('--no-qr');
 const NEW_TOKEN = args.includes('--new-token');
+
+// ---- Auto-start management ----
+const TASK_NAME = 'CopilotPortal';
+const portalDir = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')), '..');
+
+function isAutoStartEnabled(): boolean {
+	if (process.platform === 'win32') {
+		const r = spawnSync('schtasks', ['/query', '/tn', TASK_NAME], { stdio: 'pipe', windowsHide: true });
+		return r.status === 0;
+	} else if (process.platform === 'darwin') {
+		const plist = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.copilot-portal.plist');
+		return fs.existsSync(plist);
+	} else {
+		const service = path.join(os.homedir(), '.config', 'systemd', 'user', 'copilot-portal.service');
+		return fs.existsSync(service);
+	}
+}
+
+function enableAutoStart(): string {
+	if (process.platform === 'win32') {
+		const cmd = path.join(portalDir, 'start-portal.cmd');
+		const r = spawnSync('schtasks', [
+			'/create', '/tn', TASK_NAME, '/f',
+			'/sc', 'onlogon',
+			'/rl', 'highest',
+			'/tr', `cmd /c "cd /d "${portalDir}" && start-portal.cmd"`,
+		], { stdio: 'pipe', windowsHide: true });
+		if (r.status !== 0) throw new Error(r.stderr?.toString() ?? 'schtasks failed');
+		return 'Scheduled task created — Portal will start at logon';
+	} else if (process.platform === 'darwin') {
+		const agentsDir = path.join(os.homedir(), 'Library', 'LaunchAgents');
+		fs.mkdirSync(agentsDir, { recursive: true });
+		const plistPath = path.join(agentsDir, 'com.copilot-portal.plist');
+		const startScript = path.join(portalDir, 'start-portal.sh');
+		const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.copilot-portal</string>
+	<key>ProgramArguments</key><array>
+		<string>bash</string><string>-c</string>
+		<string>cd "${portalDir}" &amp;&amp; npm start</string>
+	</array>
+	<key>RunAtLoad</key><true/>
+	<key>KeepAlive</key><dict>
+		<key>SuccessfulExit</key><false/>
+	</dict>
+	<key>StandardOutPath</key><string>${path.join(portalDir, 'portal.log')}</string>
+	<key>StandardErrorPath</key><string>${path.join(portalDir, 'portal.log')}</string>
+	<key>WorkingDirectory</key><string>${portalDir}</string>
+</dict>
+</plist>`;
+		fs.writeFileSync(plistPath, plist);
+		spawnSync('launchctl', ['load', plistPath], { stdio: 'pipe' });
+		return 'Launch Agent created — Portal will start at login';
+	} else {
+		const serviceDir = path.join(os.homedir(), '.config', 'systemd', 'user');
+		fs.mkdirSync(serviceDir, { recursive: true });
+		const servicePath = path.join(serviceDir, 'copilot-portal.service');
+		const service = `[Unit]
+Description=Copilot Portal
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${portalDir}
+ExecStart=/usr/bin/env npm start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target`;
+		fs.writeFileSync(servicePath, service);
+		spawnSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' });
+		spawnSync('systemctl', ['--user', 'enable', 'copilot-portal.service'], { stdio: 'pipe' });
+		return 'systemd user service created — Portal will start at login';
+	}
+}
+
+function disableAutoStart(): string {
+	if (process.platform === 'win32') {
+		spawnSync('schtasks', ['/delete', '/tn', TASK_NAME, '/f'], { stdio: 'pipe', windowsHide: true });
+		return 'Scheduled task removed';
+	} else if (process.platform === 'darwin') {
+		const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.copilot-portal.plist');
+		spawnSync('launchctl', ['unload', plistPath], { stdio: 'pipe' });
+		try { fs.unlinkSync(plistPath); } catch {}
+		return 'Launch Agent removed';
+	} else {
+		spawnSync('systemctl', ['--user', 'disable', 'copilot-portal.service'], { stdio: 'pipe' });
+		const servicePath = path.join(os.homedir(), '.config', 'systemd', 'user', 'copilot-portal.service');
+		try { fs.unlinkSync(servicePath); } catch {}
+		spawnSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' });
+		return 'systemd service removed';
+	}
+}
 
 const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: CLI_URL });
 
@@ -332,8 +431,9 @@ if (process.stdin.isTTY) {
 	const showHelp = () => {
 		const tunnelState = tunnel.getState();
 		const tunnelLabel = tunnelState.running ? '[t] Stop Tunnel' : '[t] Tunnel';
+		const autoStart = isAutoStartEnabled();
 		console.log(`\n  Access:  [q] QR Code  [l] Launch Browser  ${tunnelLabel}  [T] Reset Access`);
-		console.log(`  Server:  [c] CLI Console  [u] Check Updates  [r] Restart  [x] Exit\n`);
+		console.log(`  Server:  [c] CLI Console  [u] Check Updates  [s] Auto-start: ${autoStart ? 'ON' : 'OFF'}  [r] Restart  [x] Exit\n`);
 	};
 	showHelp();
 
@@ -423,6 +523,27 @@ if (process.stdin.isTTY) {
 					console.log(`  Update check failed: ${e}\n`);
 				});
 				break;
+			case 's': {
+				const enabled = isAutoStartEnabled();
+				if (enabled) {
+					console.log('\n  Disabling auto-start...');
+					try {
+						const msg = disableAutoStart();
+						console.log(`  ✓ ${msg}\n`);
+					} catch (e) {
+						console.log(`  ✗ Failed: ${e}\n`);
+					}
+				} else {
+					console.log('\n  Enabling auto-start...');
+					try {
+						const msg = enableAutoStart();
+						console.log(`  ✓ ${msg}\n`);
+					} catch (e) {
+						console.log(`  ✗ Failed: ${e}\n`);
+					}
+				}
+				break;
+			}
 			case 'r':
 				console.log('\nRestarting...');
 				process.exit(75); // launcher catches this and relaunches
