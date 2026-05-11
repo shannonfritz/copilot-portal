@@ -1569,6 +1569,7 @@ export default function App() {
 	);
 	const [activeSessionSummary, setActiveSessionSummary] = useState<string | null>(null);
 	const activeSessionIdRef = useRef<string | null>(new URLSearchParams(window.location.search).get('session'));
+	const mcpAuthPendingRef = useRef<Map<string, string>>(new Map()); // serverName → authorizationUrl
 	const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
 	const [freeformAnswer, setFreeformAnswer] = useState('');
@@ -2407,9 +2408,13 @@ export default function App() {
 									const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: d.serverName, sessionId: activeSessionIdRef.current }) });
 									const data = await res.json();
 									if (data.authorizationUrl) {
-										setNotification({ type: 'warning', message: `${d.serverName} needs sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
+										mcpAuthPendingRef.current.set(d.serverName!, data.authorizationUrl);
+										const pending = mcpAuthPendingRef.current;
+										const names = [...pending.keys()].join(', ');
+										setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
 											setNotification(null);
-											window.open(data.authorizationUrl, '_blank');
+											for (const url of pending.values()) window.open(url, '_blank');
+											pending.clear();
 										} } });
 									}
 								} catch {}
@@ -2425,9 +2430,19 @@ export default function App() {
 								// New server (e.g. builtin) — add it
 								return [...prev, { name: d.serverName!, type: 'unknown', source: d.serverName === 'github-mcp-server' ? 'builtin' : 'unknown', enabled: d.status === 'connected', status: d.status }];
 							});
-							// Clear sign-in notification only when THE server that needs sign-in connects
+							// Clear from pending auth when server connects
 							if (d.status === 'connected') {
-								setNotification(prev => prev?.type === 'warning' && prev?.message?.includes(d.serverName!) ? null : prev);
+								mcpAuthPendingRef.current.delete(d.serverName!);
+								if (mcpAuthPendingRef.current.size === 0) {
+									setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
+								} else {
+									// Update banner with remaining servers
+									const names = [...mcpAuthPendingRef.current.keys()].join(', ');
+									const pending = mcpAuthPendingRef.current;
+									setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in')
+										? { ...prev, message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.` }
+										: prev);
+								}
 							}
 						}
 					} catch {}
