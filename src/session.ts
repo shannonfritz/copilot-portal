@@ -113,6 +113,7 @@ export class SessionHandle {
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
 	private cliApprovalSummary: string | null = null;// set when CLI turn is waiting for tool approval
 	private cliInputPending: string | null = null; // set when CLI turn is waiting for user input
+	private mcpToolCounts: Record<string, number> = {}; // cached tool counts per MCP server
 	private turnProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	private turnStartTime: number = 0; // ms timestamp when current turn started
 	// Proactive compaction: track estimated tokens since last compaction.
@@ -1476,15 +1477,17 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private onToolsUpdated(data: unknown): void {
 		const d = data as { tools?: Array<{ name: string; namespacedName?: string }> };
 		if (d?.tools) {
-			// Count tools per MCP server by namespace prefix (e.g. "Teams-SendMessage" → "Teams")
 			const counts: Record<string, number> = {};
 			for (const t of d.tools) {
 				const ns = t.namespacedName?.split(/[-/]/)[0] ?? t.name.split(/[-/]/)[0];
 				if (ns) counts[ns] = (counts[ns] ?? 0) + 1;
 			}
+			this.mcpToolCounts = counts;
 			this.broadcast({ type: 'mcp_tool_counts' as any, content: JSON.stringify(counts) });
 		}
 	}
+
+	getMcpToolCounts(): Record<string, number> { return this.mcpToolCounts; }
 
 	// --- Event dispatch ---
 
@@ -1650,16 +1653,8 @@ export class SessionPool {
 	}
 
 	async getToolCountsPerMcp(): Promise<Record<string, number>> {
-		try {
-			const result = await this.client.rpc.tools.list({});
-			const counts: Record<string, number> = {};
-			for (const t of (result.tools ?? [])) {
-				const name = (t as any).namespacedName ?? t.name;
-				const ns = name.split(/[-/]/)[0];
-				if (ns) counts[ns] = (counts[ns] ?? 0) + 1;
-			}
-			return counts;
-		} catch { return {}; }
+		// Tool counts come from session.tools_updated events — not available via RPC
+		return {};
 	}
 
 	async listSessions(): Promise<SessionMetadata[]> {
