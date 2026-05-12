@@ -1417,6 +1417,9 @@ export class PortalServer {
 		// 1. Extract tenant ID and server list from cached OAuth token scopes
 		let tenantId: string | null = null;
 		let accessToken: string | null = null;
+		let refreshToken: string | null = null;
+		let refreshClientId: string | null = null;
+		let refreshFilePath: string | null = null;
 		let discoveredScopes: string[] = [];
 		if (fs.existsSync(oauthDir)) {
 			for (const file of fs.readdirSync(oauthDir).filter(f => f.endsWith('.tokens.json'))) {
@@ -1429,7 +1432,6 @@ export class PortalServer {
 							const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
 							const payload = JSON.parse(Buffer.from(padded, 'base64').toString());
 							if (payload.tid && !tenantId) tenantId = payload.tid;
-							// Extract MCP server names from scopes
 							if (payload.scp) {
 								const scopes = (payload.scp as string).split(' ');
 								for (const scope of scopes) {
@@ -1441,6 +1443,15 @@ export class PortalServer {
 							}
 							if (tokens.expiresAt > Date.now() / 1000 && !accessToken) {
 								accessToken = tokens.accessToken;
+							} else if (!accessToken && tokens.refreshToken && !refreshToken) {
+								refreshToken = tokens.refreshToken;
+								refreshFilePath = path.join(oauthDir, file);
+								// Read client ID from the config file
+								const configFile = path.join(oauthDir, file.replace('.tokens.json', '.json'));
+								try {
+									const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+									refreshClientId = config.clientId;
+								} catch {}
 							}
 						}
 					}
@@ -1492,6 +1503,39 @@ export class PortalServer {
 
 		if (!tenantId) {
 			return { tenantId: null, servers: discoveredScopes.length > 0 ? buildServerList() : [] };
+		}
+
+		if (!accessToken && refreshToken && refreshClientId) {
+			// Try to refresh the expired token
+			try {
+				this.log('[Server] M365 discovery: refreshing expired token…');
+				const tokenResp = await fetch('https://login.microsoftonline.com/organizations/oauth2/v2.0/token', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: new URLSearchParams({
+						client_id: refreshClientId,
+						grant_type: 'refresh_token',
+						refresh_token: refreshToken,
+						scope: 'https://agent365.svc.cloud.microsoft/.default offline_access',
+					}).toString(),
+				});
+				if (tokenResp.ok) {
+					const tokenData = await tokenResp.json() as { access_token: string; refresh_token?: string; expires_in: number; scope: string };
+					accessToken = tokenData.access_token;
+					// Update the token file
+					if (refreshFilePath) {
+						const existing = JSON.parse(fs.readFileSync(refreshFilePath, 'utf8'));
+						existing.accessToken = tokenData.access_token;
+						if (tokenData.refresh_token) existing.refreshToken = tokenData.refresh_token;
+						existing.expiresAt = Math.floor(Date.now() / 1000) + tokenData.expires_in;
+						existing.scope = tokenData.scope;
+						fs.writeFileSync(refreshFilePath, JSON.stringify(existing));
+					}
+					this.log('[Server] M365 discovery: token refreshed');
+				}
+			} catch (e) {
+				this.log(`[Server] M365 token refresh failed: ${e}`);
+			}
 		}
 
 		if (!accessToken) {
