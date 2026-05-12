@@ -570,6 +570,18 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/mcp/m365-signin' && method === 'POST') {
+			try {
+				this.log('[Server] M365 OAuth sign-in started');
+				const result = await this.m365OAuthSignIn();
+				this.sendJson(res, 200, result);
+			} catch (e) {
+				this.log(`[Server] M365 OAuth sign-in failed: ${e}`);
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();
@@ -1513,6 +1525,139 @@ export class PortalServer {
 
 		this.log(`[Server] M365 discovery: tenant=${tenantId.slice(0, 8)}…, ${servers.filter(s => s.toolCount > 0).length}/${servers.length} servers with tools`);
 		return { tenantId, servers };
+	}
+
+	/** Run OAuth authorization code + PKCE flow against Microsoft Entra ID to get Agent365 token. */
+	private async m365OAuthSignIn(): Promise<{ tenantId: string | null; scopeCount: number }> {
+		const clientId = 'aebc6443-996d-45c2-90f0-388ff96faa56';
+		const scope = 'https://agent365.svc.cloud.microsoft/.default offline_access';
+		const authBase = 'https://login.microsoftonline.com/organizations/oauth2/v2.0';
+
+		// Generate PKCE challenge
+		const codeVerifier = crypto.randomBytes(32).toString('base64url');
+		const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+		const state = crypto.randomBytes(16).toString('hex');
+
+		// Start a localhost listener for the callback
+		return new Promise((resolve, reject) => {
+			const callbackServer = http.createServer(async (req, res) => {
+				const cbUrl = new URL(req.url ?? '/', `http://localhost`);
+				if (cbUrl.pathname !== '/') { res.writeHead(404); res.end(); return; }
+
+				const code = cbUrl.searchParams.get('code');
+				const returnedState = cbUrl.searchParams.get('state');
+				const error = cbUrl.searchParams.get('error');
+
+				if (error) {
+					res.writeHead(200, { 'Content-Type': 'text/html' });
+					res.end('<html><body style="font-family:system-ui;background:#1a1a2e;color:#e94560;display:flex;justify-content:center;align-items:center;height:100vh;margin:0"><h2>Sign-in failed: ' + error + '</h2></body></html>');
+					callbackServer.close();
+					reject(new Error(`OAuth error: ${error}`));
+					return;
+				}
+
+				if (!code || returnedState !== state) {
+					res.writeHead(400); res.end('Invalid callback'); callbackServer.close();
+					reject(new Error('Invalid OAuth callback'));
+					return;
+				}
+
+				// Exchange code for token
+				try {
+					const tokenResp = await fetch(`${authBase}/token`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+						body: new URLSearchParams({
+							client_id: clientId,
+							grant_type: 'authorization_code',
+							code,
+							redirect_uri: `http://127.0.0.1:${(callbackServer.address() as net.AddressInfo).port}/`,
+							code_verifier: codeVerifier,
+						}).toString(),
+					});
+
+					if (!tokenResp.ok) {
+						const err = await tokenResp.text();
+						throw new Error(`Token exchange failed: ${err}`);
+					}
+
+					const tokenData = await tokenResp.json() as { access_token: string; refresh_token?: string; expires_in: number; scope: string };
+
+					// Parse tenant ID from token
+					const parts = tokenData.access_token.split('.');
+					let tenantId: string | null = null;
+					if (parts.length === 3) {
+						const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+						const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+						const payload = JSON.parse(Buffer.from(padded, 'base64').toString());
+						tenantId = payload.tid ?? null;
+					}
+
+					// Save token in the same format the SDK uses
+					const oauthDir = path.join(os.homedir(), '.copilot', 'mcp-oauth-config');
+					fs.mkdirSync(oauthDir, { recursive: true });
+					const serverUrl = `https://agent365.svc.cloud.microsoft/agents/tenants/${tenantId ?? 'unknown'}/servers/discovery`;
+					const hash = crypto.createHash('sha256').update(serverUrl).digest('hex');
+
+					fs.writeFileSync(path.join(oauthDir, `${hash}.json`), JSON.stringify({
+						serverUrl,
+						authorizationServerUrl: `${authBase.replace('/oauth2/v2.0', '')}`,
+						clientId,
+						redirectUri: `http://127.0.0.1:${(callbackServer.address() as net.AddressInfo).port}/`,
+						resourceUrl: serverUrl,
+						issuedAt: Math.floor(Date.now() / 1000),
+						isStatic: false,
+					}));
+
+					fs.writeFileSync(path.join(oauthDir, `${hash}.tokens.json`), JSON.stringify({
+						accessToken: tokenData.access_token,
+						refreshToken: tokenData.refresh_token ?? '',
+						expiresAt: Math.floor(Date.now() / 1000) + tokenData.expires_in,
+						scope: tokenData.scope,
+					}));
+
+					const scopeCount = (tokenData.scope.match(/McpServers\.\w+\.All/g) ?? []).length;
+					this.log(`[Server] M365 OAuth sign-in complete: tenant=${tenantId?.slice(0, 8)}…, ${scopeCount} server scopes`);
+
+					res.writeHead(200, { 'Content-Type': 'text/html' });
+					res.end('<html><body style="font-family:system-ui;background:#1a1a2e;color:#16c79a;display:flex;justify-content:center;align-items:center;height:100vh;margin:0"><h2>✓ Signed in to Microsoft 365 — you can close this tab</h2></body></html>');
+					callbackServer.close();
+					resolve({ tenantId, scopeCount });
+				} catch (e) {
+					res.writeHead(500); res.end('Token exchange failed');
+					callbackServer.close();
+					reject(e);
+				}
+			});
+
+			// Listen on a random port
+			callbackServer.listen(0, '127.0.0.1', () => {
+				const port = (callbackServer.address() as net.AddressInfo).port;
+				const redirectUri = `http://127.0.0.1:${port}/`;
+				const authUrl = `${authBase}/authorize?` + new URLSearchParams({
+					client_id: clientId,
+					response_type: 'code',
+					redirect_uri: redirectUri,
+					scope,
+					state,
+					code_challenge: codeChallenge,
+					code_challenge_method: 'S256',
+					prompt: 'select_account',
+				}).toString();
+
+				this.log(`[Server] M365 OAuth: opening browser for sign-in (port ${port})`);
+				const cmd = process.platform === 'win32' ? `start "" "${authUrl}"`
+					: process.platform === 'darwin' ? `open "${authUrl}"`
+					: `xdg-open "${authUrl}"`;
+				exec(cmd);
+
+				// Timeout after 2 minutes
+				setTimeout(() => {
+					callbackServer.close();
+					reject(new Error('OAuth sign-in timed out'));
+				}, 120000);
+			});
+		});
 	}
 
 	private sendJson(res: http.ServerResponse, status: number, body: unknown) {

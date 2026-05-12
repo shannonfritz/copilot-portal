@@ -1129,77 +1129,23 @@ function SessionDrawer({
 														);
 													})()
 												) : m365Servers.length === 0 ? (
-													<>
-														{!m365TenantId && (
-															<div className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-																<div className="mb-1">Enter your work email domain to discover servers:</div>
-																<div className="flex gap-1">
-																	<input className="flex-1 rounded border px-2 py-1 text-xs outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-																		placeholder="e.g. microsoft.com"
-																		id="m365-domain-input"
-																		onKeyDown={async (e) => {
-																			if (e.key !== 'Enter') return;
-																			const domain = (e.target as HTMLInputElement).value.trim();
-																			if (!domain) return;
-																			try {
-																				const resp = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
-																				if (resp.ok) {
-																					const data = await resp.json();
-																					const match = data.token_endpoint?.match(/\/([a-f0-9-]{36})\//);
-																					if (match) {
-																						setM365TenantId(match[1]);
-																						setM365Servers(prev => prev); // force re-render
-																					}
-																				}
-																			} catch {}
-																		}}
-																	/>
-																	<button type="button" className="rounded px-2 py-1 text-xs font-medium"
-																		style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-																		onClick={async () => {
-																			const input = document.getElementById('m365-domain-input') as HTMLInputElement;
-																			const domain = input?.value?.trim();
-																			if (!domain) return;
-																			try {
-																				const resp = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
-																				if (resp.ok) {
-																					const data = await resp.json();
-																					const match = data.token_endpoint?.match(/\/([a-f0-9-]{36})\//);
-																					if (match) {
-																						setM365TenantId(match[1]);
-																						setM365Servers(prev => prev);
-																					}
-																				}
-																			} catch {}
-																		}}
-																	>Lookup</button>
-																</div>
-															</div>
-														)}
-														{m365TenantId && (
-															<>
-																<div className="px-3 pt-1 pb-1 text-[10px] italic" style={{ color: 'var(--text-muted)' }}>
-																	Add a server — sign-in will be prompted after restart
-																</div>
-																{m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).slice(0, 8).map(s => (
-																	<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
-																		<div className="flex-1">
-																			<span>{s.label}</span>
-																			<div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.description}</div>
-																		</div>
-																		<button type="button" className="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
-																			style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
-																			onClick={() => confirmMcpChange(async () => {
-																				const url = `https://agent365.svc.cloud.microsoft/agents/tenants/${m365TenantId}/servers/${s.name}`;
-																				await apiFetch('/api/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.label, type: 'http', mcpUrl: url }) });
-																				setMcpServers(prev => [...prev, { name: s.label, type: 'http', source: 'user', enabled: false, status: 'pending' }]);
-																			})}
-																		>Add</button>
-																	</div>
-																))}
-															</>
-														)}
-													</>
+													<div className="px-3 py-2">
+														<button type="button" className="w-full rounded px-3 py-1.5 text-xs font-medium"
+															style={{ background: 'var(--primary-tint)', color: 'var(--primary)', border: '1px solid var(--border)' }}
+															onClick={async () => {
+																setM365Loading(true);
+																try {
+																	await apiFetch('/api/mcp/m365-signin', { method: 'POST' });
+																	// After sign-in, re-discover
+																	const res = await apiFetch('/api/mcp/discover-m365');
+																	const data = await res.json();
+																	setM365TenantId(data.tenantId);
+																	setM365Servers(data.servers ?? []);
+																} catch {}
+																setM365Loading(false);
+															}}
+														>Sign in with Microsoft 365</button>
+													</div>
 												) : (
 													m365Servers.filter(s => s.toolCount !== 0 && !installedNames.has(s.name) && !installedNames.has(s.label)).map(s => (
 														<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
