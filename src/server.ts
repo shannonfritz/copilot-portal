@@ -229,6 +229,16 @@ export class PortalServer {
 					const mcpServers = await handle.listMcpServers();
 					ws.send(JSON.stringify({ type: 'mcp_servers_loaded', content: JSON.stringify(mcpServers) }));
 				} catch {}
+				// Send tool counts after MCP servers have had time to load
+				setTimeout(async () => {
+					if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+					try {
+						const counts = await this.pool.getToolCountsPerMcp();
+						if (Object.keys(counts).length > 0) {
+							ws.send(JSON.stringify({ type: 'mcp_tool_counts', content: JSON.stringify(counts) }));
+						}
+					} catch {}
+				}, 5000);
 			}).catch(async (e) => {
 				const errMsg = String(e);
 				if (errMsg.includes('Session not found') || errMsg.includes('not found')) {

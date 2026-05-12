@@ -1649,6 +1649,19 @@ export class SessionPool {
 		return [...this.pool.entries()].filter(([, h]) => h.turnActive).map(([id]) => id);
 	}
 
+	async getToolCountsPerMcp(): Promise<Record<string, number>> {
+		try {
+			const result = await this.client.rpc.tools.list({});
+			const counts: Record<string, number> = {};
+			for (const t of (result.tools ?? [])) {
+				const name = (t as any).namespacedName ?? t.name;
+				const ns = name.split(/[-/]/)[0];
+				if (ns) counts[ns] = (counts[ns] ?? 0) + 1;
+			}
+			return counts;
+		} catch { return {}; }
+	}
+
 	async listSessions(): Promise<SessionMetadata[]> {
 		const sessions = await this.client.listSessions();
 		return sessions.sort((a, b) =>
