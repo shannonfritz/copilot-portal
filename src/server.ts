@@ -1465,18 +1465,23 @@ export class PortalServer {
 			} catch { /* skip */ }
 		}
 
-		// Build server list from discovered scopes
-		const buildServerList = () => discoveredScopes.map(scope => {
-			const serverName = scopeToServer[scope] ?? `mcp_${scope}Server`;
-			const meta = serverMeta[scope];
-			return {
-				name: serverName,
-				label: meta?.label ?? scope,
-				description: meta?.description ?? scope,
-				url: meta?.url,
-				toolCount: -1,
-			};
-		});
+		// Build server list from discovered scopes, falling back to known catalog
+		const buildServerList = () => {
+			const scopes = discoveredScopes.length > 0
+				? discoveredScopes
+				: Object.keys(serverMeta); // Fallback to known servers when no OAuth tokens exist
+			return scopes.map(scope => {
+				const serverName = scopeToServer[scope] ?? `mcp_${scope}Server`;
+				const meta = serverMeta[scope];
+				return {
+					name: serverName,
+					label: meta?.label ?? scope,
+					description: meta?.description ?? scope,
+					url: meta?.url,
+					toolCount: -1,
+				};
+			});
+		};
 
 		if (!tenantId) {
 			return { tenantId: null, servers: discoveredScopes.length > 0 ? buildServerList() : [] };
