@@ -1473,6 +1473,19 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
+	private onToolsUpdated(data: unknown): void {
+		const d = data as { tools?: Array<{ name: string; namespacedName?: string }> };
+		if (d?.tools) {
+			// Count tools per MCP server by namespace prefix (e.g. "Teams-SendMessage" → "Teams")
+			const counts: Record<string, number> = {};
+			for (const t of d.tools) {
+				const ns = t.namespacedName?.split(/[-/]/)[0] ?? t.name.split(/[-/]/)[0];
+				if (ns) counts[ns] = (counts[ns] ?? 0) + 1;
+			}
+			this.broadcast({ type: 'mcp_tool_counts' as any, content: JSON.stringify(counts) });
+		}
+	}
+
 	// --- Event dispatch ---
 
 	/** Maps SDK event types to handler methods. */
@@ -1511,6 +1524,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'session.usage_info':               (d) => this.onSessionUsageInfo(d),
 		'session.mcp_servers_loaded':       (d) => this.onMcpServersLoaded(d),
 		'session.mcp_server_status_changed': (d) => this.onMcpServerStatusChanged(d),
+		'session.tools_updated':            (d) => this.onToolsUpdated(d),
 	};
 
 	private attachListeners(): void {

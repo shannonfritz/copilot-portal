@@ -946,13 +946,16 @@ function SessionDrawer({
 										const info = knownInfo[s.name];
 										const summary = info?.desc;
 										const docsUrl = info?.url;
+										const toolCount = (s as any).toolCount as number | undefined;
 										const statusText = s.status === 'needs-auth' ? 'Needs sign-in'
 											: s.status === 'failed' ? 'Failed to connect'
 											: s.status === 'pending' ? 'Connecting…'
 											: null;
-										const desc = statusText
-											? (summary ? `${statusText} · ${summary}` : statusText)
-											: (summary ?? (isBuiltin ? 'Built-in' : null));
+										const parts: string[] = [];
+										if (statusText) parts.push(statusText);
+										if (summary) parts.push(summary);
+										if (toolCount && toolCount > 0) parts.push(`${toolCount} tools`);
+										const desc = parts.length > 0 ? parts.join(' · ') : (isBuiltin ? 'Built-in' : null);
 										return (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
@@ -2433,6 +2436,14 @@ export default function App() {
 								}
 							}
 						}
+					} catch {}
+				} else if ((event as any).type === 'mcp_tool_counts') {
+					try {
+						const counts = JSON.parse((event as any).content ?? '{}') as Record<string, number>;
+						setMcpServers(prev => prev.map(s => {
+							const count = counts[s.name];
+							return count != null ? { ...s, toolCount: count } : s;
+						}));
 					} catch {}
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
