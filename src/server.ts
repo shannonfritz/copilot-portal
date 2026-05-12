@@ -233,11 +233,15 @@ export class PortalServer {
 				setTimeout(async () => {
 					if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 					try {
+						this.log(`[${clientId}] Fetching MCP tool counts...`);
 						const counts = await this.pool.getToolCountsPerMcp();
+						this.log(`[${clientId}] Tool counts: ${JSON.stringify(counts)}`);
 						if (Object.keys(counts).length > 0) {
 							ws.send(JSON.stringify({ type: 'mcp_tool_counts', content: JSON.stringify(counts) }));
 						}
-					} catch {}
+					} catch (e) {
+						this.log(`[${clientId}] Tool count fetch failed: ${e}`);
+					}
 				}, 5000);
 			}).catch(async (e) => {
 				const errMsg = String(e);
