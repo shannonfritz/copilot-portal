@@ -153,7 +153,7 @@ export class PortalServer {
 				if (isNotFound && ws.readyState === WebSocket.OPEN) {
 					ws.send(JSON.stringify({ type: 'session_not_found', sessionId }));
 				}
-				ws.close(isNotFound ? 4404 : 1011, msg);
+				ws.close(isNotFound ? 4404 : 1011, msg.slice(0, 120));
 				return;
 			}
 
@@ -269,7 +269,7 @@ export class PortalServer {
 						this.log(`[${clientId}] Re-resume failed: ${retryErr}`);
 						if (ws.readyState === WebSocket.OPEN) {
 							ws.send(JSON.stringify({ type: 'session_not_found', sessionId }));
-							ws.close(4404, String(retryErr));
+							ws.close(4404, String(retryErr).slice(0, 120));
 						}
 					}
 				} else {
