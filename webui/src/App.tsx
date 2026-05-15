@@ -1888,8 +1888,10 @@ export default function App() {
 					if (isReconnect) {
 						const existingUserCount = messagesRef.current.filter(m => m.role === 'user').length;
 						const historyUserCount = historyBufferRef.current.filter(m => m.role === 'user').length;
-						if (historyUserCount > existingUserCount) {
-							// New messages arrived (e.g. from another device) — replace with full history
+						const existingTotal = messagesRef.current.length;
+						const historyTotal = historyBufferRef.current.length;
+						if (historyUserCount > existingUserCount || historyTotal > existingTotal) {
+							// New messages arrived (user from another device, or assistant replies) — replace with full history
 							setMessages(historyBufferRef.current);
 						} else {
 							// Same messages — keep existing to avoid flicker/focus loss
