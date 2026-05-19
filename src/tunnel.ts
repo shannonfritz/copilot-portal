@@ -22,6 +22,9 @@ export class TunnelManager {
 	private configPath: string;
 	private port: number;
 
+	private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+	private log: ((msg: string) => void) | null = null;
+
 	constructor(dataDir: string, port: number) {
 		this.configPath = join(dataDir, 'tunnel.json');
 		this.port = port;
@@ -138,6 +141,7 @@ export class TunnelManager {
 
 	/** Stop the tunnel */
 	stop(): void {
+		this.stopHealthCheck();
 		this.setWasRunning(false);
 		if (this.process) {
 			const pid = this.process.pid;
@@ -198,5 +202,40 @@ export class TunnelManager {
 			return { deleted: true, name: config.name };
 		}
 		return { deleted: false };
+	}
+
+	/** Start periodic health checks — restarts tunnel if the relay connection goes stale. */
+	startHealthCheck(getToken: () => string, onRestart: (url: string) => void, logFn: (msg: string) => void): void {
+		this.stopHealthCheck();
+		this.log = logFn;
+		this.healthCheckTimer = setInterval(async () => {
+			if (!this.process || !this.url) return;
+			try {
+				const controller = new AbortController();
+				const timeout = setTimeout(() => controller.abort(), 10000);
+				const resp = await fetch(`${this.url}/api/info?token=${getToken()}`, { signal: controller.signal });
+				clearTimeout(timeout);
+				if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+			} catch {
+				this.log?.(`[Tunnel] Health check failed — restarting tunnel`);
+				const config = this.config;
+				if (!config) return;
+				this.stop();
+				try {
+					const newUrl = await this.start(config);
+					this.log?.(`[Tunnel] Restarted: ${newUrl}`);
+					onRestart(newUrl);
+				} catch (e) {
+					this.log?.(`[Tunnel] Restart failed: ${e}`);
+				}
+			}
+		}, 5 * 60 * 1000); // Every 5 minutes
+	}
+
+	stopHealthCheck(): void {
+		if (this.healthCheckTimer) {
+			clearInterval(this.healthCheckTimer);
+			this.healthCheckTimer = null;
+		}
 	}
 }

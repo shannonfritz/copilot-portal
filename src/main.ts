@@ -352,6 +352,12 @@ if (process.stdin.isTTY) {
 			if (!config.allowAnonymous) {
 				console.log('  Access: Visitors must sign in with a Microsoft or GitHub account.');
 			}
+			// Start periodic health checks
+			tunnel.startHealthCheck(
+				() => server.getToken(),
+				(newUrl) => console.log(`  Tunnel restarted: ${newUrl}?token=${server.getToken()}`),
+				console.log,
+			);
 		} catch (e) {
 			console.log(`  Failed to start tunnel: ${e}\n`);
 		}
