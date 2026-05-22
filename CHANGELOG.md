@@ -2,6 +2,26 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.7.1
+
+### 🔌 MCP Discovery
+- **Sign in with Microsoft 365** — direct OAuth flow for M365 MCP server discovery (no temp server workaround)
+- **Auto-refresh expired tokens** — silently refreshes OAuth tokens for discovery probing
+- **Tool counts on active servers** — shows tool counts from `session.tools_updated` events
+
+### 🔄 Reconnect
+- **Fix missing replies** — assistant messages now show after switching away on mobile and coming back
+
+### 🔗 Tunnel
+- **Health check with auto-restart** — pings tunnel every 5 minutes, auto-restarts if stale
+
+### 🎨 Model Picker
+- **Fix 0× multiplier** — compute relative cost from token prices (API removed `billing.multiplier`)
+- **Price category** — show low/medium/high with color coding (green/blue/yellow)
+
+### 🛡️ Stability
+- **WS close crash fix** — truncate close reason to 123 bytes (WebSocket protocol limit)
+
 ## v0.7.0
 
 ### 🔌 MCP Server Management
