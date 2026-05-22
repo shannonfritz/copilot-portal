@@ -590,17 +590,23 @@ export class PortalServer {
 		if (url.pathname === '/api/models' && method === 'GET') {
 			try {
 				const allModels = await this.pool.listModels();
+				const basePrice = Math.min(...allModels.filter((m: any) => m.billing?.tokenPrices?.inputPrice > 0).map((m: any) => m.billing.tokenPrices.inputPrice)) || 0;
 				const models = allModels
 					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
-					.map((m: any) => ({
-						id: m.id,
-						name: m.name,
-						contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
-						vision: !!m.capabilities?.supports?.vision,
-						reasoning: !!m.capabilities?.supports?.adaptive_thinking,
-						premium: !!m.billing?.is_premium,
-						multiplier: m.billing?.multiplier ?? (m.billing?.is_premium ? 1 : 0),
-					}));
+					.map((m: any) => {
+						const inputPrice = m.billing?.tokenPrices?.inputPrice;
+						const computedMultiplier = basePrice > 0 && inputPrice > 0 ? Math.max(1, Math.round(inputPrice / basePrice)) : 0;
+						return {
+							id: m.id,
+							name: m.name,
+							contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
+							vision: !!m.capabilities?.supports?.vision,
+							reasoning: !!m.capabilities?.supports?.adaptive_thinking,
+							premium: !!m.billing?.is_premium || m.modelPickerPriceCategory === 'high',
+							multiplier: m.billing?.multiplier ?? computedMultiplier,
+							priceCategory: m.modelPickerPriceCategory ?? null,
+						};
+					});
 				if (this.portalInfo) this.portalInfo = { ...this.portalInfo, models };
 				this.sendJson(res, 200, models);
 			} catch {
@@ -1826,6 +1832,7 @@ export class PortalServer {
 				this.pool.getAuthStatus(),
 				this.pool.listModels(),
 			]);
+			const basePrice2 = Math.min(...allModels.filter((m: any) => m.billing?.tokenPrices?.inputPrice > 0).map((m: any) => m.billing.tokenPrices.inputPrice)) || 0;
 			this.portalInfo = {
 				version: status.version,
 				login: auth.login ?? 'unknown',
@@ -1834,15 +1841,20 @@ export class PortalServer {
 				cliConnected: true,
 				models: allModels
 					.filter((m: any) => !m.policy || m.policy.state === 'enabled')
-					.map((m: any) => ({
-						id: m.id,
-						name: m.name,
-						contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
-						vision: !!m.capabilities?.supports?.vision,
-						reasoning: !!m.capabilities?.supports?.adaptive_thinking,
-						premium: !!m.billing?.is_premium,
-						multiplier: m.billing?.multiplier ?? (m.billing?.is_premium ? 1 : 0),
-					})),
+					.map((m: any) => {
+						const inputPrice = m.billing?.tokenPrices?.inputPrice;
+						const computedMultiplier = basePrice2 > 0 && inputPrice > 0 ? Math.max(1, Math.round(inputPrice / basePrice2)) : 0;
+						return {
+							id: m.id,
+							name: m.name,
+							contextWindow: m.capabilities?.limits?.max_context_window_tokens ?? 0,
+							vision: !!m.capabilities?.supports?.vision,
+							reasoning: !!m.capabilities?.supports?.adaptive_thinking,
+							premium: !!m.billing?.is_premium || m.modelPickerPriceCategory === 'high',
+							multiplier: m.billing?.multiplier ?? computedMultiplier,
+							priceCategory: m.modelPickerPriceCategory ?? null,
+						};
+					}),
 			};
 			this.log(`[Pool] CLI runtime: v${status.version}`);
 			this.log(`[Pool] Models available: ${this.portalInfo.models.length}`);

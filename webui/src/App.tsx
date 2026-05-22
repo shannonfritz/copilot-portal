@@ -175,7 +175,7 @@ interface PortalInfo {
 	login: string;
 	defaultCwd?: string;
 	lanUrl?: string;
-	models: Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }>;
+	models: Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number; priceCategory?: string }>;
 }
 
 interface SessionContext {
@@ -598,7 +598,7 @@ function SessionDrawer({
 	context: SessionContext | null;
 	activeModel: string | null;
 	onChangeModel: (id: string) => void;
-	onFetchModels?: () => Promise<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }>>;
+	onFetchModels?: () => Promise<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number; priceCategory?: string }>>;
 	onFetchQuota?: () => Promise<{ quotaSnapshots: Record<string, { entitlementRequests: number; usedRequests: number; remainingPercentage: number; resetDate?: string }> }>;
 	activeSessionId?: string | null;
 	sessionSummary?: string | null;
@@ -618,7 +618,7 @@ function SessionDrawer({
 	setMcpConfirm: React.Dispatch<React.SetStateAction<{ message: string; onConfirm: () => void } | null>>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
-	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number }> | null>(null);
+	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number; priceCategory?: string }> | null>(null);
 	const [quota, setQuota] = useState<{ unlimited: boolean; used: number; total: number; remaining: number; resetDate?: string } | null>(null);
 	const [editingCwd, setEditingCwd] = useState(false);
 	const [cwdSaving, setCwdSaving] = useState(false);
@@ -1312,7 +1312,8 @@ function SessionDrawer({
 											<span>{m.name}</span>
 											{(!!m.contextWindow || m.vision || m.reasoning || (m.multiplier != null && m.multiplier > 0)) && (
 												<div className="flex items-center gap-2 mt-0.5" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-													{m.multiplier != null && (m.multiplier > 0 || !!m.contextWindow) && <span>{m.multiplier}×</span>}
+													{m.multiplier != null && m.multiplier > 0 && <span>{m.multiplier}×</span>}
+													{(m as any).priceCategory && <span style={{ color: (m as any).priceCategory === 'high' ? 'var(--warning)' : (m as any).priceCategory === 'low' ? 'var(--success)' : 'var(--accent)' }}>{(m as any).priceCategory}</span>}
 													{m.contextWindow ? <span>{(m.contextWindow / 1000).toFixed(0)}k</span> : null}
 													{m.vision && <span>vision</span>}
 													{m.reasoning && <span>thinking</span>}
