@@ -876,18 +876,18 @@ function SessionDrawer({
 					</div>
 					)}
 
-					{/* Session usage stats — hidden for now, revisit later */}
-					{/* {sessionUsage && sessionUsage.requests > 0 && (
+					{/* Session usage stats */}
+					{sessionUsage && sessionUsage.requests > 0 && (
 						<div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
 							<span className="flex-1">
 								Tokens: {sessionUsage.inputTokens.toLocaleString()} ↑ {sessionUsage.outputTokens.toLocaleString()} ↓
 								{sessionUsage.reasoningTokens > 0 && ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}`}
 								{sessionUsage.cacheReadTokens > 0 && ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}`}
-								{` · Requests: ${sessionUsage.requests}`}
+								{` · Credits: ${sessionUsage.requests.toLocaleString()}`}
 							</span>
-							<CopyButton text={`Tokens: ${sessionUsage.inputTokens.toLocaleString()} ↑ ${sessionUsage.outputTokens.toLocaleString()} ↓${sessionUsage.reasoningTokens > 0 ? ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}` : ''}${sessionUsage.cacheReadTokens > 0 ? ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}` : ''} · Requests: ${sessionUsage.requests}`} />
+							<CopyButton text={`Tokens: ${sessionUsage.inputTokens.toLocaleString()} ↑ ${sessionUsage.outputTokens.toLocaleString()} ↓${sessionUsage.reasoningTokens > 0 ? ` · Reasoning: ${sessionUsage.reasoningTokens.toLocaleString()}` : ''}${sessionUsage.cacheReadTokens > 0 ? ` · Cached: ${sessionUsage.cacheReadTokens.toLocaleString()}` : ''} · Credits: ${sessionUsage.requests.toLocaleString()}`} />
 						</div>
-					)} */}
+					)}
 
 					{/* MCP Servers — read-only list for active sessions */}
 					{!draft && activeSessionId && (
