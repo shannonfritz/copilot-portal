@@ -7,6 +7,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
+// Prefix timestamps on [CLI subprocess] lines written directly to stderr by the SDK
+const origStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = function (chunk: any, ...rest: any[]): boolean {
+	const str = typeof chunk === 'string' ? chunk : chunk.toString();
+	if (str.includes('[CLI subprocess]')) {
+		const now = new Date();
+		const h = now.getHours(); const m = now.getMinutes(); const s = now.getSeconds();
+		const ampm = h >= 12 ? 'PM' : 'AM';
+		const hh = String(h > 12 ? h - 12 : h || 12).padStart(2, '0');
+		const ts = `[${hh}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}]`;
+		const prefixed = str.replace(/^(\[CLI subprocess\])/gm, `${ts} $1`);
+		return origStderrWrite(prefixed);
+	}
+	return origStderrWrite(chunk, ...rest);
+} as any;
+
 const args = process.argv.slice(2);
 process.title = 'Copilot Portal';
 
