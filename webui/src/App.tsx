@@ -4458,7 +4458,7 @@ export default function App() {
 												))}
 											</div>
 										)}
-										<div className="whitespace-pre-wrap break-words">{msg.content}</div>
+										{msg.role === 'assistant' ? <AssistantMarkdown content={msg.content} /> : <div className="whitespace-pre-wrap break-words">{msg.content}</div>}
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 											<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
 											<CopyButton text={msg.content} />
