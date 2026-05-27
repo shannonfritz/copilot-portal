@@ -87,9 +87,11 @@ const apiFetch= (url: string, init?: RequestInit) => {
 
 
 const AssistantMarkdown = ({ content }: { content: string }) => (
-	<Markdown className="prose prose-sm max-w-none" remarkPlugins={[remarkGfm, remarkBreaks]} components={mdComponents}>
-		{content}
-	</Markdown>
+	<div className="prose prose-sm max-w-none">
+		<Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={mdComponents}>
+			{content}
+		</Markdown>
+	</div>
 );
 
 interface ToolSummaryItem {
