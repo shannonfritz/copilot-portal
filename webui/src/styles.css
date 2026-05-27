@@ -107,13 +107,13 @@ body,
 /* Headings */
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
 	color: var(--text-bright);
-	margin-top: 1em;
-	margin-bottom: 0.4em;
-	font-weight: 600;
+	margin-top: 1em !important;
+	margin-bottom: 0.4em !important;
+	font-weight: 600 !important;
 }
-.prose h1 { font-size: 1.5em; }
-.prose h2 { font-size: 1.25em; }
-.prose h3 { font-size: 1.1em; }
+.prose h1 { font-size: 1.5em !important; }
+.prose h2 { font-size: 1.25em !important; }
+.prose h3 { font-size: 1.1em !important; }
 
 /* Paragraphs */
 .prose p {
@@ -141,8 +141,16 @@ body,
 .prose li::marker {
 	color: var(--text-muted);
 }
-.prose ul ul { list-style-type: circle; }
-.prose ul ul ul { list-style-type: square; }
+.prose ul ul { list-style-type: circle !important; }
+.prose ul ul ul { list-style-type: square !important; }
+
+/* Task lists (checkboxes) */
+.prose ul.contains-task-list {
+	list-style-type: none !important;
+}
+.prose li.task-list-item input[type="checkbox"] {
+	margin-right: 0.4em;
+}
 
 /* Inline code */
 .prose code:not(pre code) {
