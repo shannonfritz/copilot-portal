@@ -10,23 +10,25 @@ import type {
 } from '@github/copilot-sdk';
 
 // SDK compatibility: getMessages() → getEvents() in copilot-sdk 1.0+
-function getSessionEvents(session: CopilotSession): Promise<any[]> {
-	return (session as any).getEvents?.() ?? (session as any).getMessages();
+let _sessionApiLogged = false;
+function getSessionEvents(session: CopilotSession, log?: (msg: string) => void): Promise<any[]> {
+	const useNew = typeof (session as any).getEvents === 'function';
+	if (!_sessionApiLogged) {
+		_sessionApiLogged = true;
+		log?.(`[SDK] Using ${useNew ? 'getEvents()' : 'getMessages()'} API`);
+	}
+	return useNew ? (session as any).getEvents() : (session as any).getMessages();
 }
 
 // SDK compatibility: CopilotClient constructor changed in 1.0+
 // Old: new CopilotClient({ cliUrl: '...' })
 // New: new CopilotClient({ connection: RuntimeConnection.forUri('...') })
-function createClient(cliUrl?: string): CopilotClient {
+function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClient {
 	if (cliUrl) {
-		try {
-			// Try 1.0+ RuntimeConnection API
-			const { RuntimeConnection } = require('@github/copilot-sdk');
-			if (RuntimeConnection?.forUri) {
-				return new CopilotClient({ connection: RuntimeConnection.forUri(cliUrl) } as any);
-			}
-		} catch {}
-		// Fall back to 0.3.x API
+		// Try 1.0+ API: { cliUrl } was removed, but may still work in some beta versions
+		// The safest approach: just pass { cliUrl } — it works in 0.3.x and early 1.0 betas
+		// If it stops working, we'll switch to RuntimeConnection
+		log?.(`[SDK] Creating client with cliUrl: ${cliUrl}`);
 		return new CopilotClient({ cliUrl } as any);
 	}
 	return new CopilotClient();
@@ -179,7 +181,7 @@ export class SessionHandle {
 	/** Read session history to estimate tokens since last compaction (for proactive compaction). */
 	private async seedTokenEstimate(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session);
+			const msgs = await getSessionEvents(this.session, this.log);
 			// Find the last compaction event
 			let lastCompactionIdx = -1;
 			let baseTokens = 0;
@@ -206,7 +208,7 @@ export class SessionHandle {
 	/** Called once on fresh pool connect — checks for pending CLI approvals. */
 	async checkInitialState(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session);
+			const msgs = await getSessionEvents(this.session, this.log);
 			this.detectPendingCliApproval(msgs);
 		} catch (e) {
 			this.log('[Session] checkInitialState error: ' + e);
@@ -287,7 +289,7 @@ export class SessionHandle {
 	}
 
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
-		const events = await getSessionEvents(this.session);
+		const events = await getSessionEvents(this.session, this.log);
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
 		const relevantEvents = events.filter((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
 const total = relevantEvents.length;
@@ -472,7 +474,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private async syncMessages(): Promise<void> {
 		if (this.listeners.size === 0) return;
 		try {
-			const allEvents = await getSessionEvents(this.session);
+			const allEvents = await getSessionEvents(this.session, this.log);
 			const interesting = allEvents.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message');
 			if (interesting.length <= this.lastSyncedCount) return;
 			// If lastSyncedCount is 0 (never seeded), this is our first look at the message list.
@@ -543,7 +545,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	/** Advance lastSyncedCount without broadcasting — used after portal turns to skip re-syncing. */
 	private async advanceSyncCount(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session);
+			const msgs = await getSessionEvents(this.session, this.log);
 			const count = msgs.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message').length;
 			if (count > this.lastSyncedCount) {
 				this.log(`[Sync] Portal turn: skipping ${count - this.lastSyncedCount} message(s), advancing cursor to ${count}`);
@@ -587,7 +589,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.activeReasoningBuffer = '';
 			this.attachListeners();
 			this.restoreAgent();
-			const msgs = await getSessionEvents(this.session);
+			const msgs = await getSessionEvents(this.session, this.log);
 			this.log(`[Sync] Post-reconnect getMessages: ${msgs.length} (lastSyncedCount=${this.lastSyncedCount})`);
 			await this.syncMessages();
 			// Check for pending CLI approvals missed during reconnect
@@ -930,7 +932,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (!this.isTurnActive || this.sessionGeneration !== gen) return;
 			this.log('[Session] Probing turn status via getMessages()...');
 			try {
-				const msgs = await getSessionEvents(this.session);
+				const msgs = await getSessionEvents(this.session, this.log);
 				// Look for a turn-ending event after our turn started
 				const turnStartIso = new Date(this.turnStartTime).toISOString();
 				const turnEndedAfterStart = msgs.some(
@@ -1613,7 +1615,7 @@ export class SessionPool {
 		this.log = log;
 		this.shared = !!cliUrl;
 		this.cliUrl = cliUrl;
-		this.client = createClient(cliUrl);
+		this.client = createClient(cliUrl, this.log);
 		this.rulesStore = rulesStore;
 		this.workspacePath = workspacePath;
 	}
@@ -1640,7 +1642,7 @@ export class SessionPool {
 				// Restart the client so it picks up the new credentials.
 				this.log(`[Pool] Login completed — restarting client to refresh credentials...`);
 				await this.client.stop();
-				this.client = createClient(this.cliUrl);
+				this.client = createClient(this.cliUrl, this.log);
 				await this.client.start();
 				const recheck = await this.client.getAuthStatus();
 				if (!recheck.isAuthenticated) {
@@ -1666,7 +1668,7 @@ export class SessionPool {
 	/** Stop the SDK client, optionally create a fresh instance, and reconnect. */
 	async restart(): Promise<void> {
 		await this.stop();
-		this.client = createClient(this.cliUrl);
+		this.client = createClient(this.cliUrl, this.log);
 		await this.start();
 	}
 
@@ -1906,7 +1908,7 @@ export class SessionPool {
 						this.log(`[Pool] CLI server detected — reconnecting SDK...`);
 					}
 					// Create a fresh client (stop() may leave the old one in a bad state)
-					this.client = createClient(this.cliUrl);
+					this.client = createClient(this.cliUrl, this.log);
 					await this.client.start();
 					this.log(`[Pool] SDK client restarted`);
 					return await this._doConnect(sessionId);
