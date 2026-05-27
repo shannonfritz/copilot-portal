@@ -111,6 +111,9 @@ body,
 	margin-bottom: 0.4em;
 	font-weight: 600;
 }
+.prose h1 { font-size: 1.5em; }
+.prose h2 { font-size: 1.25em; }
+.prose h3 { font-size: 1.1em; }
 
 /* Paragraphs */
 .prose p {
@@ -122,13 +125,13 @@ body,
 
 /* Lists — explicit bullets/numbers */
 .prose ul {
-	list-style-type: disc;
-	padding-left: 1.5em;
+	list-style-type: disc !important;
+	padding-left: 1.5em !important;
 	margin: 0.5em 0;
 }
 .prose ol {
-	list-style-type: decimal;
-	padding-left: 1.5em;
+	list-style-type: decimal !important;
+	padding-left: 1.5em !important;
 	margin: 0.5em 0;
 }
 .prose li {
