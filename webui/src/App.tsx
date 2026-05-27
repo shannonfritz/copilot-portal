@@ -73,7 +73,7 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 	),
 	table: ({ children }) => <CopyableTable>{children}</CopyableTable>,
 	th: ({ children }) => (
-		<th style={{ textAlign: 'left', background: 'var(--subtle-bg)', fontWeight: 600 }}>{children}</th>
+		<th style={{ textAlign: 'left', background: 'var(--subtle-bg)', fontWeight: 600, color: 'var(--text-bright)' }}>{children}</th>
 	),
 	a: ({ href, children }) => (
 		<a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--accent)' }}>{children}</a>
