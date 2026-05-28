@@ -139,10 +139,20 @@ export class TunnelManager {
 		});
 	}
 
-	/** Stop the tunnel */
+	/** Stop the tunnel (user-initiated — clears wasRunning so it won't auto-restart) */
 	stop(): void {
 		this.stopHealthCheck();
 		this.setWasRunning(false);
+		this.killProcess();
+	}
+
+	/** Shutdown the tunnel process (preserves wasRunning for auto-restart on next launch) */
+	shutdown(): void {
+		this.stopHealthCheck();
+		this.killProcess();
+	}
+
+	private killProcess(): void {
 		if (this.process) {
 			const pid = this.process.pid;
 			this.process.kill('SIGINT');

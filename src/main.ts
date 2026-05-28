@@ -153,7 +153,7 @@ const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: C
 
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');
-	tunnel.stop();
+	tunnel.shutdown();
 	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -164,7 +164,7 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
-	tunnel.stop();
+	tunnel.shutdown();
 	await server.stop().catch(() => {});
 	if (process.platform === 'win32') {
 		spawnSync('pwsh', ['-NoProfile', '-Command',
@@ -443,7 +443,7 @@ if (process.stdin.isTTY) {
 
 	const shutdown = async () => {
 		console.log('\nShutting down...');
-		tunnel.stop();
+		tunnel.shutdown();
 		await server.stop().catch(() => {}); // disconnect SDK first
 		killCliServer(); // then kill CLI process
 		process.exit(0);
