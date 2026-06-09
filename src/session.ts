@@ -1114,7 +1114,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onSessionContextChanged(data: unknown): void {
-		const d = data as { cwd?: string; gitRoot?: string; repository?: string; branch?: string };
+		const d = data as { cwd?: string; workingDirectory?: string; gitRoot?: string; repository?: string; branch?: string };
+		// Normalize: SDK beta.12+ may use workingDirectory instead of cwd
+		if (!d.cwd && d.workingDirectory) d.cwd = d.workingDirectory;
 		this.log(`[Session] session.context_changed: ${d.cwd ?? '(no cwd)'}`);
 		if (d.cwd) {
 			this.broadcast({ type: 'session_context_updated', sessionId: this.session.sessionId, context: d });
@@ -1123,7 +1125,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	/** Extract context from session.start or session.resume event data and broadcast to clients. */
 	private extractAndBroadcastContext(data: unknown): void {
-		const d = data as { context?: { cwd?: string; gitRoot?: string; repository?: string; branch?: string } };
+		const d = data as { context?: { cwd?: string; workingDirectory?: string; gitRoot?: string; repository?: string; branch?: string } };
+		// Normalize: SDK beta.12+ may use workingDirectory instead of cwd
+		if (d.context && !d.context.cwd && d.context.workingDirectory) d.context.cwd = d.context.workingDirectory;
 		if (d.context?.cwd) {
 			this.broadcast({ type: 'session_context_updated', sessionId: this.session.sessionId, context: d.context });
 		}
@@ -1684,6 +1688,11 @@ export class SessionPool {
 
 	async listSessions(): Promise<SessionMetadata[]> {
 		const sessions = await this.client.listSessions();
+		// Normalize context: SDK beta.12+ renamed cwd → workingDirectory
+		for (const s of sessions) {
+			const ctx = s.context as any;
+			if (ctx && !ctx.cwd && ctx.workingDirectory) ctx.cwd = ctx.workingDirectory;
+		}
 		return sessions.sort((a, b) =>
 			new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime()
 		);
