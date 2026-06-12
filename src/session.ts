@@ -139,6 +139,7 @@ export class SessionHandle {
 	private cliApprovalSummary: string | null = null;// set when CLI turn is waiting for tool approval
 	private cliInputPending: string | null = null; // set when CLI turn is waiting for user input
 	private mcpToolCounts: Record<string, number> = {}; // cached tool counts per MCP server
+	private loadedSkills: Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean; path?: string }> = [];
 	private turnProbeTimer: ReturnType<typeof setTimeout> | null = null;
 	private turnStartTime: number = 0; // ms timestamp when current turn started
 	// Proactive compaction: track estimated tokens since last compaction.
@@ -723,6 +724,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	async listMcpServers(): Promise<Array<{ name: string; status: string; source?: string }>> {
 		const result = await this.session.rpc.mcp.list();
 		return result.servers ?? [];
+	}
+	async listSkills(): Promise<Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean; path?: string }>> {
+		const result = await this.session.rpc.skills.list();
+		const skills = (result.skills ?? []).map((s: any) => ({
+			name: s.name, description: s.description ?? '', source: s.source ?? 'unknown',
+			enabled: s.enabled ?? true, userInvocable: s.userInvocable ?? false, path: s.path,
+		}));
+		if (skills.length > 0) this.loadedSkills = skills;
+		return skills;
 	}
 	async mcpOAuthLogin(serverName: string): Promise<{ authorizationUrl?: string }> {
 		return await this.session.rpc.mcp.oauth.login({ serverName });
@@ -1502,6 +1512,25 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		}
 	}
 
+	private onSkillsLoaded(data: unknown): void {
+		const d = data as { skills?: Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean; path?: string }> };
+		if (d?.skills) {
+			this.loadedSkills = d.skills;
+			this.log(`[Session] Skills loaded: ${d.skills.length} (${d.skills.filter(s => s.enabled).length} enabled)`);
+			this.broadcast({ type: 'skills_loaded' as any, content: JSON.stringify(d.skills) });
+		}
+	}
+
+	getLoadedSkills(): Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean; path?: string }> { return this.loadedSkills; }
+
+	private onSkillInvoked(data: unknown): void {
+		const d = data as { name?: string; trigger?: string; description?: string; pluginName?: string };
+		if (d?.name) {
+			this.log(`[Session] Skill invoked: ${d.name} (${d.trigger ?? 'unknown'})`);
+			this.broadcast({ type: 'skill_invoked' as any, content: JSON.stringify(d) });
+		}
+	}
+
 	private onToolsUpdated(data: unknown): void {
 		const d = data as { tools?: Array<{ name: string; namespacedName?: string }> };
 		if (d?.tools) {
@@ -1555,6 +1584,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'session.usage_info':               (d) => this.onSessionUsageInfo(d),
 		'session.mcp_servers_loaded':       (d) => this.onMcpServersLoaded(d),
 		'session.mcp_server_status_changed': (d) => this.onMcpServerStatusChanged(d),
+		'session.skills_loaded':            (d) => this.onSkillsLoaded(d),
+		'skill.invoked':                    (d) => this.onSkillInvoked(d),
 		'session.tools_updated':            (d) => this.onToolsUpdated(d),
 	};
 

@@ -593,6 +593,7 @@ function SessionDrawer({
 	setMcpServers,
 	mcpConfirm,
 	setMcpConfirm,
+	skills,
 }: {
 	open: boolean;
 	onToggle: () => void;
@@ -618,6 +619,7 @@ function SessionDrawer({
 	setMcpServers: React.Dispatch<React.SetStateAction<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>>;
 	mcpConfirm: { message: string; onConfirm: () => void } | null;
 	setMcpConfirm: React.Dispatch<React.SetStateAction<{ message: string; onConfirm: () => void } | null>>;
+	skills: Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean }>;
 }) {
 	const [showModelPicker, setShowModelPicker] = useState(false);
 	const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; contextWindow?: number; vision?: boolean; reasoning?: boolean; premium?: boolean; multiplier?: number; priceCategory?: string }> | null>(null);
@@ -633,6 +635,7 @@ function SessionDrawer({
 	const [mcpListAtBottom, setMcpListAtBottom] = useState(true);
 	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(true);
 	const [showMcpList, setShowMcpList] = useState(false);
+	const [showSkillsList, setShowSkillsList] = useState(false);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
 	const [mcpAddName, setMcpAddName] = useState('');
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
@@ -1234,6 +1237,52 @@ function SessionDrawer({
 							})()}
 						</div>
 					)}
+					{/* Skills — read-only list of loaded skills */}
+					{!draft && activeSessionId && skills.length > 0 && (
+						<div className="relative mt-3">
+							<button
+								type="button"
+								className="flex w-full items-center justify-between px-3 py-2 text-sm"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: showSkillsList ? '0.5rem 0.5rem 0 0' : '0.5rem' }}
+								onClick={() => setShowSkillsList(v => !v)}
+							>
+								<div className="flex items-center gap-2">
+									<svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+										<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+									</svg>
+									<span>{skills.filter(s => s.enabled).length} skill{skills.filter(s => s.enabled).length !== 1 ? 's' : ''} loaded</span>
+								</div>
+								<span style={{ color: 'var(--text-muted)' }}>{showSkillsList ? '\u25b4' : '\u25be'}</span>
+							</button>
+							{showSkillsList && (
+								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+									{skills.map(s => {
+										const sourceLabel = s.source === 'personal-copilot' ? 'personal' : s.source === 'personal-agents' ? 'agents' : s.source;
+										const firstSentence = s.description ? s.description.split(/[.\n]/)[0] : '';
+										const brief = firstSentence.length > 80 ? firstSentence.slice(0, 80) + '...' : firstSentence;
+										return (
+										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm">
+											<span className="shrink-0" style={{ color: s.enabled ? 'var(--success)' : 'var(--text-muted)', fontSize: 10 }}>●</span>
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-1.5">
+													<span className="truncate">{s.name}</span>
+													{s.userInvocable && (
+														<span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-medium" style={{ background: 'var(--primary-tint)', color: 'var(--primary)' }}>/</span>
+													)}
+												</div>
+												<div className="truncate" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+													{sourceLabel && <>{sourceLabel}{brief ? ' · ' : ''}</>}{brief}
+												</div>
+											</div>
+										</div>
+										);
+									})}
+								</div>
+								</div>
+							)}
+						</div>
+					)}
 					{/* Model selector */}
 					{draft && (
 						<label className="flex items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -1447,6 +1496,7 @@ export default function App() {
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+	const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean }>>([]);
 	const [messages, setMessagesState] = useState<Message[]>([]);
 	const messagesRef = useRef<Message[]>([]);
 	const setMessages = useCallback((arg: Message[] | ((prev: Message[]) => Message[])) => {
@@ -2460,6 +2510,13 @@ export default function App() {
 							return count != null ? { ...s, toolCount: count } : s;
 						}));
 					} catch {}
+				} else if ((event as any).type === 'skills_loaded') {
+					try {
+						const loaded = JSON.parse((event as any).content ?? '[]') as Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean }>;
+						setSkills(loaded);
+					} catch {}
+				} else if ((event as any).type === 'skill_invoked') {
+					// Skill invocation — logged in console, could surface in timeline later
 				} else if (event.type === 'approval_request' && event.approval) {
 					setPendingApproval(event.approval);
 				} else if (event.type === 'approval_resolved') {
@@ -4188,6 +4245,7 @@ export default function App() {
 					setMcpServers={setMcpServers}
 					mcpConfirm={mcpConfirm}
 					setMcpConfirm={setMcpConfirm}
+					skills={skills}
 					/>
 				)}
 

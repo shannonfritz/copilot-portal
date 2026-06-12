@@ -234,6 +234,18 @@ export class PortalServer {
 				if (Object.keys(toolCounts).length > 0) {
 					ws.send(JSON.stringify({ type: 'mcp_tool_counts', content: JSON.stringify(toolCounts) }));
 				}
+				// Send skills list (query via RPC, fall back to cache)
+				try {
+					const skills = await handle.listSkills();
+					if (skills.length > 0) {
+						ws.send(JSON.stringify({ type: 'skills_loaded', content: JSON.stringify(skills) }));
+					}
+				} catch {
+					const skills = handle.getLoadedSkills();
+					if (skills.length > 0) {
+						ws.send(JSON.stringify({ type: 'skills_loaded', content: JSON.stringify(skills) }));
+					}
+				}
 			}).catch(async (e) => {
 				const errMsg = String(e);
 				if (errMsg.includes('Session not found') || errMsg.includes('not found')) {
