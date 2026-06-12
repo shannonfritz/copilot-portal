@@ -1937,6 +1937,16 @@ export default function App() {
 					setSessionContext(ctx);
 					setActiveSessionSummary((event as { summary?: string | null }).summary ?? null);
 					setActiveModel((event as { model?: string | null }).model ?? null);
+					// Restore model selected during draft creation (before page reload)
+					const pendingModel = sessionStorage.getItem('portal_pending_model');
+					if (pendingModel) {
+						sessionStorage.removeItem('portal_pending_model');
+						setActiveModel(pendingModel);
+						// Tell server to switch to this model
+						setTimeout(() => {
+							wsRef.current?.send(JSON.stringify({ type: 'set_model', content: pendingModel }));
+						}, 500);
+					}
 					// Restore agent name from session_switched event
 					setActiveAgent((event as { agent?: string | null }).agent ?? null);
 					// Restore accumulated usage from server (survives page reload)
@@ -2698,11 +2708,15 @@ export default function App() {
 			if (draftSession.cwd.trim()) {
 				sessionStorage.setItem('portal_pending_cwd', draftSession.cwd.trim());
 			}
+			// Store selected model so it survives the page reload
+			if (activeModel) {
+				sessionStorage.setItem('portal_pending_model', activeModel);
+			}
 			window.location.search = params.toString();
 		} catch {
 			setError('Could not create session');
 		}
-	}, [draftSession]);
+	}, [draftSession, activeModel]);
 
 	const changeModel = useCallback((modelId: string) => {
 		setActiveModel(modelId);

@@ -692,9 +692,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	async setModel(model: string): Promise<void> {
 		await this.session.setModel(model);
+		// SDK fires session.model_change → onModelChange handles broadcast
 		this.currentModel = model;
-		this.log(`[Session] Model changed to: ${model}`);
-		this.broadcast({ type: 'model_changed', model });
 	}
 
 	async disconnect(): Promise<void> {
@@ -1451,7 +1450,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		if (model) {
 			this.currentModel = model;
 			this.log(`[Session] Model changed: ${model}`);
-			this.broadcast({ type: 'model_changed', content: model });
+			this.broadcast({ type: 'model_changed', model });
 		}
 	}
 

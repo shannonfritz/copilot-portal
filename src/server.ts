@@ -196,7 +196,7 @@ export class PortalServer {
 					setTimeout(() => {
 						if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 						if (handle.currentModel) {
-							ws.send(JSON.stringify({ type: 'model_changed', content: handle.currentModel }));
+							ws.send(JSON.stringify({ type: 'model_changed', model: handle.currentModel }));
 						}
 					}, 1000);
 				}
