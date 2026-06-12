@@ -433,7 +433,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 				style={{ color: textColor, cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
 				onClick={() => hasDetail && setExpanded(e => !e)}
 			>
-				<span>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? '✅' : '⚙️'}</span>
+				<span>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? <svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : <span className="inline-flex animate-spin"><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>}</span>
 				<span className="flex-1">
 					{isError ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}
 					{isError && tc.displayLabel && <span style={{ fontWeight: 'normal', opacity: 0.7 }}> — {tc.displayLabel}</span>}
@@ -443,7 +443,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 					e.stopPropagation();
 					const info = [`tool: ${label}`, elapsed > 0 ? `elapsed: ${elapsed}s` : null, tc.displayLabel ? `label: ${tc.displayLabel}` : null, tc.content ? `args: ${tc.content}` : null].filter(Boolean).join('\n');
 					navigator.clipboard.writeText(info).catch(() => {});
-				}}>📋</button>}
+				}}><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>}
 				{hasDetail && <span style={{ fontSize: '10px', opacity: 0.6 }}>{expanded ? '▾' : '▸'}</span>}
 			</div>
 			{expanded && hasDetail && (
@@ -964,7 +964,7 @@ function SessionDrawer({
 										return (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
-												{s.status === 'needs-auth' ? '⚠' : s.status === 'connected' ? '●' : s.status === 'failed' ? '✗' : '○'}
+												{s.status === 'needs-auth' ? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : s.status === 'connected' ? '●' : s.status === 'failed' ? '✗' : '○'}
 											</span>
 											<div className="flex-1">
 												<span>{label}</span>
@@ -4362,7 +4362,7 @@ export default function App() {
 					&& !window.matchMedia('(display-mode: standalone)').matches
 					&& (
 					<div className="flex items-center justify-between px-4 py-2 text-xs" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-						<span>📱 Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
+						<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg> Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
 						<button
 							className="ml-3 px-1.5 rounded"
 							style={{ color: 'var(--text-muted)', background: 'none', border: 'none', fontSize: '14px' }}
@@ -4448,7 +4448,7 @@ export default function App() {
 											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
 										}}>
-											<span>🔧</span>
+											<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
 											<span>{msg.toolSummary.length} tool{msg.toolSummary.length > 1 ? 's' : ''} ran</span>
 										</summary>
 										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -4461,7 +4461,7 @@ export default function App() {
 														</div>
 													)}
 													<div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', paddingLeft: t.intentionSummary ? '12px' : undefined }}>
-														<span style={{ flexShrink: 0 }}>{t.completed ? '✓' : '·'}</span>
+														<span style={{ flexShrink: 0 }}>{t.completed ? <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : '·'}</span>
 														<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
 														{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
 													</div>
@@ -4495,7 +4495,7 @@ export default function App() {
 											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
 										}}>
-											<span>💭</span>
+											<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="11" rx="9" ry="7"/><circle cx="5" cy="20" r="1.5"/><path d="M7 17.5c-.8.5-1.5 1.2-1.8 2"/><circle cx="9" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg></span>
 											<span>Thought</span>
 										</summary>
 										<div style={{ marginTop: '5px', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -4512,7 +4512,7 @@ export default function App() {
 													cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 													gap: '5px', fontSize: '11px', opacity: 0.7, userSelect: 'none',
 												}}>
-													<span>👉</span>
+													<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
 													<span>Selected</span>
 												</summary>
 												<div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -4595,7 +4595,7 @@ export default function App() {
 							}}
 						>
 							<span className="flex-1">
-								<strong>{notification.type === 'warning' ? '⚠ Warning:' : '💬 Note:'}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
+								<strong>{notification.type === 'warning' ? <><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Warning:</> : <><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> Note:</>}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
 							</span>
 							{notification.action && (
 								<button
@@ -4635,7 +4635,7 @@ export default function App() {
 						{cliApprovalInfo && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'var(--muted-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
-									<span>⏳</span> CLI waiting for approval
+									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> CLI waiting for approval
 								</div>
 								<div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{cliApprovalInfo}</div>
 								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Approve or deny in your terminal to continue.</div>
@@ -4644,7 +4644,7 @@ export default function App() {
 						{cliInputInfo && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--primary-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-									<span>💬</span> CLI waiting for your input
+									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> CLI waiting for your input
 								</div>
 								<div className="text-xs" style={{ color: 'var(--text)' }}>{cliInputInfo}</div>
 								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Respond in your terminal to continue.</div>
@@ -4653,12 +4653,12 @@ export default function App() {
 						{pendingApproval && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--tool-call)', background: 'var(--tool-call-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tool-call)' }}>
-									<span>⚠️</span> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
+									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
 								<pre className="chat-scroll mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
 								{pendingApproval.warning && (
 									<div className="mb-2 flex items-center gap-1.5 rounded px-2 py-1 text-xs" style={{ background: 'var(--warning-tint)', color: 'var(--tool-call)' }}>
-										<span>⚠</span> {pendingApproval.warning}
+										<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> {pendingApproval.warning}
 									</div>
 								)}
 								<div className="flex flex-col gap-1.5">
