@@ -4431,14 +4431,21 @@ export default function App() {
 						<div key={msg.id}>
 						<div className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
 							<div
-								className={msg.role === 'user' ? 'relative max-w-[85%] rounded-xl px-4 py-3 text-sm' : 'relative w-full rounded-xl px-4 py-3 text-sm'}
+								className={msg.role === 'user' ? 'relative max-w-[85%] px-4 py-3 text-sm' : 'relative w-full px-4 py-3 text-sm'}
 								style={
 									msg.role === 'user'
-										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 4px 18px' }
+										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 2px 18px' }
 										: {
-												background: 'var(--surface)',
-												border: isIntermediate ? '1.5px dashed var(--border)' : '1px solid var(--border)',
-												borderRadius: '18px 18px 18px 4px',
+												background: isIntermediate ? 'transparent' : 'var(--surface)',
+												border: isIntermediate ? '0px solid transparent' : '1px solid var(--border)',
+												borderLeft: isIntermediate ? '2px dashed var(--border)' : undefined,
+												borderBottom: isIntermediate ? '2px dashed var(--border)' : undefined,
+												borderRadius: isIntermediate ? '0' : '18px 18px 18px 2px',
+												borderBottomLeftRadius: isIntermediate ? '8px' : undefined,
+												opacity: isIntermediate ? 0.75 : undefined,
+												paddingLeft: isIntermediate ? '12px' : undefined,
+												paddingTop: isIntermediate ? '4px' : undefined,
+												paddingBottom: isIntermediate ? '4px' : undefined,
 											}
 								}
 							>
@@ -4573,7 +4580,7 @@ export default function App() {
 							style={{
 								background: 'var(--surface)',
 								border: '1px solid var(--border)',
-								borderRadius: '18px 18px 18px 4px',
+								borderRadius: '18px 18px 18px 2px',
 							}}
 						>
 							<span className="absolute right-2 top-1 font-mono opacity-30 select-none" style={{ fontSize: '8px' }}>live</span>
