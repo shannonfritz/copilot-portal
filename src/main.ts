@@ -318,7 +318,7 @@ if (process.stdin.isTTY) {
 					const sock = net.createConnection({ port: 3848, host: 'localhost' }, () => { sock.destroy(); });
 					sock.on('error', () => {
 						clearInterval(watchTuiExit);
-						log('TUI exited — restarting headless CLI server');
+						console.log('TUI exited — restarting headless CLI server');
 						if (process.platform === 'win32') {
 							const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 							if (which.status === 0) {
