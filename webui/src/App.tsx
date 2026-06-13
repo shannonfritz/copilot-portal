@@ -1691,6 +1691,7 @@ export default function App() {
 	const chatScrollRef = useRef<HTMLDivElement>(null);
 	const isNearBottomRef = useRef(true);
 	const isProgrammaticScroll = useRef(false);
+	const scrollFlagTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
@@ -2675,11 +2676,11 @@ export default function App() {
 		if (isNearBottomRef.current) {
 			isProgrammaticScroll.current = true;
 			const el = chatScrollRef.current;
-			if (el) {
-				el.scrollTop = el.scrollHeight;
-			}
-			// Clear flag after a frame to let the scroll event from scrollTop settle
-			requestAnimationFrame(() => { isProgrammaticScroll.current = false; });
+			if (el) el.scrollTop = el.scrollHeight;
+			// Keep the flag alive long enough for smooth scroll animation to finish.
+			// Each trigger resets the timer so rapid updates stay protected.
+			if (scrollFlagTimer.current) clearTimeout(scrollFlagTimer.current);
+			scrollFlagTimer.current = setTimeout(() => { isProgrammaticScroll.current = false; }, 350);
 		}
 	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
@@ -4380,6 +4381,7 @@ export default function App() {
 				)}
 
 				<div ref={chatScrollRef} className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4"
+					style={{ scrollBehavior: 'smooth' }}
 					onScroll={() => {
 						if (isProgrammaticScroll.current) return;
 						const el = chatScrollRef.current;
