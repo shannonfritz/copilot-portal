@@ -51,8 +51,8 @@ function CopyableTable({ children }: { children: React.ReactNode }) {
 				title="Copy table"
 			>
 				{copied
-					? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-					: <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+					? <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+					: <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
 				}
 			</button>
 		</div>
@@ -269,8 +269,8 @@ function CopyButton({ text }: { text: string }) {
 			style={{ color: 'inherit' }}
 		>
 			{copied
-				? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-				: <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+				? <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+				: <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
 			}
 		</button>
 	);
@@ -328,8 +328,8 @@ function CopyRichButton({ htmlRef, plainText }: { htmlRef: React.RefObject<HTMLD
 			style={{ color: 'inherit' }}
 		>
 			{copied
-				? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-				: <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+				? <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+				: <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 					<rect x="9" y="9" width="13" height="13" rx="2" />
 					<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
 					<path d="M12 13h5M12 16h3" strokeLinecap="round" />
@@ -433,7 +433,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 				style={{ color: textColor, cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
 				onClick={() => hasDetail && setExpanded(e => !e)}
 			>
-				<span>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? <svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : <span className="inline-flex animate-spin"><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>}</span>
+				<span className="flex shrink-0 items-center justify-center" style={{ width: 14, height: 14 }}>{isError ? '✗' : isUnsuccessful ? '✗' : isComplete ? <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : <svg className="size-3.5 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>}</span>
 				<span className="flex-1">
 					{isError ? 'Failed' : isComplete ? 'Done' : 'Running'}: {label}
 					{isError && tc.displayLabel && <span style={{ fontWeight: 'normal', opacity: 0.7 }}> — {tc.displayLabel}</span>}
@@ -443,7 +443,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 					e.stopPropagation();
 					const info = [`tool: ${label}`, elapsed > 0 ? `elapsed: ${elapsed}s` : null, tc.displayLabel ? `label: ${tc.displayLabel}` : null, tc.content ? `args: ${tc.content}` : null].filter(Boolean).join('\n');
 					navigator.clipboard.writeText(info).catch(() => {});
-				}}><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>}
+				}}><svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>}
 				{hasDetail && <span style={{ fontSize: '10px', opacity: 0.6 }}>{expanded ? '▾' : '▸'}</span>}
 			</div>
 			{expanded && hasDetail && (
@@ -636,6 +636,7 @@ function SessionDrawer({
 	const [mcpFeaturedAtBottom, setMcpFeaturedAtBottom] = useState(true);
 	const [showMcpList, setShowMcpList] = useState(false);
 	const [showSkillsList, setShowSkillsList] = useState(false);
+	const [skillsListAtBottom, setSkillsListAtBottom] = useState(true);
 	const [showMcpAdd, setShowMcpAdd] = useState(false);
 	const [mcpAddName, setMcpAddName] = useState('');
 	const [mcpAddCommand, setMcpAddCommand] = useState('');
@@ -646,6 +647,7 @@ function SessionDrawer({
 	const [m365TenantId, setM365TenantId] = useState<string | null>(null);
 	const [m365Loading, setM365Loading] = useState(false);
 	const mcpPickerRef = useRef<HTMLDivElement>(null);
+	const skillsPickerRef = useRef<HTMLDivElement>(null);
 	const agentPickerRef = useRef<HTMLDivElement>(null);
 	const modelPickerRef = useRef<HTMLDivElement>(null);
 
@@ -712,10 +714,13 @@ function SessionDrawer({
 			if (showMcpList && mcpPickerRef.current && !mcpPickerRef.current.contains(e.target as Node)) {
 				setShowMcpList(false); setShowMcpAdd(false);
 			}
+			if (showSkillsList && skillsPickerRef.current && !skillsPickerRef.current.contains(e.target as Node)) {
+				setShowSkillsList(false);
+			}
 		};
 		document.addEventListener('mousedown', handler);
 		return () => document.removeEventListener('mousedown', handler);
-	}, [showAgentPicker, showModelPicker, showMcpList]);
+	}, [showAgentPicker, showModelPicker, showMcpList, showSkillsList]);
 
 	return (
 		<div style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'relative', zIndex: 20 }}>
@@ -964,7 +969,7 @@ function SessionDrawer({
 										return (
 										<div key={s.name} className="flex w-full items-center gap-2 px-3 py-2 text-sm">
 											<span className="w-4 text-xs shrink-0" style={{ color: s.status === 'connected' ? 'var(--success)' : s.status === 'needs-auth' ? 'var(--warning)' : s.status === 'failed' ? 'var(--error)' : 'var(--text-muted)' }}>
-												{s.status === 'needs-auth' ? <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : s.status === 'connected' ? '●' : s.status === 'failed' ? '✗' : '○'}
+												{s.status === 'needs-auth' ? <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : s.status === 'connected' ? '●' : s.status === 'failed' ? '✗' : '○'}
 											</span>
 											<div className="flex-1">
 												<span>{label}</span>
@@ -1036,7 +1041,7 @@ function SessionDrawer({
 														}}
 														title="Clone server"
 													>
-														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+														<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
 													</button>
 													<button type="button" className="shrink-0 rounded p-1 opacity-30 hover:opacity-70" style={{ color: 'var(--text-muted)' }}
 														onClick={() => confirmMcpChange(async () => {
@@ -1045,7 +1050,7 @@ function SessionDrawer({
 														})}
 														title="Remove server"
 													>
-														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+														<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
 													</button>
 												</>
 											) : !isRemovable && s.source && s.source !== 'unknown' ? (
@@ -1111,7 +1116,7 @@ function SessionDrawer({
 												<div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Microsoft Agent 365</div>
 												{m365Loading ? (
 													<div className="flex items-center justify-center gap-2 px-3 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-														<svg className="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
+														<svg className="size-3.5 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
 														Discovering servers…
 													</div>
 												) : m365Servers === null ? (
@@ -1131,7 +1136,7 @@ function SessionDrawer({
 														}
 														return (
 															<div className="flex items-center justify-center gap-2 px-3 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-																<svg className="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
+																<svg className="size-3.5 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 000 20" opacity="0.3" /><path d="M12 2a10 10 0 0110 10" /></svg>
 																Discovering servers…
 															</div>
 														);
@@ -1221,7 +1226,7 @@ function SessionDrawer({
 											style={{ color: 'var(--primary)' }}
 											onClick={() => { setShowMcpAdd(true); setMcpAddType('featured'); }}
 										>
-											<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+											<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 											Add Server
 										</button>
 										<button type="button" className="px-3 py-2 text-[10px]"
@@ -1239,7 +1244,7 @@ function SessionDrawer({
 					)}
 					{/* Skills — read-only list of loaded skills */}
 					{!draft && activeSessionId && skills.length > 0 && (
-						<div className="relative mt-3">
+						<div className="relative mt-3" ref={skillsPickerRef}>
 							<button
 								type="button"
 								className="flex w-full items-center justify-between px-3 py-2 text-sm"
@@ -1256,7 +1261,10 @@ function SessionDrawer({
 							</button>
 							{showSkillsList && (
 								<div className="absolute z-10 overflow-hidden" style={{ left: 0, right: 0, top: '100%', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}>
+								<div className="relative">
+								<div className="chat-scroll max-h-56 overflow-y-auto py-1" style={{ background: 'var(--surface)' }}
+									onScroll={e => { const el = e.currentTarget; setSkillsListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}
+									ref={el => { if (el) setSkillsListAtBottom(el.scrollHeight <= el.clientHeight || el.scrollHeight - el.scrollTop - el.clientHeight < 4); }}>
 									{skills.map(s => {
 										const sourceLabel = s.source === 'personal-copilot' ? 'personal' : s.source === 'personal-agents' ? 'agents' : s.source;
 										const firstSentence = s.description ? s.description.split(/[.\n]/)[0] : '';
@@ -1278,6 +1286,8 @@ function SessionDrawer({
 										</div>
 										);
 									})}
+								</div>
+								{!skillsListAtBottom && <div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(transparent 0%, var(--surface) 100%)' }} />}
 								</div>
 								</div>
 							)}
@@ -3690,12 +3700,12 @@ export default function App() {
 													if (isEditing) { setEditingTheme(null); applyPreset(activePreset); }
 													else setEditingTheme({ editId: p.id, name: p.name, base: p.base, accent: p.accent, text: ('text' in p ? (p as { text?: string }).text : undefined) ?? '' });
 												}} title="Edit theme">
-													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+													<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
 												</button>
 											)}
 											{isCustom && (
 												<button type="button" className="shrink-0 rounded p-1" style={{ opacity: 0.5 }} onClick={(e) => { e.stopPropagation(); const updated = customThemes.filter(t => t.id !== p.id); setCustomThemes(updated); if (defaultThemeId === p.id) { setDefaultThemeId('dark'); saveThemesToServer(updated, 'dark'); } else { saveThemesToServer(updated, defaultThemeId); } if (activeThemeId === p.id) applyPreset(BUILTIN_PRESETS[0]); if (isEditing) setEditingTheme(null); }} title="Delete theme">
-													<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+													<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
 												</button>
 											)}
 										</button>
@@ -4362,7 +4372,7 @@ export default function App() {
 					&& !window.matchMedia('(display-mode: standalone)').matches
 					&& (
 					<div className="flex items-center justify-between px-4 py-2 text-xs" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-						<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg> Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
+						<span><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg> Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
 						<button
 							className="ml-3 px-1.5 rounded"
 							style={{ color: 'var(--text-muted)', background: 'none', border: 'none', fontSize: '14px' }}
@@ -4455,7 +4465,7 @@ export default function App() {
 											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
 										}}>
-											<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+											<span><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
 											<span>{msg.toolSummary.length} tool{msg.toolSummary.length > 1 ? 's' : ''} ran</span>
 										</summary>
 										<div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -4502,7 +4512,7 @@ export default function App() {
 											cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 											gap: '5px', fontSize: '11px', color: 'var(--text-muted)', userSelect: 'none',
 										}}>
-											<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="11" rx="9" ry="7"/><circle cx="5" cy="20" r="1.5"/><path d="M7 17.5c-.8.5-1.5 1.2-1.8 2"/><circle cx="9" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg></span>
+											<span><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="11" rx="9" ry="7"/><circle cx="5" cy="20" r="1.5"/><path d="M7 17.5c-.8.5-1.5 1.2-1.8 2"/><circle cx="9" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r="0.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg></span>
 											<span>Thought</span>
 										</summary>
 										<div style={{ marginTop: '5px', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -4519,7 +4529,7 @@ export default function App() {
 													cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center',
 													gap: '5px', fontSize: '11px', opacity: 0.7, userSelect: 'none',
 												}}>
-													<span><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
+													<span><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
 													<span>Selected</span>
 												</summary>
 												<div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -4602,7 +4612,7 @@ export default function App() {
 							}}
 						>
 							<span className="flex-1">
-								<strong>{notification.type === 'warning' ? <><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Warning:</> : <><svg className="size-3.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> Note:</>}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
+								<strong>{notification.type === 'warning' ? <><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Warning:</> : <><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> Note:</>}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
 							</span>
 							{notification.action && (
 								<button
@@ -4642,7 +4652,7 @@ export default function App() {
 						{cliApprovalInfo && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'var(--muted-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
-									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> CLI waiting for approval
+									<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> CLI waiting for approval
 								</div>
 								<div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{cliApprovalInfo}</div>
 								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Approve or deny in your terminal to continue.</div>
@@ -4651,7 +4661,7 @@ export default function App() {
 						{cliInputInfo && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--accent)', background: 'var(--primary-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> CLI waiting for your input
+									<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> CLI waiting for your input
 								</div>
 								<div className="text-xs" style={{ color: 'var(--text)' }}>{cliInputInfo}</div>
 								<div className="mt-1 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>Respond in your terminal to continue.</div>
@@ -4660,7 +4670,7 @@ export default function App() {
 						{pendingApproval && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--tool-call)', background: 'var(--tool-call-tint)' }}>
 								<div className="mb-1 flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--tool-call)' }}>
-									<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
+									<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Permission Request — <span className="font-mono text-xs">{pendingApproval.action}</span>
 								</div>
 								<pre className="chat-scroll mb-2 overflow-auto rounded px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', color: 'var(--text)', maxHeight: 80 }}>{pendingApproval.summary}</pre>
 								{pendingApproval.warning && (
@@ -4788,7 +4798,7 @@ export default function App() {
 														onClick={() => setConfirmDeletePrompt(p.label)}
 														title="Remove prompt"
 													>
-														<svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 															<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
 														</svg>
 													</button>
