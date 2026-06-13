@@ -1820,16 +1820,32 @@ export class PortalServer {
 	/** Check for updates (for console command) */
 	async checkForUpdates(): Promise<{ hasUpdates: boolean; summary: string }> {
 		const status = await this.updater.check();
+		const parts: string[] = [];
 		const updatable = status.packages.filter(p => p.hasUpdate);
-		if (updatable.length === 0) return { hasUpdates: false, summary: 'All packages up to date' };
-		return { hasUpdates: true, summary: updatable.map(p => `${p.name} ${p.installed} -> ${p.latest}`).join(', ') };
+		if (updatable.length > 0) parts.push(...updatable.map(p => `${p.name} ${p.installed} -> ${p.latest}`));
+		if (status.portal?.hasUpdate) parts.push(`Portal v${status.portal.installed} -> v${status.portal.latest}`);
+		if (parts.length === 0) return { hasUpdates: false, summary: 'All packages up to date' };
+		return { hasUpdates: true, summary: parts.join(', ') };
 	}
 
 	/** Apply updates (for console command) */
 	async applyUpdates(): Promise<string> {
-		const status = await this.updater.apply();
-		if (status.error) return `Update failed: ${status.error}`;
-		return status.restartNeeded ? 'Updates applied. Press [r] to restart.' : 'Updates applied.';
+		const status = await this.updater.check();
+		const hasPackages = status.packages.some(p => p.hasUpdate);
+		const hasPortal = !!status.portal?.hasUpdate;
+		if (!hasPackages && !hasPortal) return 'Everything is up to date.';
+		const msgs: string[] = [];
+		if (hasPackages) {
+			const pkgStatus = await this.updater.apply();
+			if (pkgStatus.error) msgs.push(`Package update failed: ${pkgStatus.error}`);
+			else msgs.push('Packages updated.');
+		}
+		if (hasPortal) {
+			const portalStatus = await this.updater.applyPortalUpdate();
+			if (portalStatus.error) msgs.push(`Portal update failed: ${portalStatus.error}`);
+			else msgs.push(`Portal updated to v${status.portal!.latest}.`);
+		}
+		return msgs.join(' ') + ' Press [r] to restart.';
 	}
 
 	async start(): Promise<void> {
