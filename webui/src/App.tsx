@@ -1690,6 +1690,7 @@ export default function App() {
 	const chatEndRef = useRef<HTMLDivElement>(null);
 	const chatScrollRef = useRef<HTMLDivElement>(null);
 	const isNearBottomRef = useRef(true);
+	const isProgrammaticScroll = useRef(false);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
@@ -2672,7 +2673,13 @@ export default function App() {
 
 	useEffect(() => {
 		if (isNearBottomRef.current) {
-			chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+			isProgrammaticScroll.current = true;
+			const el = chatScrollRef.current;
+			if (el) {
+				el.scrollTop = el.scrollHeight;
+			}
+			// Clear flag after a frame to let the scroll event from scrollTop settle
+			requestAnimationFrame(() => { isProgrammaticScroll.current = false; });
 		}
 	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
@@ -4374,6 +4381,7 @@ export default function App() {
 
 				<div ref={chatScrollRef} className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4"
 					onScroll={() => {
+						if (isProgrammaticScroll.current) return;
 						const el = chatScrollRef.current;
 						if (el) isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 					}}>
