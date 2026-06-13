@@ -4097,20 +4097,6 @@ export default function App() {
 				</div>
 				<div className="flex flex-col items-end gap-0.5">
 					<div className="flex items-center gap-2.5">
-						{isAgentActive && (
-							<button
-								className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
-								style={{ background: 'var(--error)', color: 'white', opacity: isStopping ? 0.6 : 1, animation: isStopping ? 'blink 1s infinite' : 'none' }}
-								onClick={stopAgent}
-								disabled={isStopping}
-								type="button"
-								title={isStopping ? 'Stopping…' : 'Stop'}
-							>
-								<svg className="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-									<rect x="5" y="5" width="14" height="14" rx="2"/>
-								</svg>
-							</button>
-						)}
 						<button
 							className="inline-flex items-center justify-center h-8 px-2 rounded-lg"
 							style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
@@ -4899,23 +4885,63 @@ export default function App() {
 									<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
 								</svg>
 							</button>
-							<button
-								className="flex size-11 items-center justify-center rounded-full border-none"
-								style={{
-									background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
-									color: 'white',
-									cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
-									gridColumn: 2, gridRow: '1 / 3',
-									alignSelf: 'center',
-								}}
-								disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
-								type="submit"
-								title="Send"
-							>
-								<svg className="size-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-								</svg>
-							</button>
+							<div style={{
+								gridColumn: 2, gridRow: '1 / 3',
+								position: 'relative',
+								width: 44, height: 44,
+								alignSelf: 'center',
+							}}>
+								{/* Send — shrinks to bottom-left when agent is active */}
+								<button
+									className="flex items-center justify-center rounded-full border-none"
+									style={{
+										position: 'absolute',
+										transition: 'top 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+										width: isAgentActive ? 24 : 44,
+										height: isAgentActive ? 24 : 44,
+										top: isAgentActive ? 20 : 0,
+										left: 0,
+										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
+										color: 'white',
+										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
+									}}
+									disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
+									type="submit"
+									title="Send"
+								>
+									<svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+										style={{ width: isAgentActive ? 12 : 20, height: isAgentActive ? 12 : 20, transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+									</svg>
+								</button>
+								{/* Stop — pops in at top-right when agent is active */}
+								<button
+									className="flex items-center justify-center rounded-full border-none"
+									style={{
+										position: 'absolute',
+										top: 0,
+										right: 0,
+										width: 24,
+										height: 24,
+										background: 'var(--error)',
+										color: 'white',
+										cursor: isAgentActive ? 'pointer' : 'default',
+										transition: 'opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms',
+										opacity: isAgentActive ? (isStopping ? 0.6 : 1) : 0,
+										transform: isAgentActive ? 'scale(1)' : 'scale(0.3)',
+										pointerEvents: isAgentActive ? 'auto' : 'none',
+										animation: isStopping ? 'blink 1s infinite' : 'none',
+									}}
+									onClick={(e) => { e.preventDefault(); stopAgent(); }}
+									disabled={isStopping}
+									type="button"
+									title={isStopping ? 'Stopping…' : 'Stop'}
+								>
+									<svg style={{ width: 12, height: 12 }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+										<rect x="5" y="5" width="14" height="14" rx="2"/>
+									</svg>
+								</button>
+							</div>
 							{!input && messages.filter(m => m.role === 'user').length > 0 ? (
 								<button
 									type="button"
