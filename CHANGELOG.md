@@ -2,6 +2,42 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.7.3
+
+### 🔧 Skills Support
+- **Skills in Session Drawer** — loaded skills surface in a collapsible list with source badges, enabled indicators, and slash-invocable markers
+- **Skills RPC on connect** — queries `session.rpc.skills.list()` on connect for reliable loading across page reloads and session switches
+- **Click-away dismiss** — skills dropdown closes when clicking outside, matching other drawer menus
+- **Scroll fade** — bottom gradient on skills list when content overflows
+
+### 💅 Icons & Polish
+- **Emoji → SVG icons** — replaced all 13 emoji instances with Lucide-style SVGs (wrench, copy, spinner, check, triangle, bubble, thought-oval, smartphone, circle-check)
+- **Icon alignment** — all SVG icons use `shrink-0` to prevent flex squishing and `align-middle` for inline vertical centering
+- **Intermediate turn styling** — reasoning turns render with transparent background, dashed left + bottom borders, curved bottom-left corner, and reduced opacity instead of full bubbles
+- **Bubble corner sharpening** — assistant bottom-left and user bottom-right corners tightened to 2px for crisp chat-bubble tails
+
+### 🐛 Fixes
+- **Model persistence** — selected model no longer reverts on new session page reload (fixed field name mismatch: `content` → `model`)
+- **Duplicate model broadcast** — removed redundant second event from `setModel()` that caused flicker
+- **TUI exit crash** — fix `ReferenceError: log is not defined` in exit handler
+
+### 🔗 SDK Compatibility
+- **SDK beta.12 support** — handle `cwd` → `workingDirectory` rename
+- **Dual-version layer** — works with both `copilot-sdk 0.3.x` and `1.0.0-beta.x`
+- **Auto-detect SDK API** — tries new methods first, falls back to old
+
+### 📝 Rendering
+- **Markdown in messages** — assistant message history now renders with `react-markdown`
+- **Prose styling** — comprehensive overrides for Tailwind v4 preflight (bullets, headings, tables, code blocks)
+- **Table header fix** — use `--text-bright` for readable table headers
+
+### 📊 Usage & Metrics
+- **AI Credits display** — show token usage and credit consumption in session drawer
+
+### 🔄 Tunnel
+- **Preserve tunnel state** — auto-restart on next launch if tunnel was active
+- **Timestamped CLI stderr** — prefix log lines for easier debugging
+
 ## v0.7.1
 
 ### 🔌 MCP Discovery
