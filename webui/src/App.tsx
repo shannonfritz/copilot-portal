@@ -4438,10 +4438,14 @@ export default function App() {
 								consolidated.push(msg);
 							}
 						}
-						const items: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
+						const allItems: Array<{ type: 'message'; msg: Message } | { type: 'tool'; tc: ToolEvent }> = [
 							...consolidated.map(msg => ({ type: 'message' as const, msg, ts: msg.timestamp })),
 							...toolEvents.map(tc => ({ type: 'tool' as const, tc, ts: tc.timestamp })),
 						].sort((a, b) => a.ts - b.ts);
+						// Pin queued user messages to the bottom — they haven't been "heard" yet
+						const items = allItems.filter(i => !(i.type === 'message' && i.msg.queued));
+						const queued = allItems.filter(i => i.type === 'message' && i.msg.queued);
+						items.push(...queued);
 
 						return items.map((item) => {
 							if (item.type === 'tool') {
