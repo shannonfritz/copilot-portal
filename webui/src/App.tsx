@@ -4363,7 +4363,7 @@ export default function App() {
 					&& !window.matchMedia('(display-mode: standalone)').matches
 					&& (
 					<div className="flex items-center justify-between px-4 py-2 text-xs" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-						<span><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg> Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span>
+						<span className="flex items-center gap-1.5"><svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg> <span>Tip: Use your browser's <b>Share → Add to Home Screen</b> for an app-like experience</span></span>
 						<button
 							className="ml-3 px-1.5 rounded"
 							style={{ color: 'var(--text-muted)', background: 'none', border: 'none', fontSize: '14px' }}
@@ -4473,7 +4473,7 @@ export default function App() {
 														</div>
 													)}
 													<div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', paddingLeft: t.intentionSummary ? '12px' : undefined }}>
-														<span style={{ flexShrink: 0 }}>{t.completed ? <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : '·'}</span>
+														<span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 11, height: 11 }}>{t.completed ? <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> : '·'}</span>
 														<span style={{ fontWeight: 600, flexShrink: 0 }}>{t.toolName}</span>
 														{t.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{t.display}</span>}
 													</div>
@@ -4606,8 +4606,8 @@ export default function App() {
 								color: notification.type === 'warning' ? 'var(--warning)' : 'var(--accent)',
 							}}
 						>
-							<span className="flex-1">
-								<strong>{notification.type === 'warning' ? <><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Warning:</> : <><svg className="size-3.5 shrink-0 inline align-middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> Note:</>}</strong> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
+							<span className="flex-1 flex items-center gap-1.5 flex-wrap">
+								<span className="flex items-center gap-1 font-bold shrink-0">{notification.type === 'warning' ? <><svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Warning:</> : <><svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 14c0 3.87-4.03 7-9 7a10.2 10.2 0 0 1-4.36-.95L2 22l1.5-4.2C2.55 16.36 2 14.74 2 13c0-3.87 4.03-7 9-7h1c4.42.2 8 3.58 8 7v1Z"/></svg> Note:</>}</span> {notification.message}{notification.count && notification.count > 1 ? ` (×${notification.count})` : ''}
 							</span>
 							{notification.action && (
 								<button
