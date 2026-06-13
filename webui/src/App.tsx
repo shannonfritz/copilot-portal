@@ -2376,10 +2376,13 @@ export default function App() {
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
 					isCliTurnRef.current = false;
-					// Release any queued user messages — agent finished its turn
+					// Release the oldest queued user message — one per turn
 					setMessages(prev => {
-						const hasQueued = prev.some(m => m.queued);
-						return hasQueued ? prev.map(m => m.queued ? { ...m, queued: undefined } : m) : prev;
+						const idx = prev.findIndex(m => m.queued);
+						if (idx === -1) return prev;
+						const updated = [...prev];
+						updated[idx] = { ...updated[idx], queued: undefined };
+						return updated;
 					});
 					// Keep error tool events visible — only clear successful/done ones
 					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done'));
@@ -3072,6 +3075,11 @@ export default function App() {
 		isStoppingRef.current = true;
 		setIsStopping(true);
 		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
+		// Release all queued messages — stop abandons the queue
+		setMessages(prev => {
+			const hasQueued = prev.some(m => m.queued);
+			return hasQueued ? prev.map(m => m.queued ? { ...m, queued: undefined } : m) : prev;
+		});
 	};
 
 	// Auto-resize textarea to fit content (up to maxHeight)
