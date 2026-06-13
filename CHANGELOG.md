@@ -2,6 +2,15 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.7.4
+
+### 🐛 Fixes
+- **TUI self-update** — `[u]` console key now correctly detects AND installs portal self-updates, not just SDK package updates
+
+### 💬 Chat UX
+- **Smart auto-scroll** — scrolling up to read during a long agent task no longer snaps back to the bottom; auto-scroll only engages when within 80px of the bottom, and sending a new message resets to follow mode
+- **Animated Send/Stop button** — Send smoothly shrinks to a 20px corner button while Stop pops in at top-right with a spring animation when the agent is active; Stop removed from top header bar
+
 ## v0.7.3
 
 ### 🔧 Skills Support

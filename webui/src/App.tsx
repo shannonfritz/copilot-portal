@@ -4897,9 +4897,9 @@ export default function App() {
 									style={{
 										position: 'absolute',
 										transition: 'top 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-										width: isAgentActive ? 24 : 44,
-										height: isAgentActive ? 24 : 44,
-										top: isAgentActive ? 20 : 0,
+										width: isAgentActive ? 20 : 44,
+										height: isAgentActive ? 20 : 44,
+										top: isAgentActive ? 24 : 0,
 										left: 0,
 										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
 										color: 'white',
@@ -4910,7 +4910,7 @@ export default function App() {
 									title="Send"
 								>
 									<svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
-										style={{ width: isAgentActive ? 12 : 20, height: isAgentActive ? 12 : 20, transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+										style={{ width: isAgentActive ? 10 : 20, height: isAgentActive ? 10 : 20, transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
 										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
 									</svg>
 								</button>
