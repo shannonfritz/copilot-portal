@@ -108,6 +108,7 @@ interface Message {
 	reasoning?: string;
 	timestamp: number;
 	intermediate?: boolean;
+	queued?: boolean; // user message sent while agent was mid-turn
 	toolSummary?: ToolSummaryItem[];
 	toolCallIds?: string[]; // tool call IDs dispatched by this message (for tracking completion)
 	askUserChoices?: string[];
@@ -2375,6 +2376,11 @@ export default function App() {
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
 					isCliTurnRef.current = false;
+					// Release any queued user messages — agent finished its turn
+					setMessages(prev => {
+						const hasQueued = prev.some(m => m.queued);
+						return hasQueued ? prev.map(m => m.queued ? { ...m, queued: undefined } : m) : prev;
+					});
 					// Keep error tool events visible — only clear successful/done ones
 					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done'));
 					if (isStoppingRef.current) {
@@ -3036,9 +3042,10 @@ export default function App() {
 		}
 		if (connectionState !== 'connected') return;
 		isNearBottomRef.current = true;
+		const isQueued = isAgentActive;
 		setMessages((prev) => [
 			...prev,
-			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
+			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), queued: isQueued || undefined, images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
 		]);
 		setToolEvents([]);
 		intentionMapRef.current.clear();
@@ -4449,7 +4456,7 @@ export default function App() {
 								className={msg.role === 'user' ? 'relative max-w-[85%] px-4 py-3 text-sm' : 'relative w-full px-4 py-3 text-sm'}
 								style={
 									msg.role === 'user'
-										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 2px 18px' }
+										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 2px 18px', opacity: msg.queued ? 0.5 : undefined, animation: msg.queued ? 'pulse 2s ease-in-out infinite' : undefined }
 										: {
 												background: isIntermediate ? 'transparent' : 'var(--surface)',
 												border: isIntermediate ? '0px solid transparent' : '1px solid var(--border)',
