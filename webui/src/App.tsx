@@ -1688,6 +1688,8 @@ export default function App() {
 	const stopClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const heartbeatRef = useRef<{ interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> | null } | null>(null);
 	const chatEndRef = useRef<HTMLDivElement>(null);
+	const chatScrollRef = useRef<HTMLDivElement>(null);
+	const isNearBottomRef = useRef(true);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
@@ -2669,7 +2671,9 @@ export default function App() {
 	}, [connect]);
 
 	useEffect(() => {
-		chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+		if (isNearBottomRef.current) {
+			chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+		}
 	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
 	const openPicker = useCallback(async () => {
@@ -3023,6 +3027,7 @@ export default function App() {
 			return;
 		}
 		if (connectionState !== 'connected') return;
+		isNearBottomRef.current = true;
 		setMessages((prev) => [
 			...prev,
 			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
@@ -4381,7 +4386,11 @@ export default function App() {
 					</div>
 				)}
 
-				<div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
+				<div ref={chatScrollRef} className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4"
+					onScroll={() => {
+						const el = chatScrollRef.current;
+						if (el) isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+					}}>
 					{historyTruncated && (() => {
 						const { shown, total } = historyTruncated;
 						const makeUrl = (n: number | 'all') => {
