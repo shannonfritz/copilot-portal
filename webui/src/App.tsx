@@ -1659,6 +1659,7 @@ export default function App() {
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
 	const [cliInputInfo, setCliInputInfo] = useState<string | null>(null);
 	const isCliTurnRef = useRef(false);
+	const turnActiveRef = useRef(false);
 	const [portalInfo, setPortalInfo] = useState<PortalInfo | null>(null);
 	const [sessionContext, setSessionContext] = useState<SessionContext | null>(null);
 	const [activeModel, setActiveModel] = useState<string | null>(null);
@@ -2189,6 +2190,17 @@ export default function App() {
 						if (stopClearTimerRef.current) clearTimeout(stopClearTimerRef.current);
 						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
 					} else {
+						if (!turnActiveRef.current) {
+							// New turn starting — release the oldest queued message
+							turnActiveRef.current = true;
+							setMessages(prev => {
+								const idx = prev.findIndex(m => m.queued);
+								if (idx === -1) return prev;
+								const updated = [...prev];
+								updated[idx] = { ...updated[idx], queued: undefined };
+								return updated;
+							});
+						}
 						setIsThinking(true);
 						if (event.content) setThinkingText(event.content);
 					}
@@ -2376,14 +2388,7 @@ export default function App() {
 					setCliApprovalInfo(null);
 					setCliInputInfo(null);
 					isCliTurnRef.current = false;
-					// Release the oldest queued user message — one per turn
-					setMessages(prev => {
-						const idx = prev.findIndex(m => m.queued);
-						if (idx === -1) return prev;
-						const updated = [...prev];
-						updated[idx] = { ...updated[idx], queued: undefined };
-						return updated;
-					});
+					turnActiveRef.current = false;
 					// Keep error tool events visible — only clear successful/done ones
 					setToolEvents(prev => prev.filter(te => te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done'));
 					if (isStoppingRef.current) {
@@ -3045,10 +3050,9 @@ export default function App() {
 		}
 		if (connectionState !== 'connected') return;
 		isNearBottomRef.current = true;
-		const isQueued = isAgentActive;
 		setMessages((prev) => [
 			...prev,
-			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), queued: isQueued || undefined, images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
+			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), queued: true, images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
 		]);
 		setToolEvents([]);
 		intentionMapRef.current.clear();
@@ -3075,6 +3079,7 @@ export default function App() {
 		isStoppingRef.current = true;
 		setIsStopping(true);
 		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
+		turnActiveRef.current = false;
 		// Release all queued messages — stop abandons the queue
 		setMessages(prev => {
 			const hasQueued = prev.some(m => m.queued);
