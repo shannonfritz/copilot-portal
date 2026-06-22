@@ -151,6 +151,7 @@ export class SessionHandle {
 	private tokensSinceCompaction = 0;
 	private static readonly COMPACT_TOKEN_THRESHOLD = 120_000; // ~80% of 150k context window
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
+	knownCwd: string | undefined = undefined; // cwd known at create/resume time, before SDK metadata catches up
 
 	// Accumulated session usage stats — broadcast on each assistant.usage event
 	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
@@ -2146,6 +2147,7 @@ export class SessionPool {
 			this.rulesStore,
 		);
 		handle.sharedMode = this.shared;
+		handle.knownCwd = sessionCwd ?? undefined;
 		this.pool.set(sessionId, handle);
 		// Seed the model so reconnects use the same model as the CLI.
 		// Without this, resumeSession() would default to the CLI's current default model
@@ -2246,6 +2248,7 @@ export class SessionPool {
 		}
 		if (autoCreated) this.writeSessionMarker(cwd, session.sessionId);
 		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
+		handle.knownCwd = cwd;
 		handle.sharedMode = this.shared;
 		this.pool.set(session.sessionId, handle);
 		handle.titleChangedCallback = async (title) => {

@@ -194,7 +194,10 @@ export class PortalServer {
 				const sessions = await this.pool.listSessions().catch(() => []);
 				const meta = sessions.find(s => s.sessionId === sessionId);
 				const savedAgent = this.sessionAgents[sessionId] ?? null;
-				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: meta?.context ?? null, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, agent: savedAgent, usage: handle.getSessionUsage(), serverBuild: __BUILD__ }));
+				// Prefer SDK metadata context; for brand-new sessions it may not be
+				// written yet, so fall back to the cwd we allocated at create time.
+				const ctx = meta?.context ?? (handle.knownCwd ? { cwd: handle.knownCwd } : null);
+				ws.send(JSON.stringify({ type: 'session_switched', sessionId, context: ctx, summary: meta?.summary ?? null, startTime: meta?.startTime ?? null, model: handle.currentModel ?? null, agent: savedAgent, usage: handle.getSessionUsage(), serverBuild: __BUILD__ }));
 				// Re-select saved agent if the SDK session doesn't have it (reconnect resets agent)
 				if (savedAgent) {
 					handle.selectAgent(savedAgent).catch(() => {});
