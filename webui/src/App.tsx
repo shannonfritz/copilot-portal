@@ -628,6 +628,18 @@ function SessionDrawer({
 	const [editingCwd, setEditingCwd] = useState(false);
 	const [cwdSaving, setCwdSaving] = useState(false);
 	const [browsedCwd, setBrowsedCwd] = useState('');
+	// Draft new-session: default to a fresh auto-created workspace (work/YYMMDD-NN).
+	// Opt out to pick an existing folder. Reset to "fresh" each time a draft opens.
+	const [useFreshWorkspace, setUseFreshWorkspace] = useState(true);
+	const prevDraftRef = useRef(false);
+	useEffect(() => {
+		const isDraft = !!draft;
+		if (isDraft && !prevDraftRef.current) {
+			setUseFreshWorkspace(true);
+			onDraftCwdChange?.('');
+		}
+		prevDraftRef.current = isDraft;
+	}, [draft, onDraftCwdChange]);
 	const [showAgentPicker, setShowAgentPicker] = useState(false);
 	const [agents, setAgents] = useState<Array<{ name: string; displayName: string; description: string; source?: string }>>([]);
 	const [currentAgent, setCurrentAgent] = useState<{ name: string; displayName: string; description: string } | null>(null);
@@ -812,9 +824,27 @@ function SessionDrawer({
 								</svg>
 								Working Directory
 							</label>
-							<FolderBrowser value={draft.cwd} onChange={(p) => onDraftCwdChange?.(p)} />
-						</div>
-					) : editingCwd ? (
+								<label className="flex items-center gap-2 mb-1.5 text-xs cursor-pointer" style={{ color: 'var(--text)' }}>
+									<input
+										type="checkbox"
+										checked={useFreshWorkspace}
+										onChange={(e) => {
+											const fresh = e.target.checked;
+											setUseFreshWorkspace(fresh);
+											if (fresh) onDraftCwdChange?.('');
+										}}
+									/>
+									Create a new workspace folder
+								</label>
+								{useFreshWorkspace ? (
+									<div className="rounded-lg px-3 py-2 text-xs font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+										{(info?.defaultCwd ?? 'work')}{(info?.defaultCwd?.includes('\\') ? '\\' : '/')}<span style={{ color: 'var(--accent)' }}>YYMMDD-NN</span>
+									</div>
+								) : (
+									<FolderBrowser value={draft.cwd} onChange={(p) => onDraftCwdChange?.(p)} />
+								)}
+							</div>
+						) : editingCwd ? (
 					<div className="mb-3">
 						<div className="flex items-center justify-between mb-1.5">
 							<label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -1507,6 +1537,7 @@ export default function App() {
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+	const [serverConfirm, setServerConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 	const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; enabled: boolean; userInvocable: boolean }>>([]);
 	const [messages, setMessagesState] = useState<Message[]>([]);
 	const messagesRef = useRef<Message[]>([]);
@@ -2796,7 +2827,7 @@ export default function App() {
 		if (heartbeatRef.current) { clearInterval(heartbeatRef.current.interval); if (heartbeatRef.current.timeout) clearTimeout(heartbeatRef.current.timeout); heartbeatRef.current = null; }
 		// Enter draft mode — session is created when user sends first message or clicks Create
 		draftRef.current = true;
-		setDraftSession({ cwd: portalInfo?.defaultCwd ?? '' });
+		setDraftSession({ cwd: '' });
 		setMessages([]);
 		setStreamingContent('');
 		setIsStreaming(false);
@@ -2891,6 +2922,21 @@ export default function App() {
 			}
 			// Server will restart — our WebSocket reconnect logic handles the rest
 		} catch { /* expected — server is shutting down */ }
+	}, []);
+
+	const restartCli = useCallback(async () => {
+		try {
+			const res = await apiFetch('/api/restart-cli', { method: 'POST' });
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({})) as { error?: string };
+				setNotification({ type: 'warning', message: data.error ?? 'Could not restart the Copilot server.' });
+				return;
+			}
+			setNotification({ type: 'info', message: 'Restarting Copilot server…' });
+			// cli_status events drive reconnect/reload
+		} catch {
+			setNotification({ type: 'warning', message: 'Could not restart the Copilot server.' });
+		}
 	}, []);
 
 	const toggleShield = useCallback(async (sessionId: string, e: React.MouseEvent) => {
@@ -3937,6 +3983,31 @@ export default function App() {
 				</div>
 			)}
 
+			{serverConfirm && (
+				<div
+					className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-14 pb-4"
+					style={{ background: 'var(--overlay)' }}
+					onClick={() => setServerConfirm(null)}
+				>
+					<div
+						className="w-full max-w-sm rounded-2xl p-5"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,0.4)' }}
+						onClick={e => e.stopPropagation()}
+					>
+						<div className="text-sm font-semibold mb-2">Confirm</div>
+						<div className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>{serverConfirm.message}</div>
+						<div className="flex gap-2 justify-end">
+							<button type="button" className="rounded-lg px-4 py-2 text-sm" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+								onClick={() => setServerConfirm(null)}
+							>Cancel</button>
+							<button type="button" className="rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--button-contrast)' }}
+								onClick={serverConfirm.onConfirm}
+							>Restart</button>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{/* Rules Drawer */}
 			{showRules && (
 				<div
@@ -4035,6 +4106,40 @@ export default function App() {
 						<div className="mb-3 flex items-center justify-between">
 							<h2 className="font-semibold">Sessions</h2>
 							<div className="flex items-center gap-2">
+								<button
+									className="inline-flex items-center justify-center rounded-lg px-2 py-1.5"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+									onClick={() => setServerConfirm({
+										message: 'Restart the Portal server? All connected clients will briefly disconnect and reconnect.',
+										onConfirm: () => { setServerConfirm(null); setNotification({ type: 'info', message: 'Restarting Portal… reconnecting automatically.' }); restartServer(); },
+									})}
+									type="button"
+									title="Restart Portal server"
+								>
+									<svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+										<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.36-2.64" />
+										<path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64" />
+										<path d="M21 4v4h-4" />
+										<path d="M3 20v-4h4" />
+										<text x="12" y="13" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="currentColor" stroke="none">P</text>
+									</svg>
+								</button>
+								<button
+									className="inline-flex items-center justify-center rounded-lg px-2 py-1.5"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+									onClick={() => setServerConfirm({
+										message: 'Restart the Copilot server? The active session will briefly disconnect while the CLI reloads.',
+										onConfirm: () => { setServerConfirm(null); restartCli(); },
+									})}
+									type="button"
+									title="Restart Copilot server"
+								>
+									<svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+										<path d="M21 12a9 9 0 1 1-2.64-6.36" />
+										<path d="M21 4v4h-4" />
+										<text x="11" y="13" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="currentColor" stroke="none">C</text>
+									</svg>
+								</button>
 								<button
 									className="inline-flex items-center justify-center rounded-lg px-3 py-1.5"
 									style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}

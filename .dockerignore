@@ -4,6 +4,7 @@ webui/node_modules
 dist
 releases
 data
+work
 
 # Local/editor/VCS noise
 .git

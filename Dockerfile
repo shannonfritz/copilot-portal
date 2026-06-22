@@ -33,16 +33,20 @@ WORKDIR /app
 
 # PowerShell 7 — the Copilot CLI uses `pwsh` to execute shell-command tools.
 # Without it, command-running tools degrade. Pinned; bump as needed.
+# Runtime tools kept in the final image:
+#  - curl: used to fetch PowerShell during build, and kept because Copilot's
+#    command-running tools commonly reach for it at runtime.
+#  - lsof: used by the "Restart Copilot" control to free port 3848 before
+#    relaunching the CLI server — without it that restart can't reclaim the port.
 ARG PWSH_VERSION=7.4.6
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl libicu72 \
+ && apt-get install -y --no-install-recommends ca-certificates curl libicu72 lsof \
  && curl -fsSL "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" -o /tmp/pwsh.tar.gz \
  && mkdir -p /opt/microsoft/powershell/7 \
  && tar zxf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
  && chmod +x /opt/microsoft/powershell/7/pwsh \
  && ln -s /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh \
  && rm /tmp/pwsh.tar.gz \
- && apt-get purge -y --auto-remove curl \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Bring over the built app and the patched node_modules from the builder.

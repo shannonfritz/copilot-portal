@@ -176,7 +176,7 @@ function launch(cliUrl?: string) {
 
 	child.on('exit', (code) => {
 		if (code === RESTART_CODE) {
-			log('\n[Launcher] Restarting server...\n');
+			log('[Launcher] Restarting server...');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');
 			// Check if CLI package version changed — only restart CLI if it did
 			log(`[Launcher] cliLaunched=${cliLaunched}, cliStartVersion=${cliStartVersion}`);

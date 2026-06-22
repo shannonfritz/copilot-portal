@@ -9,6 +9,7 @@ webui/dist/
 # Runtime-generated data — session-specific, never commit
 data/
 debug/
+work/
 
 # Build artifacts
 releases/

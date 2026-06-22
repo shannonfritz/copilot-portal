@@ -22,6 +22,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 const CONTAINER_MODE = process.env.COPILOT_CONTAINER === '1' || process.env.COPILOT_CONTAINER === 'true';
 
+/**
+ * Workspace root — the base directory under which a fresh per-session folder
+ * (work/YYMMDD-NN) is created for each new session that doesn't specify its own
+ * working directory. Defaults to <appRoot>/work (gitignored); the container
+ * overrides this to a mounted path via PORTAL_WORKSPACE_DIR (e.g. /work).
+ */
+const WORKSPACE_ROOT = process.env.PORTAL_WORKSPACE_DIR
+	? path.resolve(process.env.PORTAL_WORKSPACE_DIR)
+	: path.join(__dirname, '..', 'work');
+
 export class PortalServer {
 	private httpServer: http.Server;
 	private wss: WebSocketServer;
@@ -48,11 +58,11 @@ export class PortalServer {
 			try { fs.unlinkSync(tokenFile); } catch {}
 		}
 		this.token = this.loadOrCreateToken();
-		const workspacePath = path.join(this.dataDir, 'workspaces', 'default');
-		try { fs.mkdirSync(workspacePath, { recursive: true }); } catch {}
+		const workspaceRoot = WORKSPACE_ROOT;
+		try { fs.mkdirSync(workspaceRoot, { recursive: true }); } catch {}
 		// Seed guide examples on first run
 		this.ensureDataDirs();
-		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspacePath, opts?.cliUrl);
+		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspaceRoot, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
 		this.pool.onTitleChanged = (sessionId, summary) => {
 			this.broadcastAll({ type: 'session_renamed', sessionId, summary });
@@ -965,7 +975,7 @@ export class PortalServer {
 			}
 
 			this.sendJson(res, 200, { ok: true, message: 'Restarting...' });
-			this.log('[Update] Restart requested — graceful shutdown...');
+			this.log('[Server] Restart requested — graceful shutdown...');
 
 			// Notify all connected clients that a restart is imminent
 			this.broadcastAll({ type: 'info', content: 'Server restarting…' });
@@ -1884,7 +1894,7 @@ export class PortalServer {
 			this.portalInfo = {
 				version: status.version,
 				login: auth.login ?? 'unknown',
-				defaultCwd: path.resolve(this.dataDir, 'workspaces', 'default'),
+				defaultCwd: WORKSPACE_ROOT,
 				lanUrl: this.getURL(),
 				cliConnected: true,
 				models: allModels

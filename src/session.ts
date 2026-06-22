@@ -1696,18 +1696,18 @@ export class SessionPool {
 	private connecting = new Map<string, Promise<SessionHandle>>();
 	private log: (msg: string) => void;
 	readonly rulesStore: RulesStore;
-	private workspacePath: string;
+	private workspaceRoot: string;
 	/** True when connected to an external CLI server (--ui-server mode) */
 	readonly shared: boolean;
 	private cliUrl?: string;
 
-	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspacePath: string, cliUrl?: string) {
+	constructor(log: (msg: string) => void, rulesStore: RulesStore, workspaceRoot: string, cliUrl?: string) {
 		this.log = log;
 		this.shared = !!cliUrl;
 		this.cliUrl = cliUrl;
 		this.client = createClient(cliUrl, this.log);
 		this.rulesStore = rulesStore;
-		this.workspacePath = workspacePath;
+		this.workspaceRoot = workspaceRoot;
 	}
 
 	async start(): Promise<void> {
@@ -2180,17 +2180,71 @@ export class SessionPool {
 	}
 
 	/** Creates a new session and adds it to the pool. */
+	/**
+	 * Allocate a fresh per-session workspace folder named YYMMDD-NN under the
+	 * workspace root (e.g. work/250622-01). Scans for today's existing folders and
+	 * picks the next free NN. Mirrors the build-variant counter convention.
+	 */
+	private allocateWorkspace(): string {
+		const now = new Date();
+		const yy = String(now.getFullYear()).slice(-2);
+		const mm = String(now.getMonth() + 1).padStart(2, '0');
+		const dd = String(now.getDate()).padStart(2, '0');
+		const prefix = `${yy}${mm}${dd}`;
+		try { fs.mkdirSync(this.workspaceRoot, { recursive: true }); } catch {}
+		let max = 0;
+		try {
+			const re = new RegExp(`^${prefix}-(\\d+)$`);
+			for (const name of fs.readdirSync(this.workspaceRoot)) {
+				const m = name.match(re);
+				if (m) max = Math.max(max, parseInt(m[1], 10));
+			}
+		} catch {}
+		let n = max + 1;
+		let dir: string;
+		// Guard against any existing folder (e.g. created out-of-band).
+		while (true) {
+			dir = path.join(this.workspaceRoot, `${prefix}-${String(n).padStart(2, '0')}`);
+			if (!fs.existsSync(dir)) break;
+			n++;
+		}
+		fs.mkdirSync(dir, { recursive: true });
+		return dir;
+	}
+
+	/**
+	 * Drop a hidden marker mapping an auto-created workspace folder back to its
+	 * session ID, so the folder is identifiable when browsing the filesystem for
+	 * manual cleanup. Only written for auto-created workspaces — never into a
+	 * user-chosen folder.
+	 */
+	private writeSessionMarker(dir: string, sessionId: string): void {
+		try {
+			const body = `# Copilot Portal workspace\n# Auto-created for the session below. Safe to delete once the session is gone.\nsession: ${sessionId}\ncreated: ${new Date().toISOString()}\n`;
+			fs.writeFileSync(path.join(dir, '.copilot-session'), body, 'utf8');
+		} catch {}
+	}
+
 	async create(workingDirectory?: string): Promise<SessionHandle> {
-		const cwd = workingDirectory || this.workspacePath;
-		this.log(`[Pool] Creating new session (cwd: ${cwd})...`);
+		const autoCreated = !workingDirectory;
+		const cwd = workingDirectory || this.allocateWorkspace();
+		this.log(`[Pool] Creating new session (cwd: ${cwd}${autoCreated ? ', auto' : ''})...`);
 		let handle!: SessionHandle;
-		const session = await this.client.createSession({
-			workingDirectory: cwd,
-			enableConfigDiscovery: true,
-			mcpServers: this.loadMcpServers(),
-			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
-			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
-		});
+		let session;
+		try {
+			session = await this.client.createSession({
+				workingDirectory: cwd,
+				enableConfigDiscovery: true,
+				mcpServers: this.loadMcpServers(),
+				onPermissionRequest: (req) => handle.handlePermissionRequest(req),
+				onUserInputRequest: (req) => handle.handleUserInputRequest(req),
+			});
+		} catch (e) {
+			// Don't leave an empty auto-created folder behind if session creation failed.
+			if (autoCreated) { try { fs.rmdirSync(cwd); } catch {} }
+			throw e;
+		}
+		if (autoCreated) this.writeSessionMarker(cwd, session.sessionId);
 		handle = new SessionHandle(session, this.log, undefined, undefined, this.rulesStore);
 		handle.sharedMode = this.shared;
 		this.pool.set(session.sessionId, handle);
