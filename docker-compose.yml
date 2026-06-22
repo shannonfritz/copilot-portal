@@ -1,0 +1,40 @@
+# Copilot Portal — container deployment (experimental).
+#
+# Quick start:
+#   1. Put a GitHub token (with Copilot access) in a .env file next to this:
+#        echo "GITHUB_TOKEN=ghp_xxx" > .env
+#   2. Build + run:
+#        docker compose up -d --build
+#   3. Open http://<host>:3847  (the token to log in is printed in the logs:
+#        docker compose logs -f copilot-portal)
+#
+# See docs/DOCKER.md for the full guide (TrueNAS SCALE, private image transfer,
+# updates, and caveats).
+
+services:
+  copilot-portal:
+    build: .
+    image: copilot-portal:dev
+    container_name: copilot-portal
+    ports:
+      - "3847:3847"
+    environment:
+      # Simplest auth path: a GitHub token with Copilot access.
+      # Leave empty if you instead rely on a mounted, pre-authenticated ~/.copilot.
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      # Container-mode flags (also set in the image; repeated here for clarity).
+      COPILOT_CONTAINER: "1"
+      COPILOT_AUTO_UPDATE: "0"
+    volumes:
+      # The important one: auth, sessions, skills, agents, and MCP config all
+      # live under ~/.copilot. Persisting it survives restarts AND image rebuilds.
+      - copilot-config:/root/.copilot
+      # Portal-side state: access token, tunnel config, debug logs.
+      - portal-data:/app/data
+      # Mount the directories you want Copilot to be able to work on, e.g.:
+      # - /mnt/tank/projects:/work
+    restart: unless-stopped
+
+volumes:
+  copilot-config:
+  portal-data:

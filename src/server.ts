@@ -15,6 +15,13 @@ import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Container mode. When running inside a Docker image, the in-app self-updater is
+ * disabled: updates come from rebuilding/pulling a new image, not from mutating
+ * the running container's node_modules. Toggled via the COPILOT_CONTAINER env.
+ */
+const CONTAINER_MODE = process.env.COPILOT_CONTAINER === '1' || process.env.COPILOT_CONTAINER === 'true';
+
 export class PortalServer {
 	private httpServer: http.Server;
 	private wss: WebSocketServer;
@@ -842,12 +849,17 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/updates/check' && method === 'POST') {
+			if (CONTAINER_MODE) { this.sendJson(res, 200, this.updater.getStatus()); return; }
 			const status = await this.updater.check();
 			this.sendJson(res, 200, status);
 			return;
 		}
 
 		if (url.pathname === '/api/updates/apply' && method === 'POST') {
+			if (CONTAINER_MODE) {
+				this.sendJson(res, 200, { ...this.updater.getStatus(), error: 'Updates are managed by the container image — rebuild or pull a new image to update.' });
+				return;
+			}
 			if (this.updater.getStatus().applying) {
 				this.sendJson(res, 409, { error: 'Update already in progress' });
 				return;
@@ -858,6 +870,10 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/updates/apply-portal' && method === 'POST') {
+			if (CONTAINER_MODE) {
+				this.sendJson(res, 200, { ...this.updater.getStatus(), error: 'Updates are managed by the container image — rebuild or pull a new image to update.' });
+				return;
+			}
 			if (this.updater.getStatus().applying) {
 				this.sendJson(res, 409, { error: 'Update already in progress' });
 				return;
@@ -1893,8 +1909,13 @@ export class PortalServer {
 		} catch (e) {
 			this.log(`[Pool] Could not fetch portal info: ${e}`);
 		}
-		// Start periodic update checker
-		this.updater.start();
+		// Start periodic update checker (disabled in container mode — updates
+		// are delivered by rebuilding/pulling the image, not at runtime).
+		if (CONTAINER_MODE) {
+			this.log('[Update] Container mode — in-app update checks disabled (update via image rebuild/pull)');
+		} else {
+			this.updater.start();
+		}
 		return new Promise((resolve, reject) => {
 			this.httpServer.on('error', reject);
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
