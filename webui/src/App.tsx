@@ -1620,7 +1620,7 @@ export default function App() {
 	const mcpAuthPendingRef = useRef<Map<string, string>>(new Map()); // serverName → authorizationUrl
 	const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
-	const [freeformAnswer, setFreeformAnswer] = useState('');
+	const answeredInputsRef = useRef<Set<string>>(new Set()); // ask_user requestIds this client answered locally
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
 	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
@@ -1691,9 +1691,8 @@ export default function App() {
 	const heartbeatRef = useRef<{ interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> | null } | null>(null);
 	const chatEndRef = useRef<HTMLDivElement>(null);
 	const chatScrollRef = useRef<HTMLDivElement>(null);
-	const isNearBottomRef = useRef(true);
-	const isProgrammaticScroll = useRef(false);
-	const scrollFlagTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const stickToBottomRef = useRef(true);
+	const lastScrollTopRef = useRef(0);
 	const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
@@ -1932,6 +1931,7 @@ export default function App() {
 					setIsStopping(false);
 					setThinkingText('');
 					setReasoningText('');
+					setPendingInput(null);
 					return;
 				}
 
@@ -2191,13 +2191,15 @@ export default function App() {
 						stopClearTimerRef.current = setTimeout(() => { isStoppingRef.current = false; setIsStopping(false); stopClearTimerRef.current = null; }, 800);
 					} else {
 						if (!turnActiveRef.current) {
-							// New turn starting — release the oldest queued message
+							// New turn starting — release the oldest queued message (fallback if the
+							// authoritative sync/user.message ACK hasn't arrived yet). Restamp to now so
+							// it sorts to the dequeue point, consistent with the sync-release path.
 							turnActiveRef.current = true;
 							setMessages(prev => {
 								const idx = prev.findIndex(m => m.queued);
 								if (idx === -1) return prev;
 								const updated = [...prev];
-								updated[idx] = { ...updated[idx], queued: undefined };
+								updated[idx] = { ...updated[idx], queued: undefined, timestamp: Date.now() };
 								return updated;
 							});
 						}
@@ -2214,16 +2216,31 @@ export default function App() {
 					const role = event.role === 'user' ? 'user' : 'assistant';
 					const content = event.content ?? '';
 					if (content) {
-						setMessages((prev) => {
-							if (prev.some(m => m.role === role && m.content === content)) return prev;
-							return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now(), toolSummary: event.toolSummary || undefined }];
-						});
 						if (role === 'user') {
-							// CLI turn starting — show thinking indicator
+							// The SDK has committed this user message into the active turn — i.e. Copilot
+							// has now "heard" it. Restamp it with the commit timestamp so the timestamp
+							// sort places it at the ACK/dequeue point — uniformly for normal AND queued
+							// messages, matching the SDK-recorded order shown on reload. No special-casing.
+							const ackTs = event.timestamp ?? Date.now();
+							setMessages((prev) => {
+								const idx = prev.findIndex(m => m.role === 'user' && m.content === content);
+								if (idx !== -1) {
+									const existing = prev[idx];
+									const updated = [...prev];
+									updated[idx] = { ...existing, queued: undefined, timestamp: ackTs };
+									return updated;
+								}
+								return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: ackTs, toolSummary: event.toolSummary || undefined }];
+							});
+							// New turn starting — show thinking indicator
 							setToolEvents([]); lastStreamedRef.current = '';
 							isCliTurnRef.current = true;
 							setIsThinking(true);
-						} else if (role === 'assistant') {
+						} else {
+							setMessages((prev) => {
+								if (prev.some(m => m.role === role && m.content === content)) return prev;
+								return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: Date.now(), toolSummary: event.toolSummary || undefined }];
+							});
 							// CLI turn produced a reply — clear thinking
 							setIsThinking(false);
 							setThinkingText('');
@@ -2415,6 +2432,14 @@ export default function App() {
 						isStoppingRef.current = true;
 						setIsStopping(true);
 						if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
+						turnActiveRef.current = false;
+						// Stop also abandons the queue + any ask_user prompt on the server, so
+						// mirror that locally: drop queued bubbles and dismiss a pending prompt.
+						setPendingInput(null);
+						setMessages(prev => {
+							const hasQueued = prev.some(m => m.queued);
+							return hasQueued ? prev.filter(m => !m.queued) : prev;
+						});
 					}
 				} else if (event.type === 'session_renamed') {
 					// Auto-title update — keep sessions list in sync even when picker is closed
@@ -2551,13 +2576,24 @@ export default function App() {
 					// Another client resolved this approval/input — dismiss it here too
 					setPendingApproval(prev => prev?.requestId === event.requestId ? null : prev);
 					setPendingInput(prev => prev?.requestId === event.requestId ? null : prev);
+					// If another client answered an ask_user, render the Q&A here too (the
+					// originating client already rendered it optimistically in respondInput).
+					if (event.requestId && event.content != null && event.inputRequest && !answeredInputsRef.current.has(event.requestId)) {
+						const ir = event.inputRequest;
+						const answer = event.content;
+						const now = Date.now();
+						setMessages(prev => {
+							if (prev.some(m => m.id === `input-resolved-${event.requestId}`)) return prev;
+							const additions: Message[] = [];
+							if (ir.question) additions.push({ id: `q-resolved-${event.requestId}`, role: 'assistant', content: ir.question, timestamp: now, questionChoices: ir.choices });
+							additions.push({ id: `input-resolved-${event.requestId}`, role: 'user', content: answer, timestamp: now, askUserChoices: ir.choices });
+							return [...prev, ...additions];
+						});
+					}
+					if (event.requestId) answeredInputsRef.current.delete(event.requestId);
 				} else if (event.type === 'input_request' && event.inputRequest) {
 					// Only reset if this is a new request (probe re-broadcasts the same one)
-					setPendingInput(prev => {
-						if (prev?.requestId === event.inputRequest.requestId) return prev;
-						setFreeformAnswer('');
-						return event.inputRequest;
-					});
+					setPendingInput(prev => prev?.requestId === event.inputRequest.requestId ? prev : event.inputRequest);
 				} else if (event.type === 'rules_list') {
 					setRules(event.rules ?? []);
 				} else if (event.type === 'approve_all_changed') {
@@ -2687,14 +2723,17 @@ export default function App() {
 	}, [connect]);
 
 	useEffect(() => {
-		if (isNearBottomRef.current) {
-			isProgrammaticScroll.current = true;
+		if (stickToBottomRef.current) {
 			const el = chatScrollRef.current;
-			if (el) el.scrollTop = el.scrollHeight;
-			// Keep the flag alive long enough for smooth scroll animation to finish.
-			// Each trigger resets the timer so rapid updates stay protected.
-			if (scrollFlagTimer.current) clearTimeout(scrollFlagTimer.current);
-			scrollFlagTimer.current = setTimeout(() => { isProgrammaticScroll.current = false; }, 350);
+			if (el) {
+				// Instant (not smooth) pin: smooth animation fires intermediate onScroll
+				// events BELOW the target, which direction detection misreads as a user
+				// scroll-up and disengages mid-animation. Instant lands at the clamped max
+				// in one step. Record the ACTUAL resulting scrollTop (clamped to
+				// scrollHeight - clientHeight) so the follow-up onScroll sees top === prev.
+				el.scrollTop = el.scrollHeight;
+				lastScrollTopRef.current = el.scrollTop;
+			}
 		}
 	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
@@ -2732,6 +2771,7 @@ export default function App() {
 		setSessionUsage(null);
 		setSessionQuota(null);
 		setContextUsage(null);
+		setPendingInput(null);
 		// Load the theme for the new session
 		loadSessionTheme(sessionId);
 		const params = new URLSearchParams(window.location.search);
@@ -2771,6 +2811,7 @@ export default function App() {
 		setSessionQuota(null);
 		setContextUsage(null);
 		setActiveSessionId(null);
+		setPendingInput(null);
 		noSessionRef.current = false;
 		setNoSession(false);
 		setDrawerOpen(true);
@@ -2910,6 +2951,7 @@ export default function App() {
 
 	const respondInput = useCallback((answer: string, wasFreeform: boolean) => {
 		if (!pendingInput) return;
+		answeredInputsRef.current.add(pendingInput.requestId);
 		wsRef.current?.send(JSON.stringify({ type: 'input_response', requestId: pendingInput.requestId, answer, wasFreeform }));
 		// Show the question as an assistant message, then the user's answer
 		if (pendingInput.question) {
@@ -2929,7 +2971,8 @@ export default function App() {
 			askUserChoices: pendingInput.choices,
 		}]);
 		setPendingInput(null);
-		setFreeformAnswer('');
+		setInput('');
+		setShowPromptsTray(false);
 	}, [pendingInput]);
 
 	const removeSessionPrompt = (label: string) => {
@@ -3049,7 +3092,7 @@ export default function App() {
 			return;
 		}
 		if (connectionState !== 'connected') return;
-		isNearBottomRef.current = true;
+		stickToBottomRef.current = true;
 		setMessages((prev) => [
 			...prev,
 			{ id: `msg-${Date.now()}`, role: 'user', content: prompt, timestamp: Date.now(), queued: true, images: pendingImages.length > 0 ? pendingImages.map(img => `data:${img.mimeType};base64,${img.data}`) : undefined },
@@ -3080,10 +3123,14 @@ export default function App() {
 		setIsStopping(true);
 		if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 		turnActiveRef.current = false;
-		// Release all queued messages — stop abandons the queue
+		// Stopping during an ask_user abandons the question (like Esc+Esc in the CLI).
+		setPendingInput(null);
+		// Stop abandons the queue. Queued bubbles are pending items that were never
+		// committed to history (Copilot's queue is cleared server-side on abort), so
+		// remove them entirely rather than leaving them as if they were sent.
 		setMessages(prev => {
 			const hasQueued = prev.some(m => m.queued);
-			return hasQueued ? prev.map(m => m.queued ? { ...m, queued: undefined } : m) : prev;
+			return hasQueued ? prev.filter(m => !m.queued) : prev;
 		});
 	};
 
@@ -3094,6 +3141,13 @@ export default function App() {
 		ta.style.height = 'auto';
 		ta.style.height = `${ta.scrollHeight}px`;
 	}, [input]);
+
+	// Focus the composer when an ask_user prompt opens with a freeform answer.
+	useEffect(() => {
+		if (pendingInput && (pendingInput.allowFreeform !== false || !pendingInput.choices?.length)) {
+			textareaRef.current?.focus();
+		}
+	}, [pendingInput]);
 
 	// Dismiss prompts tray on click outside
 	useEffect(() => {
@@ -3119,6 +3173,12 @@ export default function App() {
 			</div>
 		);
 	}
+
+	// Ask-mode (ask_user) derived flags — used to retune the composer + Send/Stop cluster.
+	// freeformMode: the main composer doubles as the answer box (typed answers allowed).
+	// pureChoiceMode: only predefined choices, no composer — choices send immediately.
+	const answerFreeform = !!pendingInput && (pendingInput.allowFreeform !== false || !pendingInput.choices?.length);
+	const pureChoiceMode = !!pendingInput && !answerFreeform;
 
 	return (
 		<div className="flex flex-col" style={{ height: '100%' }}>
@@ -4401,11 +4461,24 @@ export default function App() {
 				)}
 
 				<div ref={chatScrollRef} className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4"
-					style={{ scrollBehavior: 'smooth' }}
 					onScroll={() => {
-						if (isProgrammaticScroll.current) return;
 						const el = chatScrollRef.current;
-						if (el) isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+						if (!el) return;
+						const top = el.scrollTop;
+						const prev = lastScrollTopRef.current;
+						lastScrollTopRef.current = top;
+						const atBottom = el.scrollHeight - top - el.clientHeight < 80;
+						if (atBottom) {
+							// Reached the bottom (by user or by our own auto-scroll) → re-engage.
+							stickToBottomRef.current = true;
+						} else if (top < prev - 2) {
+							// Scrolled UP (>2px to ignore sub-pixel jitter) — only a user does
+							// this; auto-scroll only ever moves down. Covers wheel, touch,
+							// scrollbar drag, and keyboard uniformly.
+							stickToBottomRef.current = false;
+						}
+						// Downward / unchanged motion (our auto-scroll, or user heading toward
+						// the bottom) → leave the current engagement state as-is.
 					}}>
 					{historyTruncated && (() => {
 						const { shown, total } = historyTruncated;
@@ -4580,7 +4653,10 @@ export default function App() {
 										)}
 										{msg.role === 'assistant' ? <AssistantMarkdown content={msg.content} /> : <div className="whitespace-pre-wrap break-words">{msg.content}</div>}
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
-											<span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+											<span>
+												{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+												{msg.queued && ' • queued'}
+											</span>
 											<CopyButton text={msg.content} />
 										</div>
 									</>
@@ -4727,38 +4803,53 @@ export default function App() {
 						)}
 						{pendingInput && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'var(--primary-tint)' }}>
-								<div className="mb-2 flex items-center justify-between">
-									<div className="text-sm font-semibold"><AssistantMarkdown content={pendingInput.question} /></div>
-									<button
-										className="rounded px-2 py-0.5 text-xs"
-										style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-										onClick={() => { respondInput('', true); }}
-										type="button"
-										title="Skip this question"
-									>Skip</button>
-								</div>
+								<div className="mb-2 text-sm font-semibold"><AssistantMarkdown content={pendingInput.question} /></div>
 								{pendingInput.choices && pendingInput.choices.length > 0 && (
-									<div className="mb-2 flex flex-col gap-1.5">
+									<div className="flex flex-col gap-1.5">
 										{pendingInput.choices.map((choice, i) => (
-											<button key={i} className="rounded-lg px-3 py-2 text-left text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} onClick={() => respondInput(choice, false)} type="button">{choice}</button>
+											<div key={i} className="flex items-stretch gap-1">
+												<button
+													className="flex-1 rounded-lg px-3 py-2 text-left text-sm"
+													style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+													onClick={() => {
+														if (answerFreeform) {
+															// Append to the composer so the user can pick several / edit before sending.
+															setInput(prev => prev.trim() ? `${prev.replace(/\s+$/, '')}\n${choice}` : choice);
+															textareaRef.current?.focus();
+														} else {
+															respondInput(choice, false);
+														}
+													}}
+													type="button"
+												>{choice}</button>
+												{answerFreeform && (
+													<button
+														className="flex shrink-0 items-center justify-center rounded-lg px-2.5"
+														style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--primary)' }}
+														onClick={() => respondInput(choice, false)}
+														type="button"
+														title="Send this answer"
+													>
+														<svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ width: 15, height: 15, transform: 'translate(-0.5px, 0.5px)' }}>
+															<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+														</svg>
+													</button>
+												)}
+											</div>
 										))}
 									</div>
 								)}
-								{(pendingInput.allowFreeform !== false || !pendingInput.choices?.length) && (
-									<div className="flex gap-2">
-										<textarea
-											className="chat-scroll flex-1 rounded-lg border px-3 py-2 text-sm resize-none outline-none"
-											style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)', minHeight: 40, maxHeight: 200, overflow: 'auto' }}
-											placeholder="Type your answer…"
-											value={freeformAnswer}
-											onChange={(e) => setFreeformAnswer(e.target.value)}
-											onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); respondInput(freeformAnswer, true); } }}
-											onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 200) + 'px'; }}
-											rows={1}
-											autoFocus
-										/>
-										<button className="self-end rounded-lg px-4 py-2 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }} onClick={() => respondInput(freeformAnswer, true)} type="button">Send</button>
-									</div>
+								{pureChoiceMode && (
+									<button
+										className="mt-2 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+										style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--error)' }}
+										onClick={(e) => { e.preventDefault(); stopAgent(); }}
+										type="button"
+										title="Stop the turn"
+									>
+										<svg style={{ width: 11, height: 11 }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+										Stop
+									</button>
 								)}
 							</div>
 						)}
@@ -4766,7 +4857,7 @@ export default function App() {
 				)}
 
 				{/* Input */}
-				{!noSession && !pendingInput && <>
+				{!noSession && (!pendingInput || answerFreeform) && <>
 				<form
 					className="border-t px-4 py-3"
 					style={{
@@ -4779,11 +4870,13 @@ export default function App() {
 					}}
 					onSubmit={(e) => {
 						e.preventDefault();
-						sendPrompt();
+						if (answerFreeform) { const a = input.trim(); if (a) respondInput(a, true); }
+						else sendPrompt();
 					}}
-					onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer?.types.includes('Files')) setIsDraggingImage(true); }}
+					onDragOver={(e) => { if (answerFreeform) return; e.preventDefault(); if (e.dataTransfer?.types.includes('Files')) setIsDraggingImage(true); }}
 					onDragLeave={() => setIsDraggingImage(false)}
 					onDrop={(e) => {
+						if (answerFreeform) return;
 						e.preventDefault();
 						setIsDraggingImage(false);
 						if (e.dataTransfer?.files.length) addImageFiles(e.dataTransfer.files);
@@ -4860,12 +4953,14 @@ export default function App() {
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
-									placeholder={draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
+									placeholder={answerFreeform ? 'Type your answer…' : draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
 									value={input}
 									onChange={(e) => setInput(e.target.value)}
 									onPaste={(e) => {
+										// ask_user answers are text-only — let images paste normally elsewhere, but not here.
+										if (answerFreeform) return;
 										const items = e.clipboardData?.items;
 										if (!items) return;
 										const files: File[] = [];
@@ -4885,7 +4980,8 @@ export default function App() {
 										const isTouch = window.matchMedia('(hover: none)').matches;
 										if (e.key === 'Enter' && !e.shiftKey && !isTouch) {
 											e.preventDefault();
-											sendPrompt();
+											if (answerFreeform) { const a = input.trim(); if (a) respondInput(a, true); }
+											else sendPrompt();
 										}
 									}}
 								/>
@@ -4908,6 +5004,7 @@ export default function App() {
 						</div>
 						<div className="shrink-0 grid" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: '1fr 1fr', alignSelf: 'flex-end', marginBottom: 4, justifyItems: 'center', columnGap: 6 }}>
 							<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
+							{!answerFreeform && (
 							<button
 								className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
 								style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', gridColumn: 1, gridRow: 1 }}
@@ -4919,51 +5016,57 @@ export default function App() {
 									<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
 								</svg>
 							</button>
+							)}
 							<div style={{
 								gridColumn: 2, gridRow: '1 / 3',
 								position: 'relative',
 								width: 44, height: 44,
 								alignSelf: 'center',
 							}}>
-								{/* Send — shrinks to bottom-left when agent is active */}
+								{/* Send — prominence flips: small during a normal turn, large while answering an ask_user */}
 								<button
 									className="flex items-center justify-center rounded-full border-none"
 									style={{
 										position: 'absolute',
+										zIndex: answerFreeform ? 2 : 1,
 										transition: 'top 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-										width: isAgentActive ? 20 : 44,
-										height: isAgentActive ? 20 : 44,
-										top: isAgentActive ? 24 : 0,
+										width: answerFreeform ? 30 : (isAgentActive ? 23 : 44),
+										height: answerFreeform ? 30 : (isAgentActive ? 23 : 44),
+										top: answerFreeform ? 14 : (isAgentActive ? 21 : 0),
 										left: 0,
 										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
 										color: 'white',
+										// When Send is the prominent button overlapping Stop (ask mode), a ring in the
+										// panel color carves a clean curved gap instead of a flat pixelated seam.
+										boxShadow: answerFreeform ? '0 0 0 2px var(--surface)' : 'none',
 										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
 									}}
 									disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
 									type="submit"
-									title="Send"
+									title={answerFreeform ? 'Send answer' : 'Send'}
 								>
 									<svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
-										style={{ width: isAgentActive ? 10 : 20, height: isAgentActive ? 10 : 20, transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+										style={{ width: answerFreeform ? 15 : (isAgentActive ? 11 : 20), height: answerFreeform ? 15 : (isAgentActive ? 11 : 20), transform: 'translate(-0.5px, 0.5px)', transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
 										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
 									</svg>
 								</button>
-								{/* Stop — pops in at top-right when agent is active */}
+								{/* Stop — large during a normal turn, small while answering an ask_user */}
 								<button
 									className="flex items-center justify-center rounded-full border-none"
 									style={{
 										position: 'absolute',
+										zIndex: answerFreeform ? 1 : 2,
 										top: 0,
 										right: 0,
-										width: 24,
-										height: 24,
+										width: answerFreeform ? 23 : 30,
+										height: answerFreeform ? 23 : 30,
 										background: 'var(--error)',
 										color: 'white',
-										cursor: isAgentActive ? 'pointer' : 'default',
-										transition: 'opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms',
-										opacity: isAgentActive ? (isStopping ? 0.6 : 1) : 0,
-										transform: isAgentActive ? 'scale(1)' : 'scale(0.3)',
-										pointerEvents: isAgentActive ? 'auto' : 'none',
+										cursor: (isAgentActive || answerFreeform) ? 'pointer' : 'default',
+										transition: 'opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+										opacity: (isAgentActive || answerFreeform) ? (isStopping ? 0.6 : 1) : 0,
+										transform: (isAgentActive || answerFreeform) ? 'scale(1)' : 'scale(0.3)',
+										pointerEvents: (isAgentActive || answerFreeform) ? 'auto' : 'none',
 										animation: isStopping ? 'blink 1s infinite' : 'none',
 									}}
 									onClick={(e) => { e.preventDefault(); stopAgent(); }}
@@ -4971,7 +5074,7 @@ export default function App() {
 									type="button"
 									title={isStopping ? 'Stopping…' : 'Stop'}
 								>
-									<svg style={{ width: 12, height: 12 }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<svg style={{ width: answerFreeform ? 11 : 14, height: answerFreeform ? 11 : 14 }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 										<rect x="5" y="5" width="14" height="14" rx="2"/>
 									</svg>
 								</button>

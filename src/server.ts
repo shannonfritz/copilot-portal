@@ -136,8 +136,12 @@ export class PortalServer {
 			// the session before it's ever been saved, causing a session_not_found error.
 			let handle;
 			try {
-				// Send a loading hint to the client before the potentially slow resumeSession
-				if (!this.pool.getHandle(sessionId)) {
+				// Send a loading hint to the client before the (potentially slow) resume +
+				// history replay. Always emit it — not just on a cold pool miss — because a
+				// browser reload reconnects to a warm session whose history still takes time
+				// to stream back, and the user expects the loading counter during that wait.
+				// Cleared client-side on history_end.
+				{
 					const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
 					try {
 						const stat = fs.statSync(eventsPath);

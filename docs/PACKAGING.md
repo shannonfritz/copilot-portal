@@ -48,7 +48,10 @@ The zip is in `releases/` — distribute via GitHub Releases or other channels.
 6. **Create GitHub release** — `gh release create vX.Y.Z releases/copilot-portal-vX.Y.Z-build-*.zip --title "vX.Y.Z — Title"`
 7. **Commit BUILD file** — `git add BUILD && git commit -m "BUILD YYMMDD-NN"`
 
-> **Tip:** Select the `release-manager` agent to automate these steps with confirmation gates.
+> **Tip:** The `release-manager` skill automates these steps. It runs the local steps
+> (version bump, changelog, package, commit, tag) freely, then stops at a single confirmation
+> gate before any public/irreversible action (`git push`, `gh release create`). Just ask to
+> "cut a release" or "make a validation build" and it engages automatically.
 
 ### Validation Builds
 

@@ -2,6 +2,27 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.7.5
+
+### 💬 Chat & Queue
+- **Unified message queue** — all user messages now flow through a single queue and release in order when a turn starts, fixing mid-turn ordering and timestamps
+- **Queued indicator** — messages typed mid-turn show a "queued" state and pin to the bottom of the chat until they are sent
+- **Second-client hang fixed** — prompts sent from a second connected client no longer stall before the turn starts
+
+### 🗳️ ask_user Prompts
+- **Click-to-send choices** — predefined options send immediately when clicked
+- **Click-and-edit freeform** — when freeform is allowed, the answer routes through the composer so you can edit before sending
+- **No timeout** — the agent now waits indefinitely for your response (previously a 30-minute limit)
+- **Multi-client sync** — answering a prompt on one device renders the question and answer on every connected client
+
+### 📝 Scrolling & UI
+- **Auto-scroll rewrite** — direction-based detection with an instant pin eliminates intermittent scroll stalls during rapid tool events; scrolling up disengages, returning to the bottom re-engages
+- **Loading hint on resume** — reloading the browser now shows the loading counter while session history streams back
+- **Icon alignment** — notification banner, PWA tip, and tool-summary SVG icons switched to flex layout for proper vertical centering
+
+### 🔗 SDK
+- **Updated Copilot CLI & SDK** — bundles `@github/copilot` 1.0.63 and `@github/copilot-sdk` 1.0.3
+
 ## v0.7.4
 
 ### 🐛 Fixes

@@ -97,10 +97,14 @@ type PendingApproval = {
 };
 
 type PendingInput = {
-	resolve: (r: UserInputResponse) => void;
-	reject: (e: Error) => void;
+	// Callback path (owned/non-shared sessions): the SDK is awaiting this promise.
+	resolve?: (r: UserInputResponse) => void;
+	reject?: (e: Error) => void;
 	event: PortalEvent;
-	timeout: ReturnType<typeof setTimeout>;
+	timeout?: ReturnType<typeof setTimeout>;
+	// Event/RPC path (shared sessions): resolve via session.rpc.ui.handlePendingUserInput.
+	viaRpc?: boolean;
+	sdkRequestId?: string;
 };
 
 /** Wraps one CopilotSession and fans events out to multiple WS listeners. */
@@ -226,22 +230,16 @@ export class SessionHandle {
 		this.listeners.delete(fn);
 		if (this.listeners.size === 0) {
 			this.stopPoll();
-			// Always clear pending timeouts to prevent accumulation.
-			// If no turn is active, also resolve/reject the promises.
-			// If a turn IS active, clear timers but let the turn complete —
-			// the next client to connect will see the result.
-			for (const [, p] of this.pendingApprovals) clearTimeout(p.timeout);
-			for (const [, p] of this.pendingInputs) clearTimeout(p.timeout);
-			if (!this.isTurnActive) {
-				this.denyAllPending();
-			} else {
-				// Reject inputs even during active turns — they can't be answered without a client
-				for (const [id, p] of this.pendingInputs) {
-					this.log(`[Session] Auto-cancelling input ${id} (no clients)`);
-					this.pendingInputs.delete(id);
-					p.reject(new Error('No clients connected'));
+				// Always clear pending timeouts to prevent accumulation.
+				// Pending inputs (ask_user) survive client disconnects: the SessionHandle
+				// stays in the pool, and the runtime waits indefinitely for an answer.
+				// A reconnecting (or secondary) client gets them replayed via
+				// getPendingInputEvents(), so we never reject them here.
+				for (const [, p] of this.pendingApprovals) clearTimeout(p.timeout);
+				for (const [, p] of this.pendingInputs) { if (p.timeout) clearTimeout(p.timeout); }
+				if (!this.isTurnActive) {
+					this.denyAllPending();
 				}
-			}
 		}
 	}
 
@@ -688,6 +686,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	async abort(): Promise<void> {
 		this.broadcast({ type: 'turn_stopping' });
+		// Mirror the CLI's onUserAbort: clear Copilot's pending queue BEFORE aborting so
+		// any enqueued-but-unprocessed messages don't fire a brand-new turn after Stop.
+		// abort() only cancels the in-flight turn; it does not drain the queue.
+		try {
+			await this.session.rpc.queue.clear();
+		} catch (e) {
+			this.log(`[Session] queue.clear on abort failed: ${e}`);
+		}
 		await this.session.abort();
 	}
 
@@ -759,10 +765,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			p.resolve(SDK_DENY);
 		}
 		for (const [id, p] of this.pendingInputs) {
+			// viaRpc inputs belong to the runtime (shared session) and survive until
+			// answered or the runtime fires user_input.completed — don't cancel them.
+			if (p.viaRpc) continue;
 			this.log(`[Session] Auto-cancelling input ${id}`);
-			clearTimeout(p.timeout);
+			if (p.timeout) clearTimeout(p.timeout);
 			this.pendingInputs.delete(id);
-			p.reject(new Error('No clients connected'));
+			p.reject?.(new Error('No clients connected'));
 		}
 	}
 
@@ -782,11 +791,25 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	resolveUserInput(requestId: string, answer: string, wasFreeform: boolean): void {
 		const p = this.pendingInputs.get(requestId);
 		if (!p) return;
-		clearTimeout(p.timeout);
+		if (p.timeout) clearTimeout(p.timeout);
 		this.pendingInputs.delete(requestId);
-		p.resolve({ answer, wasFreeform });
-		this.log(`[Session] Input answered: "${answer.slice(0, 40)}"`);
-		this.broadcast({ type: 'approval_resolved', requestId });
+		if (p.viaRpc && p.sdkRequestId) {
+			// Shared session: resolve the runtime's pending request directly.
+			// The runtime fans a user_input.completed event out to all clients.
+			this.log(`[Session] Resolving input via RPC (${p.sdkRequestId}): "${answer.slice(0, 40)}"`);
+			void this.session.rpc.ui.handlePendingUserInput({
+				requestId: p.sdkRequestId,
+				response: { answer, wasFreeform },
+			}).then((r: { success?: boolean }) => {
+				if (r && r.success === false) this.log('[Session] Input was already resolved by another client');
+			}).catch((e: unknown) => this.log(`[Session] handlePendingUserInput failed: ${e}`));
+		} else if (p.resolve) {
+			p.resolve({ answer, wasFreeform });
+			this.log(`[Session] Input answered: "${answer.slice(0, 40)}"`);
+		}
+		// Carry the answer + original question/choices so OTHER clients can render the
+		// Q&A in their timeline (the originating client already rendered it optimistically).
+		this.broadcast({ type: 'approval_resolved', requestId, content: answer, inputRequest: p.event.inputRequest });
 	}
 
 	private activeApprovalId: string | null = null;
@@ -907,14 +930,20 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	handleUserInputRequest(req: UserInputRequest): Promise<UserInputResponse> {
 		const requestId = `input-${++this.counter}`;
-		this.log(`[Session] Input request: "${req.question.slice(0, 80)}"`);
+		this.log(`[Session] Input request (callback): "${req.question.slice(0, 80)}"`);
 
-		// Connected to CLI server: don't respond to CLI-initiated input requests — let the CLI handle them
-		if (this.sharedMode && !this.isPortalTurn) {
-			this.log(`[Session] Deferring input to CLI: ${requestId}`);
-			return new Promise(() => {}); // never resolves — CLI TUI will handle it
+		// Shared session: the runtime routes ask_user as a targeted RPC to the
+		// session-owning connection (the CLI), so this callback usually won't fire.
+		// If it does, defer — the user_input.requested event path (onUserInputRequested)
+		// shows the interactive prompt and resolves via session.rpc.ui.handlePendingUserInput.
+		if (this.sharedMode) {
+			this.log(`[Session] Deferring input to event/RPC path: ${requestId}`);
+			return new Promise(() => {}); // never resolves — event path handles it
 		}
 
+		// Owned session: this callback is the only signal. Show the interactive prompt
+		// and await the user's answer indefinitely (no timeout — Copilot waits patiently,
+		// matching CLI behavior; a reconnecting client gets the prompt replayed).
 		const event: PortalEvent = {
 			type: 'input_request',
 			requestId,
@@ -922,15 +951,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		};
 		this.broadcast(event);
 		return new Promise((resolve, reject) => {
-			// Long timeout — user may be thinking, away from keyboard, or composing a detailed response.
-			// 30 minutes matches CLI behavior of waiting patiently.
-			const timeout = setTimeout(() => {
-				if (this.pendingInputs.has(requestId)) {
-					this.pendingInputs.delete(requestId);
-					reject(new Error('Input timed out'));
-				}
-			}, 30 * 60 * 1000);
-			this.pendingInputs.set(requestId, { resolve, reject, event, timeout });
+			this.pendingInputs.set(requestId, { resolve, reject, event });
 		});
 	}
 
@@ -997,7 +1018,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.activeUserMessage = content;
 			this.activeDeltaBuffer = '';
 			this.activeReasoningBuffer = '';
-			this.broadcast({ type: 'sync', role: 'user', content });
+			// Pass the commit timestamp so the client can position the bubble at the ACK
+			// point (matches the SDK-recorded ordering seen on reload). The SDK event may
+			// carry its own timestamp; fall back to now (the moment of commit on our side).
+			const sdkTs = (data as { timestamp?: number; createdAt?: number })?.timestamp
+				?? (data as { createdAt?: number })?.createdAt;
+			this.broadcast({ type: 'sync', role: 'user', content, timestamp: typeof sdkTs === 'number' ? sdkTs : Date.now() });
 		}
 	}
 
@@ -1073,12 +1099,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
 		const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
 		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args) });
-		// If this is ask_user on a CLI turn, show the input pending banner
-		if (d.toolName === 'ask_user' && !this.isPortalTurn) {
-			this.cliInputPending = (args as { question?: string }).question ?? 'User input needed';
-			this.log(`[Session] CLI ask_user detected: ${this.cliInputPending}`);
-			this.broadcast({ type: 'cli_input_pending', content: this.cliInputPending });
-		}
+		// ask_user is surfaced as an interactive prompt via onUserInputRequested
+		// (the user_input.requested event) + resolved over RPC — no dead-end banner here.
 	}
 
 	private onToolExecutionComplete(data: unknown): void {
@@ -1342,16 +1364,48 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	}
 
 	private onUserInputRequested(data: unknown): void {
-		// CLI turn waiting for user input — portal can't respond, but inform the user
-		if (!this.isPortalTurn) {
-			const d = data as { question?: string };
+		// Shared session: the runtime broadcasts this event to all attached clients
+		// (the in-process ask_user RPC went to the CLI). Portal surfaces it as an
+		// interactive prompt and answers via session.rpc.ui.handlePendingUserInput,
+		// so it works whether the turn was started from the portal or the CLI.
+		// Owned sessions use the handleUserInputRequest callback instead.
+		if (!this.sharedMode) return;
+		const d = data as { requestId?: string; question?: string; choices?: string[]; allowFreeform?: boolean; toolCallId?: string };
+		if (!d?.requestId) {
+			// Without a requestId we can't resolve via RPC — fall back to an info banner.
 			this.cliInputPending = d?.question ?? 'User input needed';
-			this.log(`[Session] CLI waiting for input: ${this.cliInputPending}`);
 			this.broadcast({ type: 'cli_input_pending', content: this.cliInputPending });
+			return;
 		}
+		// Dedupe: a single ask_user is outstanding at a time.
+		if (this.pendingInputs.has(d.requestId)) return;
+		this.log(`[Session] Input request (event ${d.requestId}): "${(d.question ?? '').slice(0, 80)}"`);
+		// Clear any stale "respond in terminal" banner — we now have an interactive prompt.
+		if (this.cliInputPending) { this.cliInputPending = null; this.broadcast({ type: 'cli_input_resolved' }); }
+		const event: PortalEvent = {
+			type: 'input_request',
+			requestId: d.requestId,
+			inputRequest: { requestId: d.requestId, question: d.question ?? 'User input needed', choices: d.choices, allowFreeform: d.allowFreeform },
+		};
+		this.pendingInputs.set(d.requestId, { event, viaRpc: true, sdkRequestId: d.requestId });
+		this.broadcast(event);
 	}
 
-	private onUserInputCompleted(): void {
+	private onUserInputCompleted(data?: unknown): void {
+		// Runtime resolved the ask_user (by any client). Clear our pending input + banner.
+		const d = data as { requestId?: string } | undefined;
+		if (d?.requestId && this.pendingInputs.has(d.requestId)) {
+			this.pendingInputs.delete(d.requestId);
+			this.broadcast({ type: 'approval_resolved', requestId: d.requestId });
+		} else if (!d?.requestId) {
+			// No requestId — clear any outstanding event-sourced inputs defensively.
+			for (const [id, p] of this.pendingInputs) {
+				if (p.viaRpc) {
+					this.pendingInputs.delete(id);
+					this.broadcast({ type: 'approval_resolved', requestId: id });
+				}
+			}
+		}
 		if (this.cliInputPending) {
 			this.cliInputPending = null;
 			this.broadcast({ type: 'cli_input_resolved' });
@@ -1382,7 +1436,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (m.type === 'tool.execution_start') {
 				const d = m.data as { toolCallId?: string; toolName?: string; arguments?: unknown } | undefined;
 				if (d?.toolName === 'ask_user' && d?.toolCallId && !openToolStarts.has(d.toolCallId)) {
-					if (!this.cliInputPending) {
+					// If we already have an interactive pending input (live event or replay),
+					// don't also raise a dead-end banner for the same ask_user.
+					if (!this.cliInputPending && this.pendingInputs.size === 0) {
 						const args = (d.arguments ?? {}) as { question?: string };
 						this.cliInputPending = args.question ?? 'User input needed';
 						this.log(`[Sync] Detected pending ask_user tool from history: ${this.cliInputPending}`);
@@ -1574,7 +1630,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'permission.requested':             (d) => this.onPermissionRequested(d),
 		'permission.completed':             (d) => this.onPermissionCompleted(d),
 		'user_input.requested':             (d) => this.onUserInputRequested(d),
-		'user_input.completed':             () => this.onUserInputCompleted(),
+		'user_input.completed':             (d) => this.onUserInputCompleted(d),
 		'session.warning':                  (d) => this.onSessionWarning(d),
 		'session.info':                     (d) => this.onSessionInfo(d),
 		'session.model_change':             (d) => this.onModelChange(d),
