@@ -25,16 +25,27 @@ services:
       # Container-mode flags (also set in the image; repeated here for clarity).
       COPILOT_CONTAINER: "1"
       COPILOT_AUTO_UPDATE: "0"
+      # Where new sessions auto-create their per-session work/YYMMDD-NN folders.
+      # Points at the persistent /work volume below so workspaces survive rebuilds.
+      PORTAL_WORKSPACE_DIR: "/work"
+      # umask for files the container writes into /work. 002 makes new files
+      # group-writable (664/775) so an SMB read-write group can edit/delete them.
+      # Pair this with a setgid, group-owned /work dataset on the NAS.
+      UMASK: "002"
     volumes:
       # The important one: auth, sessions, skills, agents, and MCP config all
       # live under ~/.copilot. Persisting it survives restarts AND image rebuilds.
       - copilot-config:/root/.copilot
       # Portal-side state: access token, tunnel config, debug logs.
       - portal-data:/app/data
-      # Mount the directories you want Copilot to be able to work on, e.g.:
-      # - /mnt/tank/projects:/work
+      # Per-session workspaces. A named volume persists across rebuilds out of the
+      # box. For LAN file access (e.g. an SMB share), replace this line with a bind
+      # mount to a NAS dataset instead, e.g.:
+      #   - /mnt/tank/apps/copilot-work:/work
+      - work-data:/work
     restart: unless-stopped
 
 volumes:
   copilot-config:
   portal-data:
+  work-data:

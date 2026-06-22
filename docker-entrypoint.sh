@@ -8,6 +8,13 @@ set -e
 
 echo "  Copilot Portal — container mode"
 
+# Apply a umask if requested (e.g. UMASK=002 makes files the container writes
+# into /work group-writable, so an SMB read-write group can edit/delete them).
+if [ -n "${UMASK:-}" ]; then
+  umask "${UMASK}"
+  echo "  umask set to ${UMASK}"
+fi
+
 # --- GitHub auth check (warn only; do not block) ---
 # Two supported paths:
 #   1. A token in the environment (simplest for containers).
