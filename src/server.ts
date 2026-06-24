@@ -1988,9 +1988,41 @@ export class PortalServer {
 	 * the freshly-written credentials are picked up; on failure we return to
 	 * needs-auth so the user can retry.
 	 */
+	/**
+	 * Ensure `storeTokenPlaintext: true` is set in ~/.copilot/settings.json before
+	 * we spawn `copilot login`. In a container there is no system keychain, so the
+	 * CLI would otherwise authenticate but fail to PERSIST the token — its plaintext
+	 * fallback needs an interactive y/N TTY prompt we can't answer headlessly
+	 * ("Login succeeded, but the token was not saved"). With this flag the CLI writes
+	 * (and reads) the token straight from the config dir, no keychain and no prompt.
+	 * The entrypoint also sets this, but doing it here guarantees it runs right before
+	 * login regardless of image/entrypoint freshness.
+	 */
+	private ensurePlaintextTokenStorage(): void {
+		try {
+			const home = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
+			const file = path.join(home, 'settings.json');
+			let settings: Record<string, unknown> = {};
+			try {
+				settings = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+			} catch {
+				// missing or unparseable — start fresh
+			}
+			if (settings.storeTokenPlaintext !== true) {
+				settings.storeTokenPlaintext = true;
+				fs.mkdirSync(path.dirname(file), { recursive: true });
+				fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+				this.log('[Auth] Enabled plaintext token storage (no keychain available)');
+			}
+		} catch (e) {
+			this.log(`[Auth] Could not set storeTokenPlaintext: ${e} — sign-in may not persist`);
+		}
+	}
+
 	private startDeviceLogin(): void {
 		if (this.authLoginChild) return;
 		this.authDevice = null;
+		this.ensurePlaintextTokenStorage();
 
 		const isWin = process.platform === 'win32';
 		const bin = isWin ? 'copilot.cmd' : 'copilot';
