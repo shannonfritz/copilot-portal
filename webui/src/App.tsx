@@ -1839,6 +1839,77 @@ export default function App() {
 			.catch(() => { setAuthMessage('Could not save the token. Please try again.'); setAuthBusy(false); });
 	}, [authToken]);
 
+	// Portal session-token gate (shown when the page loads without a valid token).
+	const [ptStatus, setPtStatus] = useState<'loading' | 'enter' | 'create'>('loading');
+	const [ptEnvManaged, setPtEnvManaged] = useState(false);
+	const [ptInput, setPtInput] = useState('');
+	const [ptGenerated, setPtGenerated] = useState<string | null>(null);
+	const [ptBusy, setPtBusy] = useState(false);
+	const [ptError, setPtError] = useState<string | null>(null);
+	const [ptCopied, setPtCopied] = useState(false);
+
+	// When the token gate appears, ask the server whether a token already exists
+	// (→ prompt to paste it) or not (→ offer a one-time "generate" claim).
+	useEffect(() => {
+		if (connectionState !== 'no_token') return;
+		let cancelled = false;
+		setPtStatus('loading');
+		fetch('/api/portal-token/status')
+			.then(r => r.json())
+			.then((s: { configured: boolean; envManaged: boolean }) => {
+				if (cancelled) return;
+				setPtEnvManaged(!!s.envManaged);
+				setPtStatus(s.configured ? 'enter' : 'create');
+			})
+			.catch(() => { if (!cancelled) setPtStatus('enter'); });
+		return () => { cancelled = true; };
+	}, [connectionState]);
+
+	// Persist the token and reload so the whole app re-bootstraps cleanly with it.
+	const applyPortalToken = useCallback((token: string) => {
+		localStorage.setItem('portal_token', token);
+		const params = new URLSearchParams(window.location.search);
+		params.set('token', token);
+		window.location.search = params.toString();
+	}, []);
+
+	const submitPortalToken = useCallback(() => {
+		const token = ptInput.trim();
+		if (!token) { setPtError('Enter your session token.'); return; }
+		setPtBusy(true); setPtError(null);
+		fetch(`/api/info?token=${encodeURIComponent(token)}`)
+			.then(r => {
+				if (r.status === 401) { setPtError('That session token is not valid.'); setPtBusy(false); return; }
+				applyPortalToken(token);
+			})
+			.catch(() => { setPtError('Could not reach the portal. Try again.'); setPtBusy(false); });
+	}, [ptInput, applyPortalToken]);
+
+	const generatePortalToken = useCallback(() => {
+		setPtBusy(true); setPtError(null);
+		fetch('/api/portal-token/create', { method: 'POST' })
+			.then(async r => ({ status: r.status, ok: r.ok, body: await r.json().catch(() => ({})) as { token?: string; error?: string } }))
+			.then(({ status, ok, body }) => {
+				if (!ok) {
+					if (status === 409) { setPtStatus('enter'); setPtError('This portal already has a session token. Enter it below.'); }
+					else setPtError(body?.error ?? 'Could not generate a token.');
+					setPtBusy(false);
+					return;
+				}
+				setPtGenerated(body.token ?? null);
+				setPtBusy(false);
+			})
+			.catch(() => { setPtError('Could not generate a token. Try again.'); setPtBusy(false); });
+	}, []);
+
+	const copyPortalToken = useCallback(() => {
+		if (!ptGenerated) return;
+		navigator.clipboard?.writeText(ptGenerated).then(() => {
+			setPtCopied(true);
+			setTimeout(() => setPtCopied(false), 2000);
+		}).catch(() => {});
+	}, [ptGenerated]);
+
 	// Track visit count for PWA install hint (show on 2nd+ mobile visit)
 	const [pwaVisitCount] = useState(() => {
 		const count = parseInt(localStorage.getItem('portal_visit_count') ?? '0', 10) + 1;
@@ -3324,13 +3395,81 @@ export default function App() {
 	}, [showPromptsTray]);
 
 	if (connectionState === 'no_token') {
+		const Spin = () => (
+			<svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+				<circle cx="12" cy="12" r="10" stroke="var(--border)" strokeWidth="4" />
+				<path d="M12 2a10 10 0 0 1 10 10" stroke="var(--primary-contrast)" strokeWidth="4" strokeLinecap="round" />
+			</svg>
+		);
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
-				<div className="max-w-sm rounded-xl p-8" style={{ background: 'var(--surface)' }}>
-					<h1 className="mb-3 text-xl font-semibold">Token Required</h1>
-					<p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-						Open the URL shown in the terminal (includes <code>?token=…</code>).
-					</p>
+				<div className="w-full max-w-sm rounded-xl p-8" style={{ background: 'var(--surface)' }}>
+					{ptStatus === 'loading' ? (
+						<div className="flex flex-col items-center gap-3">
+							<Spin />
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>Checking this portal…</p>
+						</div>
+					) : ptGenerated ? (
+						<div className="flex flex-col gap-4 text-left">
+							<h1 className="text-center text-xl font-semibold">Save your session token</h1>
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+								Make sure to copy your session token now. <strong>You won't be able to see it again.</strong> You'll need it to open this portal from any browser.
+							</p>
+							<div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								<code className="flex-1 break-all text-left font-mono text-sm" style={{ color: 'var(--text)' }}>{ptGenerated}</code>
+								<button onClick={copyPortalToken} className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+									{ptCopied ? 'Copied' : 'Copy'}
+								</button>
+							</div>
+							<button onClick={() => applyPortalToken(ptGenerated)} className="rounded-lg px-5 py-2.5 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+								I've saved it — open the portal
+							</button>
+						</div>
+					) : ptStatus === 'create' ? (
+						<div className="flex flex-col gap-4">
+							<h1 className="text-xl font-semibold">Set up this portal</h1>
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+								This portal isn't protected yet. Generate a session token to lock it to you — you'll paste it whenever you open the portal in a new browser.
+							</p>
+							<button onClick={generatePortalToken} disabled={ptBusy} className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+								{ptBusy ? <Spin /> : null}
+								{ptBusy ? 'Generating…' : 'Generate session token'}
+							</button>
+							{ptError ? <p className="text-xs" style={{ color: 'var(--danger, #f87171)' }}>{ptError}</p> : null}
+							<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+								Already have a token?{' '}
+								<button onClick={() => { setPtStatus('enter'); setPtError(null); }} className="font-medium underline" style={{ color: 'var(--accent)' }}>Enter it</button>
+							</p>
+						</div>
+					) : (
+						<div className="flex flex-col gap-4">
+							<h1 className="text-xl font-semibold">Session token required</h1>
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+								Enter the portal session token to continue.
+							</p>
+							<input
+								type="password"
+								value={ptInput}
+								onChange={(e) => setPtInput(e.target.value)}
+								onKeyDown={(e) => { if (e.key === 'Enter' && !ptBusy) submitPortalToken(); }}
+								placeholder="Session token"
+								autoComplete="off"
+								spellCheck={false}
+								className="w-full rounded-lg px-3 py-2 font-mono text-sm outline-none"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+							/>
+							<button onClick={submitPortalToken} disabled={ptBusy || !ptInput.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+								{ptBusy ? <Spin /> : null}
+								{ptBusy ? 'Checking…' : 'Open portal'}
+							</button>
+							{ptError ? <p className="text-xs" style={{ color: 'var(--danger, #f87171)' }}>{ptError}</p> : null}
+							{!ptEnvManaged ? (
+								<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+									Lost your token? Reset it from the host (set <code>PORTAL_TOKEN</code> or remove <code>data/token.txt</code>).
+								</p>
+							) : null}
+						</div>
+					)}
 				</div>
 			</div>
 		);

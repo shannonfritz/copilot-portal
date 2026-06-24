@@ -5,8 +5,9 @@
 #        echo "GITHUB_TOKEN=ghp_xxx" > .env
 #   2. Build + run:
 #        docker compose up -d --build
-#   3. Open http://<host>:3847  (the token to log in is printed in the logs:
-#        docker compose logs -f copilot-portal)
+#   3. Open http://<host>:3847 and choose "Generate session token" on first run
+#        (copy it — you won't see it again). Or set PORTAL_TOKEN below to pick your
+#        own and skip the prompt. Opening the URL with ?token=<token> logs you in.
 #
 # See docs/DOCKER.md for the full guide (TrueNAS SCALE, private image transfer,
 # updates, and caveats).
@@ -29,6 +30,11 @@ services:
       # Simplest auth path: a GitHub token with Copilot access.
       # Leave empty if you instead rely on a mounted, pre-authenticated ~/.copilot.
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      # Optional: pin the portal's session token (the key that gates web access).
+      # If unset, the first browser visit offers a one-time "Generate session
+      # token" claim. Set this to a known secret for a predictable Open-WebUI URL
+      # and to reset access by changing it + redeploying.
+      PORTAL_TOKEN: "${PORTAL_TOKEN:-}"
       # Container-mode flags (also set in the image; repeated here for clarity).
       COPILOT_CONTAINER: "1"
       COPILOT_AUTO_UPDATE: "0"

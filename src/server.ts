@@ -36,7 +36,9 @@ const WORKSPACE_ROOT = process.env.PORTAL_WORKSPACE_DIR
 export class PortalServer {
 	private httpServer: http.Server;
 	private wss: WebSocketServer;
-	private token: string;
+	private token: string | null;
+	/** True when the token came from the PORTAL_TOKEN env (admin-managed, not web-claimable). */
+	private tokenEnvManaged = false;
 	private pool: SessionPool;
 	private webuiPath: string;
 	private debugDir: string;
@@ -66,7 +68,7 @@ export class PortalServer {
 			const tokenFile = path.join(this.dataDir, 'token.txt');
 			try { fs.unlinkSync(tokenFile); } catch {}
 		}
-		this.token = this.loadOrCreateToken();
+		this.token = this.initToken();
 		const workspaceRoot = WORKSPACE_ROOT;
 		try { fs.mkdirSync(workspaceRoot, { recursive: true }); } catch {}
 		// Seed guide examples on first run
@@ -94,7 +96,7 @@ export class PortalServer {
 				}
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const t = url.searchParams.get('token');
-				if (t !== this.token) {
+				if (this.token == null || t !== this.token) {
 					const entry = attempt && now < attempt.resetTime
 						? { count: attempt.count + 1, resetTime: attempt.resetTime }
 						: { count: 1, resetTime: now + 60_000 };
@@ -495,20 +497,40 @@ export class PortalServer {
 		this.logStream?.write(line + '\n');
 	}
 
-	private loadOrCreateToken(): string {
+	/**
+	 * Resolve the portal session token at startup.
+	 *  - PORTAL_TOKEN env wins (admin-managed; survives redeploys, predictable URL).
+	 *  - Else an existing data/token.txt is reused.
+	 *  - Else: in the container we DON'T auto-create — the web UI offers a one-time
+	 *    "Generate session token" claim (returns null = unclaimed). On the desktop
+	 *    the console prints the URL+token, so we auto-create to preserve that UX.
+	 */
+	private initToken(): string | null {
+		const envToken = process.env.PORTAL_TOKEN?.trim();
+		if (envToken) { this.tokenEnvManaged = true; return envToken; }
 		const tokenFile = path.join(this.dataDir, 'token.txt');
 		try {
-			if (fs.existsSync(tokenFile)) return fs.readFileSync(tokenFile, 'utf8').trim();
+			if (fs.existsSync(tokenFile)) {
+				const existing = fs.readFileSync(tokenFile, 'utf8').trim();
+				if (existing) return existing;
+			}
 		} catch {}
+		if (process.env.COPILOT_CONTAINER) return null;
+		return this.createAndPersistToken();
+	}
+
+	/** Generate a fresh random token, persist it to data/token.txt, and return it. */
+	private createAndPersistToken(): string {
 		const token = crypto.randomBytes(16).toString('hex');
 		try {
 			fs.mkdirSync(this.dataDir, { recursive: true });
-			fs.writeFileSync(tokenFile, token);
+			fs.writeFileSync(path.join(this.dataDir, 'token.txt'), token);
 		} catch {}
 		return token;
 	}
 
 	private checkToken(url: URL, req?: http.IncomingMessage): boolean {
+		if (this.token == null) return false;
 		if (url.searchParams.get('token') === this.token) return true;
 		const auth = req?.headers['authorization'] ?? '';
 		if (auth === `Bearer ${this.token}`) return true;
@@ -552,6 +574,22 @@ export class PortalServer {
 				build: __BUILD__,
 				cli: this.authState === 'ok' ? 'ready' : this.authState,
 			});
+			return;
+		}
+
+		// Portal session-token bootstrap — unauthenticated by necessity (the caller
+		// can't present a token before one exists). status leaks only a boolean;
+		// create is a one-shot claim that refuses (409) once a token is set.
+		if (url.pathname === '/api/portal-token/status' && method === 'GET') {
+			this.sendJson(res, 200, { configured: this.token != null, envManaged: this.tokenEnvManaged });
+			return;
+		}
+		if (url.pathname === '/api/portal-token/create' && method === 'POST') {
+			if (this.tokenEnvManaged) { this.sendJson(res, 409, { error: 'env_managed' }); return; }
+			if (this.token != null) { this.sendJson(res, 409, { error: 'already_configured' }); return; }
+			this.token = this.createAndPersistToken();
+			this.log('[Auth] Portal session token created via first-run web claim');
+			this.sendJson(res, 200, { token: this.token });
 			return;
 		}
 
@@ -1967,14 +2005,14 @@ export class PortalServer {
 	}
 
 	getToken(): string {
-		return this.token;
+		return this.token ?? '';
 	}
 
 	/** Rotate the access token — invalidates all existing URLs and disconnects all clients */
 	rotateToken(): string {
 		const tokenFile = path.join(this.dataDir, 'token.txt');
 		try { fs.unlinkSync(tokenFile); } catch {}
-		this.token = this.loadOrCreateToken();
+		this.token = this.createAndPersistToken();
 		// Disconnect all clients — they'll need the new token
 		for (const client of this.wss.clients) client.terminate();
 		return this.token;
@@ -2034,7 +2072,11 @@ export class PortalServer {
 				this.initDebugFiles();
 				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
 				this.log(`Server started on port ${this.port}`);
-				this.log(`Open: ${this.getURL()}`);
+				if (this.token) {
+					this.log(`Open: ${this.getURL()}`);
+				} else {
+					this.log(`No portal session token set — open the portal in a browser and choose "Generate session token" to claim it.`);
+				}
 				resolve();
 			});
 		});
