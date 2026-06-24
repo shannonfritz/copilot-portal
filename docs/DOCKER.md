@@ -73,6 +73,20 @@ space. Example in `docker-compose.yml`:
 > dataset), make sure the host directory is owned by — or group-writable to —
 > `568`, or set `user:` in compose to match your host account.
 
+> **Upgrading from a pre-`568` (root-era) image:** volumes created when the
+> container ran as root are owned by `root` and the non-root user can't write them
+> — the CLI fails with `Permission denied (os error 13)` and the entrypoint stops
+> with a clear message. Fix it once from the host:
+>
+> ```bash
+> docker compose down
+> docker run --rm -v <project>_copilot-config:/c -v <project>_portal-data:/d \
+>   alpine chown -R 568:568 /c /d
+> docker compose up -d
+> ```
+> (`<project>` is the compose project name — usually the folder name. Check with
+> `docker volume ls`.)
+
 ## Environment variables (config contract)
 
 All optional unless noted. Defaults are baked into the image; the compose file

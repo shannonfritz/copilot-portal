@@ -15,6 +15,27 @@ if [ -n "${UMASK:-}" ]; then
   echo "  umask set to ${UMASK}"
 fi
 
+# --- Writable-volume check (fail fast with a clear message) ---
+# The container runs as a non-root user (default 568). A volume first created by
+# an OLDER root container is owned by root, so this user can't write it and the
+# CLI dies with a cryptic "I/O error: Permission denied (os error 13)". Detect
+# that here and explain the one-time host-side fix instead of crash-looping.
+UID_NOW="$(id -u)"; GID_NOW="$(id -g)"
+for d in "${HOME}/.copilot" "/app/data" "${PORTAL_WORKSPACE_DIR:-/work}"; do
+  if [ -d "$d" ] && [ ! -w "$d" ]; then
+    echo
+    echo "  ERROR: '$d' is not writable by this user (${UID_NOW}:${GID_NOW})."
+    echo "  This usually means the volume was created by an older root container."
+    echo "  Fix it once from the Docker host, then start again, e.g.:"
+    echo "    docker compose down"
+    echo "    docker run --rm -v <project>_copilot-config:/c -v <project>_portal-data:/d \\"
+    echo "      alpine chown -R ${UID_NOW}:${GID_NOW} /c /d"
+    echo "    docker compose up -d"
+    echo
+    exit 1
+  fi
+done
+
 # --- GitHub auth check (warn only; do not block) ---
 # Two supported paths:
 #   1. A token in the environment (simplest for containers).
