@@ -3382,7 +3382,7 @@ export default function App() {
 								onClick={startLogin}
 								disabled={authBusy}
 								className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-								style={{ background: 'var(--accent)', color: 'var(--accent-text, #fff)' }}
+								style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 							>
 								{authBusy ? <Spinner /> : null}
 								{authBusy ? 'Starting…' : 'Sign in with GitHub'}
