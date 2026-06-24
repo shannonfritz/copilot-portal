@@ -2119,7 +2119,14 @@ export class PortalServer {
 				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
 				this.log(`Server started on port ${this.port}`);
 				if (this.token) {
-					this.log(`Open: ${this.getURL()}`);
+					// In a container getURL() resolves the container's internal Docker
+					// IP (useless on the LAN), so don't print it — the user reaches the
+					// portal via the host's address, which we can't know here.
+					if (CONTAINER_MODE) {
+						this.log(`Portal ready on port ${this.port} — open it at your host's address (the session token is already set).`);
+					} else {
+						this.log(`Open: ${this.getURL()}`);
+					}
 				} else {
 					this.log(`No portal session token set — open the portal in a browser and choose "Generate session token" to claim it.`);
 				}

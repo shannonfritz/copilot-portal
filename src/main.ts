@@ -53,6 +53,10 @@ const DATA_DIR = getArg('--data');
 const LAUNCH = args.includes('--launch');
 const NO_QR = args.includes('--no-qr');
 const NEW_TOKEN = args.includes('--new-token');
+// In a container the LAN IP we'd encode is the container's internal Docker
+// address, which is useless to a phone. Suppress console QR/URL output there;
+// clients reach the portal via the host's address and use the in-portal QR.
+const CONTAINER_MODE = process.env.COPILOT_CONTAINER === '1' || process.env.COPILOT_CONTAINER === 'true';
 
 // ---- Auto-start management ----
 const TASK_NAME = 'CopilotPortal';
@@ -187,8 +191,8 @@ try {
 const dataDir = DATA_DIR ?? 'data';
 const tunnel = new TunnelManager(dataDir, PORT);
 
-// Print QR code for easy phone access
-if (!NO_QR) {
+// Print QR code for easy phone access (desktop only — see CONTAINER_MODE note).
+if (!NO_QR && !CONTAINER_MODE) {
 	console.log('\nScan to open on your phone:');
 	qrcode.generate(server.getURL(), { small: true });
 	if (!server.getToken()) {

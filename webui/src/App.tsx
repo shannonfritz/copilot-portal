@@ -3731,12 +3731,29 @@ export default function App() {
 						onClick={(e) => e.stopPropagation()}
 					>
 						<h2 className="font-semibold">Open on another device</h2>
-						<div className="rounded-xl p-3" style={{ background: 'white' }}>
-							<QRCodeSVG value={portalInfo?.lanUrl ?? window.location.href} size={220} />
-						</div>
-						<p className="max-w-xs text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-							Scan to open this session on your phone or tablet
-						</p>
+						{(() => {
+							// Prefer the address this browser actually used (correct for
+							// containers, reverse proxies, Tailscale, HTTPS hostnames). Only
+							// when we're on localhost (e.g. desktop [L]aunch) fall back to the
+							// server's LAN URL, since a phone can't reach "localhost".
+							const loc = window.location;
+							const onLocalhost = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1';
+							const tok = getToken() ?? '';
+							const shareUrl = onLocalhost && portalInfo?.lanUrl
+								? portalInfo.lanUrl
+								: `${loc.origin}/${tok ? `?token=${tok}` : ''}`;
+							return (
+								<>
+									<div className="rounded-xl p-3" style={{ background: 'white' }}>
+										<QRCodeSVG value={shareUrl} size={220} />
+									</div>
+									<code className="max-w-xs break-all text-center font-mono text-xs" style={{ color: 'var(--text)' }}>{shareUrl}</code>
+									<p className="max-w-xs text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+										Scan the code or open this URL on your phone or tablet — it includes the session token.
+									</p>
+								</>
+							);
+						})()}
 					</div>
 				</div>
 			)}
