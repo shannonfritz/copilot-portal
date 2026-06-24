@@ -40,6 +40,42 @@ const standalone = args.includes('--standalone');
 // Remove --standalone from args passed to server (it doesn't know about it)
 const serverArgs = args.filter(a => a !== '--standalone');
 
+// Tracks an access token WE injected from the portal's saved token file, so we
+// can clear it on logout without ever touching an env var the host set itself.
+let injectedAccessToken: string | null = null;
+// The COPILOT_GITHUB_TOKEN the host provided (e.g. via docker-compose), captured
+// once at startup before we ever inject a pasted token. On logout we restore this
+// rather than leaving the container with no token at all.
+const hostAccessToken: string | null = process.env.COPILOT_GITHUB_TOKEN ?? null;
+
+/**
+ * If the portal saved a pasted access token (data/gh-pat), inject it as
+ * COPILOT_GITHUB_TOKEN so the CLI — spawned below and inheriting our env —
+ * authenticates with it. Runs on boot and on every exit-76 restart, so a saved
+ * token survives restarts. If the file was removed (logout), restore the host's
+ * own token if it set one, otherwise clear the copy we injected.
+ */
+function loadStoredAccessToken(): void {
+	try {
+		const f = path.join(__dirname, '..', 'data', 'gh-pat');
+		const tok = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : '';
+		if (tok) {
+			process.env.COPILOT_GITHUB_TOKEN = tok;
+			injectedAccessToken = tok;
+			log('[Launcher] Using saved access token (COPILOT_GITHUB_TOKEN)');
+		} else if (injectedAccessToken && process.env.COPILOT_GITHUB_TOKEN === injectedAccessToken) {
+			injectedAccessToken = null;
+			if (hostAccessToken) {
+				process.env.COPILOT_GITHUB_TOKEN = hostAccessToken;
+				log('[Launcher] Cleared saved access token — restored host-provided token');
+			} else {
+				delete process.env.COPILOT_GITHUB_TOKEN;
+				log('[Launcher] Cleared saved access token');
+			}
+		}
+	} catch { /* ignore */ }
+}
+
 /** Check if a TCP port is accepting connections */
 function isPortListening(port: number): Promise<boolean> {
 	return new Promise((resolve) => {
@@ -132,6 +168,10 @@ function stopCli(): void {
 async function start() {
 	// Set terminal tab title
 	process.stdout.write('\x1b]0;Copilot Portal\x07');
+
+	// Pick up a portal-saved access token before spawning the CLI (which inherits
+	// our env). Runs on boot and on every restart, so it survives exit-76 cycles.
+	loadStoredAccessToken();
 
 	let cliUrl: string | undefined;
 

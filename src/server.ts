@@ -613,6 +613,59 @@ export class PortalServer {
 			return;
 		}
 
+		// Authenticate with a pasted personal access token (the documented
+		// container/CI method). We persist it for the launcher to inject as
+		// COPILOT_GITHUB_TOKEN on (re)start, then exit 76 to restart. Only
+		// fine-grained tokens (github_pat_) and gho_/ghu_ are supported; classic
+		// ghp_ tokens are explicitly unsupported by the Copilot CLI.
+		if (url.pathname === '/api/auth/token' && method === 'POST') {
+			let token = '';
+			try { token = String((JSON.parse(await this.readBody(req)) as { token?: unknown })?.token ?? '').trim(); } catch { /* bad body */ }
+			if (!token) {
+				this.sendJson(res, 400, { error: 'Paste a token first.' });
+				return;
+			}
+			if (token.startsWith('ghp_')) {
+				this.sendJson(res, 400, { error: 'Classic tokens (ghp_) are not supported by Copilot CLI. Create a fine-grained token with the "Copilot Requests" permission.' });
+				return;
+			}
+			// Best-effort validation: reject only a definitive 401 (invalid/expired).
+			// A Copilot-scoped fine-grained token may legitimately 403 on /user, so
+			// we never block on anything but 401 — the CLI is the final judge.
+			let login: string | null = null;
+			try {
+				const ctrl = new AbortController();
+				const timer = setTimeout(() => ctrl.abort(), 6000);
+				const r = await fetch('https://api.github.com/user', {
+					headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' },
+					signal: ctrl.signal,
+				});
+				clearTimeout(timer);
+				if (r.status === 401) {
+					this.sendJson(res, 400, { error: 'That token is invalid or expired.' });
+					return;
+				}
+				if (r.ok) { try { login = ((await r.json()) as { login?: string })?.login ?? null; } catch { /* ignore */ } }
+			} catch { /* network/timeout — cannot verify; trust the token and let the CLI decide */ }
+
+			// Drop any prior device-flow credentials so the two methods stay
+			// mutually exclusive, then persist the new token (0600).
+			this.clearStoredCredentials();
+			try {
+				fs.mkdirSync(this.dataDir, { recursive: true });
+				fs.writeFileSync(this.patFile(), token, { mode: 0o600 });
+				try { fs.chmodSync(this.patFile(), 0o600); } catch { /* best effort */ }
+			} catch (e) {
+				this.sendJson(res, 500, { error: `Failed to store token: ${e}` });
+				return;
+			}
+			this.log(`[Auth] Access token saved${login ? ` for ${login}` : ''} — restarting to authenticate via COPILOT_GITHUB_TOKEN`);
+			this.sendJson(res, 200, { ok: true, login });
+			this.broadcastAll({ type: 'auth_state', state: 'starting', message: 'Token saved — restarting...' });
+			setTimeout(() => process.exit(76), 300);
+			return;
+		}
+
 		if (url.pathname === '/api/mcp' && method === 'GET') {
 			const sessionId = url.searchParams.get('session') ?? undefined;
 			try {
@@ -2060,8 +2113,13 @@ export class PortalServer {
 		} catch { return null; }
 	}
 
+	/** Path to the persisted pasted access token (injected as COPILOT_GITHUB_TOKEN
+	 *  by the launcher on start). Lives in portal-data so it survives rebuilds. */
+	private patFile(): string { return path.join(this.dataDir, 'gh-pat'); }
+
 	/** Human description of where the GitHub token is persisted (for the console). */
 	private describeTokenStorage(): string {
+		if (fs.existsSync(this.patFile())) return 'environment variable (pasted access token)';
 		const cfg = this.readCopilotConfig();
 		const tokens = cfg?.data?.copilotTokens as Record<string, unknown> | undefined;
 		const hasPlaintextToken = !!(tokens && Object.keys(tokens).length);
@@ -2080,8 +2138,14 @@ export class PortalServer {
 	 */
 	private clearStoredCredentials(): { summary: string; mode: string } {
 		const mode = this.describeTokenStorage();
+		// Remove a pasted access token (if any) first — covers logout and keeps
+		// the device/PAT methods mutually exclusive.
+		let patCleared = false;
+		try { if (fs.existsSync(this.patFile())) { fs.unlinkSync(this.patFile()); patCleared = true; } } catch { /* ignore */ }
 		const cfg = this.readCopilotConfig();
-		if (!cfg) return { summary: `no config.json found (${mode})`, mode };
+		if (!cfg) {
+			return { summary: patCleared ? `cleared access token (${mode})` : `no config.json found (${mode})`, mode };
+		}
 		let cleared = false;
 		for (const k of ['copilotTokens', 'loggedInUsers', 'lastLoggedInUser']) {
 			if (k in cfg.data) { delete (cfg.data as Record<string, unknown>)[k]; cleared = true; }
@@ -2092,7 +2156,8 @@ export class PortalServer {
 		} catch (e) {
 			return { summary: `failed to rewrite config.json: ${e}`, mode };
 		}
-		return { summary: cleared ? `cleared credentials from ${mode}` : `no stored credentials to clear (${mode})`, mode };
+		const what = [cleared ? 'credentials' : null, patCleared ? 'access token' : null].filter(Boolean).join(' + ');
+		return { summary: what ? `cleared ${what} from ${mode}` : `no stored credentials to clear (${mode})`, mode };
 	}
 
 	private startDeviceLogin(): void {
@@ -2161,6 +2226,9 @@ export class PortalServer {
 			this.authDevice = null;
 			if (!wasRunning) return; // cancelled
 			if (code === 0) {
+				// Device sign-in won — drop any pasted access token so it doesn't
+				// override the new OAuth credentials (env var has higher precedence).
+				try { if (fs.existsSync(this.patFile())) fs.unlinkSync(this.patFile()); } catch { /* ignore */ }
 				this.log(`[Auth] Sign-in succeeded — token persisted to ${this.describeTokenStorage()}`);
 				this.log('[Auth] Restarting to load new credentials');
 				this.broadcastAll({ type: 'auth_state', state: 'starting', message: 'Signed in — restarting...' });

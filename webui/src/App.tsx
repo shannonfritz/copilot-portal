@@ -1819,6 +1819,26 @@ export default function App() {
 		setAuthDevice(null);
 	}, []);
 
+	// Access-token (PAT) sign-in tab.
+	const [authTab, setAuthTab] = useState<'device' | 'token'>('device');
+	const [authToken, setAuthToken] = useState('');
+	const submitToken = useCallback(() => {
+		const token = authToken.trim();
+		if (!token) { setAuthMessage('Paste a token first.'); return; }
+		setAuthBusy(true);
+		setAuthMessage(null);
+		apiFetch('/api/auth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+			.then(async r => ({ ok: r.ok, body: await r.json().catch(() => ({})) as { error?: string; login?: string } }))
+			.then(({ ok, body }) => {
+				if (!ok) { setAuthMessage(body?.error ?? 'Could not save the token.'); setAuthBusy(false); return; }
+				// Success: server is restarting to authenticate. Clear the field and
+				// let the auth-state stream flip us to the restarting/ok screen.
+				setAuthToken('');
+				setAuthMessage(body?.login ? `Token accepted for ${body.login} — restarting…` : 'Token saved — restarting…');
+			})
+			.catch(() => { setAuthMessage('Could not save the token. Please try again.'); setAuthBusy(false); });
+	}, [authToken]);
+
 	// Track visit count for PWA install hint (show on 2nd+ mobile visit)
 	const [pwaVisitCount] = useState(() => {
 		const count = parseInt(localStorage.getItem('portal_visit_count') ?? '0', 10) + 1;
@@ -3374,19 +3394,92 @@ export default function App() {
 							</button>
 						</div>
 					) : (
-						<div className="mt-4 flex flex-col items-center gap-4">
-							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-								This portal needs to connect to your GitHub Copilot account before you can start chatting.
-							</p>
-							<button
-								onClick={startLogin}
-								disabled={authBusy}
-								className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
-								style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
-							>
-								{authBusy ? <Spinner /> : null}
-								{authBusy ? 'Starting…' : 'Sign in with GitHub'}
-							</button>
+						<div className="mt-4 flex flex-col gap-4">
+							{/* Tabs: Device sign-in (default) vs Access token */}
+							<div className="flex gap-1 self-center rounded-lg p-1" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								{([['device', 'Device sign-in'], ['token', 'Access token']] as const).map(([id, label]) => (
+									<button
+										key={id}
+										onClick={() => { setAuthTab(id); setAuthMessage(null); }}
+										className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+										style={authTab === id
+											? { background: 'var(--primary)', color: 'var(--primary-contrast)' }
+											: { background: 'transparent', color: 'var(--text-muted)' }}
+									>
+										{label}
+									</button>
+								))}
+							</div>
+
+							{authTab === 'device' ? (
+								<div className="flex flex-col items-center gap-4">
+									<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+										This portal needs to connect to your GitHub Copilot account before you can start chatting.
+									</p>
+									<button
+										onClick={startLogin}
+										disabled={authBusy}
+										className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+										style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+									>
+										{authBusy ? <Spinner /> : null}
+										{authBusy ? 'Starting…' : 'Sign in with GitHub'}
+									</button>
+									<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+										You'll get a one-time code to confirm in your browser. Recommended.
+									</p>
+								</div>
+							) : (
+								<div className="flex flex-col gap-3 text-left">
+									<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+										Paste a <strong>fine-grained personal access token</strong> with the
+										{' '}<strong>Copilot Requests</strong> permission. Good for headless or
+										automated setups.
+									</p>
+									<input
+										type="password"
+										value={authToken}
+										onChange={(e) => setAuthToken(e.target.value)}
+										onKeyDown={(e) => { if (e.key === 'Enter' && !authBusy) submitToken(); }}
+										placeholder="github_pat_…"
+										autoComplete="off"
+										spellCheck={false}
+										className="w-full rounded-lg px-3 py-2 font-mono text-sm outline-none"
+										style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+									/>
+									<button
+										onClick={submitToken}
+										disabled={authBusy || !authToken.trim()}
+										className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+										style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+									>
+										{authBusy ? <Spinner /> : null}
+										{authBusy ? 'Saving…' : 'Save token & sign in'}
+									</button>
+									<div className="rounded-lg px-3 py-2.5 text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+										<a
+											href="https://github.com/settings/personal-access-tokens/new"
+											target="_blank"
+											rel="noreferrer"
+											className="inline-flex items-center gap-1 font-medium"
+											style={{ color: 'var(--accent)' }}
+										>
+											Create a token
+											<svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+												<path d="M15 3h6v6" />
+												<path d="M10 14 21 3" />
+												<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+											</svg>
+										</a>
+										<ul className="mt-1.5 list-disc space-y-0.5 pl-4">
+											<li>Resource owner: your <strong>personal account</strong> (not an org)</li>
+											<li>Permissions → Account → <strong>Copilot Requests</strong></li>
+											<li>Repository access: whatever suits you</li>
+										</ul>
+										<p className="mt-1.5">Classic <code>ghp_</code> tokens aren't supported. Stored locally on this server.</p>
+									</div>
+								</div>
+							)}
 						</div>
 					)}
 
