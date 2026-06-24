@@ -3344,7 +3344,7 @@ export default function App() {
 					) : authDevice ? (
 						<div className="mt-4 flex flex-col items-center gap-4">
 							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-								Open the link below and enter this one-time code:
+								Open the link below — your code is pre-filled. Just confirm and authorize.
 							</p>
 							<div
 								className="select-all rounded-lg px-5 py-3 font-mono text-2xl font-bold tracking-[0.3em]"
@@ -3353,13 +3353,18 @@ export default function App() {
 								{authDevice.code}
 							</div>
 							<a
-								href={authDevice.verificationUri}
+								href={`${authDevice.verificationUri}${authDevice.verificationUri.includes('?') ? '&' : '?'}user_code=${encodeURIComponent(authDevice.code)}`}
 								target="_blank"
 								rel="noreferrer"
 								className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
-								style={{ background: 'var(--accent)', color: 'var(--accent-text, #fff)' }}
+								style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 							>
-								Open github.com/login/device →
+								Open github.com/login/device
+								<svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+									<path d="M15 3h6v6" />
+									<path d="M10 14 21 3" />
+									<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+								</svg>
 							</a>
 							<div className="mt-1 flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
 								<Spinner /> Waiting for authorization…
