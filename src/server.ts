@@ -90,21 +90,16 @@ export class PortalServer {
 				// Rate limit: 15 failed attempts per 60s per IP
 				const attempt = this.failedAuth.get(ip);
 				if (attempt && now < attempt.resetTime && attempt.count >= 15) {
-					this.log(`[Auth] Blocked ${ip} (rate limited)`);
 					callback(false, 429, 'Too many attempts');
 					return;
 				}
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const t = url.searchParams.get('token');
 				if (this.token == null || t !== this.token) {
-					const entry = attempt && now < attempt.resetTime
-						? { count: attempt.count + 1, resetTime: attempt.resetTime }
-						: { count: 1, resetTime: now + 60_000 };
-					this.failedAuth.set(ip, entry);
-					this.log(`[Auth] Failed attempt from ${ip} (${entry.count}/15)`);
+					this.recordFailedAuth(ip);
 					callback(false, 401, 'Unauthorized');
 				} else {
-					this.failedAuth.delete(ip);
+					this.clearFailedAuth(ip);
 					callback(true);
 				}
 			},
@@ -531,21 +526,51 @@ export class PortalServer {
 
 	private checkToken(url: URL, req?: http.IncomingMessage): boolean {
 		if (this.token == null) return false;
-		if (url.searchParams.get('token') === this.token) return true;
-		const auth = req?.headers['authorization'] ?? '';
-		if (auth === `Bearer ${this.token}`) return true;
+		const ip = req?.socket.remoteAddress ?? 'unknown';
+		if (url.searchParams.get('token') === this.token || req?.headers['authorization'] === `Bearer ${this.token}`) {
+			if (req) this.clearFailedAuth(ip);
+			return true;
+		}
 		// Track failed attempt for rate limiting
-		if (req) {
-			const ip = req.socket.remoteAddress ?? 'unknown';
-			const now = Date.now();
-			const attempt = this.failedAuth.get(ip);
-			const entry = attempt && now < attempt.resetTime
-				? { count: attempt.count + 1, resetTime: attempt.resetTime }
-				: { count: 1, resetTime: now + 60_000 };
-			this.failedAuth.set(ip, entry);
+		if (req) this.recordFailedAuth(ip);
+		return false;
+	}
+
+	/**
+	 * Record a failed auth attempt for an IP and emit one log line per state.
+	 * Block/unblock is lazy (no timer): an IP is refused while count >= 15 within
+	 * the 60s window; the window is reset the next time the IP is seen after it
+	 * expires. We log the Blocked transition exactly once (when count hits 15) and
+	 * the lazy Unblocked transition once (when a previously-blocked IP returns past
+	 * its window), instead of logging on every refused request.
+	 */
+	private recordFailedAuth(ip: string): void {
+		const now = Date.now();
+		const attempt = this.failedAuth.get(ip);
+		const within = !!attempt && now < attempt.resetTime;
+		if (attempt && !within && attempt.count >= 15) {
+			this.log(`[Auth] Unblocked ${ip} (rate-limit window expired)`);
+		}
+		const entry = within
+			? { count: attempt!.count + 1, resetTime: attempt!.resetTime }
+			: { count: 1, resetTime: now + 60_000 };
+		this.failedAuth.set(ip, entry);
+		if (entry.count === 15) {
+			const secs = Math.ceil((entry.resetTime - now) / 1000);
+			this.log(`[Auth] Blocked ${ip} — 15 failed auth attempts in 60s; refusing further attempts for ${secs}s`);
+		} else if (entry.count < 15) {
 			this.log(`[Auth] Failed attempt from ${ip} (${entry.count}/15)`);
 		}
-		return false;
+	}
+
+	/** Clear an IP's failed-attempt record on success; logs the lazy Unblocked transition if it had expired while blocked. */
+	private clearFailedAuth(ip: string): void {
+		const attempt = this.failedAuth.get(ip);
+		if (!attempt) return;
+		if (attempt.count >= 15 && Date.now() >= attempt.resetTime) {
+			this.log(`[Auth] Unblocked ${ip} (rate-limit window expired)`);
+		}
+		this.failedAuth.delete(ip);
 	}
 
 	/** Returns true if the IP is rate-limited. Sets 429 on the response. */
@@ -553,7 +578,6 @@ export class PortalServer {
 		const ip = req.socket.remoteAddress ?? 'unknown';
 		const attempt = this.failedAuth.get(ip);
 		if (attempt && Date.now() < attempt.resetTime && attempt.count >= 15) {
-			this.log(`[Auth] Blocked ${ip} (rate limited)`);
 			res.writeHead(429); res.end('Too many attempts');
 			return true;
 		}
