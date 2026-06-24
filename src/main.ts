@@ -191,6 +191,9 @@ const tunnel = new TunnelManager(dataDir, PORT);
 if (!NO_QR) {
 	console.log('\nScan to open on your phone:');
 	qrcode.generate(server.getURL(), { small: true });
+	if (!server.getToken()) {
+		console.log('  No session token yet — open the portal and choose "Generate session token" to secure it.');
+	}
 }
 
 if (LAUNCH) {
@@ -494,11 +497,15 @@ if (process.stdin.isTTY) {
 			if (result.deleted) {
 				console.log(`  ✓ Tunnel "${result.name}" deleted — old tunnel URL is dead`);
 			}
-			server.rotateToken();
-			console.log(`  ✓ Token rotated — all existing URLs (tunnel and local) are now invalid`);
-			console.log(`  ✓ All connected clients disconnected`);
-			console.log(`\n  New local URL: ${server.getURL()}`);
-			console.log(`  Press [q] for a new QR code, or [t] to create a new tunnel.\n`);
+			const cleared = server.clearToken();
+			if (cleared) {
+				console.log(`  ✓ Session token cleared — all existing URLs are now invalid`);
+				console.log(`  ✓ All connected clients disconnected`);
+				console.log(`\n  Portal URL: ${server.getURL()}`);
+				console.log(`  Open it and choose "Generate session token" to set a new one, then press [q] for a QR code.\n`);
+			} else {
+				console.log(`  ⚠ Session token is pinned via PORTAL_TOKEN — change that env var and restart to rotate it.\n`);
+			}
 			return;
 		}
 		switch (key.toLowerCase()) {
@@ -526,6 +533,9 @@ if (process.stdin.isTTY) {
 					console.log('');
 					console.log('  Scan to open on your phone (same network):');
 					qrcode.generate(server.getURL(), { small: true });
+					if (!server.getToken()) {
+						console.log('  No session token yet — open the portal and choose "Generate session token" to secure it.');
+					}
 				}
 				break;
 			}

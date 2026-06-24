@@ -501,9 +501,10 @@ export class PortalServer {
 	 * Resolve the portal session token at startup.
 	 *  - PORTAL_TOKEN env wins (admin-managed; survives redeploys, predictable URL).
 	 *  - Else an existing data/token.txt is reused.
-	 *  - Else: in the container we DON'T auto-create — the web UI offers a one-time
-	 *    "Generate session token" claim (returns null = unclaimed). On the desktop
-	 *    the console prints the URL+token, so we auto-create to preserve that UX.
+	 *  - Else null: no token yet. The user mints one from the portal UI via a
+	 *    one-time "Generate session token" claim. This is identical for the
+	 *    container and the desktop console (the console shows a tokenless URL/QR
+	 *    until the claim happens, then picks up the new token automatically).
 	 */
 	private initToken(): string | null {
 		const envToken = process.env.PORTAL_TOKEN?.trim();
@@ -515,8 +516,7 @@ export class PortalServer {
 				if (existing) return existing;
 			}
 		} catch {}
-		if (process.env.COPILOT_CONTAINER) return null;
-		return this.createAndPersistToken();
+		return null;
 	}
 
 	/** Generate a fresh random token, persist it to data/token.txt, and return it. */
@@ -1996,26 +1996,33 @@ export class PortalServer {
 	}
 
 	getURL(): string {
-		return `http://${this.getLocalIP()}:${this.port}?token=${this.token}`;
+		const base = `http://${this.getLocalIP()}:${this.port}`;
+		return this.token ? `${base}?token=${this.token}` : base;
 	}
 
 	/** URL using localhost — survives network changes, for local browser launch */
 	getLocalURL(): string {
-		return `http://localhost:${this.port}?token=${this.token}`;
+		const base = `http://localhost:${this.port}`;
+		return this.token ? `${base}?token=${this.token}` : base;
 	}
 
 	getToken(): string {
 		return this.token ?? '';
 	}
 
-	/** Rotate the access token — invalidates all existing URLs and disconnects all clients */
-	rotateToken(): string {
+	/**
+	 * Clear the portal session token, forcing a fresh one-time claim from the UI.
+	 * Disconnects all clients. No-op (returns false) when the token is pinned via
+	 * the PORTAL_TOKEN env, which can only be changed by restarting with a new value.
+	 */
+	clearToken(): boolean {
+		if (this.tokenEnvManaged) return false;
 		const tokenFile = path.join(this.dataDir, 'token.txt');
 		try { fs.unlinkSync(tokenFile); } catch {}
-		this.token = this.createAndPersistToken();
-		// Disconnect all clients — they'll need the new token
+		this.token = null;
+		// Disconnect all clients — they'll need a freshly claimed token
 		for (const client of this.wss.clients) client.terminate();
-		return this.token;
+		return true;
 	}
 
 	/** List sessions (for console CLI launcher) */
