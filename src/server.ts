@@ -50,6 +50,8 @@ export class PortalServer {
 	/** Active `copilot login` device-flow child + the device code/URL it emitted. */
 	private authLoginChild: ChildProcess | null = null;
 	private authDevice: { code: string; verificationUri: string } | null = null;
+	/** Set once we've fallen back to plaintext token storage after a failed save. */
+	private authPlaintextRetried = false;
 	private shields: Record<string, boolean> = {};
 	private sessionAgents: Record<string, string> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
@@ -1989,16 +1991,18 @@ export class PortalServer {
 	 * needs-auth so the user can retry.
 	 */
 	/**
-	 * Ensure `storeTokenPlaintext: true` is set in ~/.copilot/settings.json before
-	 * we spawn `copilot login`. In a container there is no system keychain, so the
-	 * CLI would otherwise authenticate but fail to PERSIST the token — its plaintext
-	 * fallback needs an interactive y/N TTY prompt we can't answer headlessly
-	 * ("Login succeeded, but the token was not saved"). With this flag the CLI writes
-	 * (and reads) the token straight from the config dir, no keychain and no prompt.
-	 * The entrypoint also sets this, but doing it here guarantees it runs right before
-	 * login regardless of image/entrypoint freshness.
+	 * Ensure `storeTokenPlaintext: true` is set in ~/.copilot/settings.json. The CLI
+	 * tries the OS keychain first; when there is no keychain it falls back to an
+	 * interactive y/N prompt that needs a TTY we don't have (login authenticates but
+	 * the token is not persisted — "Login succeeded, but the token was not saved").
+	 * With this flag the CLI writes/reads the token straight from the config dir.
+	 *
+	 * We only enable this when there's genuinely no keychain: pre-emptively in a
+	 * container (none exists), or reactively on desktop AFTER a sign-in attempt
+	 * reports the token couldn't be saved. Desktops with a working keychain keep
+	 * using secure storage — we never downgrade them.
 	 */
-	private ensurePlaintextTokenStorage(): void {
+	private ensurePlaintextTokenStorage(): boolean {
 		try {
 			const home = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
 			const file = path.join(home, 'settings.json');
@@ -2014,15 +2018,20 @@ export class PortalServer {
 				fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
 				this.log('[Auth] Enabled plaintext token storage (no keychain available)');
 			}
+			return true;
 		} catch (e) {
 			this.log(`[Auth] Could not set storeTokenPlaintext: ${e} — sign-in may not persist`);
+			return false;
 		}
 	}
 
 	private startDeviceLogin(): void {
 		if (this.authLoginChild) return;
 		this.authDevice = null;
-		this.ensurePlaintextTokenStorage();
+		// In a container there is no OS keychain, so pre-enable plaintext storage.
+		// On desktop we leave the secure keychain in charge and only fall back to
+		// plaintext reactively (below) if the CLI reports it couldn't save the token.
+		if (CONTAINER_MODE) this.ensurePlaintextTokenStorage();
 
 		const isWin = process.platform === 'win32';
 		const bin = isWin ? 'copilot.cmd' : 'copilot';
@@ -2038,11 +2047,17 @@ export class PortalServer {
 		this.authLoginChild = child;
 		this.setAuthState('needs-auth', 'Starting sign-in...');
 
+		// Tracks whether this attempt authenticated but failed to persist the token
+		// (no keychain + no TTY for the plaintext prompt) — triggers the reactive
+		// plaintext fallback + auto-retry below.
+		let tokenNotSaved = false;
+
 		const onChunk = (buf: Buffer) => {
 			const text = buf.toString();
 			for (const line of text.split(/\r?\n/)) {
 				if (!line.trim()) continue;
 				this.log(`[Auth:login] ${line.trim()}`);
+				if (/token was not saved|keychain unavailable/i.test(line)) tokenNotSaved = true;
 				// "...visit https://github.com/login/device and enter code 998B-81E8."
 				const codeMatch = line.match(/\bcode\s+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
 				const uriMatch = line.match(/(https?:\/\/\S*github\.com\/login\/device\S*)/i);
@@ -2083,6 +2098,19 @@ export class PortalServer {
 				setTimeout(() => process.exit(76), 250);
 			} else {
 				this.log(`[Auth] Sign-in process exited ${code}`);
+				// Reactive fallback: the user authenticated but the CLI couldn't save
+				// the token because there's no keychain and no TTY for its plaintext
+				// prompt. Enable plaintext storage once and re-run sign-in so the next
+				// attempt persists. (Desktops with a working keychain never hit this.)
+				if (tokenNotSaved && !this.authPlaintextRetried) {
+					this.authPlaintextRetried = true;
+					if (this.ensurePlaintextTokenStorage()) {
+						this.log('[Auth] Token could not be saved securely — enabled local storage; restarting sign-in');
+						this.setAuthState('needs-auth', 'Secure storage unavailable — please sign in once more to finish.');
+						setTimeout(() => this.startDeviceLogin(), 400);
+						return;
+					}
+				}
 				this.setAuthState('needs-auth', 'Sign-in was not completed. Please try again.');
 			}
 		});
