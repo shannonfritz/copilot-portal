@@ -3111,6 +3111,26 @@ export default function App() {
 		}
 	}, []);
 
+	const removePortalToken = useCallback(async () => {
+		try {
+			const res = await apiFetch('/api/portal-token', { method: 'DELETE' });
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({})) as { error?: string };
+				setNotification({ type: 'warning', message: data.error === 'env_managed'
+					? 'The session token is pinned via PORTAL_TOKEN — change that env var and restart to rotate it.'
+					: (data.error ?? 'Could not remove the session token.') });
+				return;
+			}
+			// Token is gone: drop our copy and bounce to the claim screen.
+			localStorage.removeItem('portal_token');
+			const params = new URLSearchParams(window.location.search);
+			params.delete('token');
+			window.location.search = params.toString();
+		} catch {
+			setNotification({ type: 'warning', message: 'Could not remove the session token.' });
+		}
+	}, []);
+
 	const restartCli = useCallback(async () => {
 		try {
 			const res = await apiFetch('/api/restart-cli', { method: 'POST' });
@@ -4566,6 +4586,22 @@ export default function App() {
 										<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
 										<polyline points="16 17 21 12 16 7" />
 										<line x1="21" y1="12" x2="9" y2="12" />
+									</svg>
+								</button>
+								<button
+									className="inline-flex items-center justify-center rounded-lg px-2 py-1.5"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+									onClick={() => setServerConfirm({
+										message: 'Remove the portal session token? Every connected device is signed out and the portal returns to the “Generate session token” screen.',
+										onConfirm: () => { setServerConfirm(null); setShowPicker(false); removePortalToken(); },
+									})}
+									type="button"
+									title="Remove portal session token"
+								>
+									<svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+										<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" />
+										<path d="m21 2-9.6 9.6" />
+										<circle cx="7.5" cy="15.5" r="5.5" />
 									</svg>
 								</button>
 								<button

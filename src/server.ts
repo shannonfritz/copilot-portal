@@ -651,6 +651,16 @@ export class PortalServer {
 			return;
 		}
 
+		// Remove the portal session token (authenticated). Clears it so every device
+		// is signed out and the portal returns to the one-time claim screen. No-op
+		// (409) when the token is pinned via the PORTAL_TOKEN env.
+		if (url.pathname === '/api/portal-token' && method === 'DELETE') {
+			if (!this.clearToken()) { this.sendJson(res, 409, { error: 'env_managed' }); return; }
+			this.log('[Auth] Portal session token removed via web UI');
+			this.sendJson(res, 200, { ok: true });
+			return;
+		}
+
 		// Authenticate with a pasted personal access token (the documented
 		// container/CI method). We persist it for the launcher to inject as
 		// COPILOT_GITHUB_TOKEN on (re)start, then exit 76 to restart. Only
