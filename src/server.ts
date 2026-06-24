@@ -600,6 +600,19 @@ export class PortalServer {
 			return;
 		}
 
+		// Sign out of GitHub: clear stored credentials, then restart so the portal
+		// drops back to the sign-in screen.
+		if (url.pathname === '/api/auth/logout' && method === 'POST') {
+			const result = this.clearStoredCredentials();
+			this.log(`[Auth] Logout requested — ${result.summary}`);
+			this.sendJson(res, 200, { ok: true, ...result });
+			this.broadcastAll({ type: 'auth_state', state: 'starting', message: 'Signing out — restarting...' });
+			// Exit 76: launcher restarts the CLI server (re-reads creds — now none)
+			// then relaunches the portal, which comes up needing sign-in.
+			setTimeout(() => process.exit(76), 300);
+			return;
+		}
+
 		if (url.pathname === '/api/mcp' && method === 'GET') {
 			const sessionId = url.searchParams.get('session') ?? undefined;
 			try {
@@ -2025,6 +2038,63 @@ export class PortalServer {
 		}
 	}
 
+	/** Resolve the Copilot config dir (honors COPILOT_HOME, else ~/.copilot). */
+	private copilotHomeDir(): string {
+		return process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
+	}
+
+	/** True when settings.json has storeTokenPlaintext enabled. */
+	private isPlaintextStorageEnabled(): boolean {
+		try {
+			const s = JSON.parse(fs.readFileSync(path.join(this.copilotHomeDir(), 'settings.json'), 'utf8'));
+			return s?.storeTokenPlaintext === true;
+		} catch { return false; }
+	}
+
+	/** Read config.json, stripping the leading `//` comment header the CLI writes. */
+	private readCopilotConfig(): { file: string; data: Record<string, unknown> } | null {
+		const file = path.join(this.copilotHomeDir(), 'config.json');
+		try {
+			const raw = fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, '');
+			return { file, data: JSON.parse(raw) as Record<string, unknown> };
+		} catch { return null; }
+	}
+
+	/** Human description of where the GitHub token is persisted (for the console). */
+	private describeTokenStorage(): string {
+		const cfg = this.readCopilotConfig();
+		const tokens = cfg?.data?.copilotTokens as Record<string, unknown> | undefined;
+		const hasPlaintextToken = !!(tokens && Object.keys(tokens).length);
+		if (this.isPlaintextStorageEnabled() || hasPlaintextToken) {
+			return `plaintext config file (${cfg?.file ?? path.join(this.copilotHomeDir(), 'config.json')})`;
+		}
+		return 'OS keychain (secure credential store)';
+	}
+
+	/**
+	 * Clear stored GitHub credentials for logout. Removes the auth keys from
+	 * config.json (this fully clears plaintext/container storage and drops the
+	 * loggedInUsers metadata the CLI keys auth off of, so it reports signed-out in
+	 * both modes). A keychain entry on desktop may linger but is orphaned and
+	 * overwritten on next sign-in.
+	 */
+	private clearStoredCredentials(): { summary: string; mode: string } {
+		const mode = this.describeTokenStorage();
+		const cfg = this.readCopilotConfig();
+		if (!cfg) return { summary: `no config.json found (${mode})`, mode };
+		let cleared = false;
+		for (const k of ['copilotTokens', 'loggedInUsers', 'lastLoggedInUser']) {
+			if (k in cfg.data) { delete (cfg.data as Record<string, unknown>)[k]; cleared = true; }
+		}
+		try {
+			const header = '// User settings belong in settings.json.\n// This file is managed automatically.\n';
+			fs.writeFileSync(cfg.file, header + JSON.stringify(cfg.data, null, 2) + '\n');
+		} catch (e) {
+			return { summary: `failed to rewrite config.json: ${e}`, mode };
+		}
+		return { summary: cleared ? `cleared credentials from ${mode}` : `no stored credentials to clear (${mode})`, mode };
+	}
+
 	private startDeviceLogin(): void {
 		if (this.authLoginChild) return;
 		this.authDevice = null;
@@ -2091,7 +2161,8 @@ export class PortalServer {
 			this.authDevice = null;
 			if (!wasRunning) return; // cancelled
 			if (code === 0) {
-				this.log('[Auth] Sign-in succeeded — restarting to load new credentials');
+				this.log(`[Auth] Sign-in succeeded — token persisted to ${this.describeTokenStorage()}`);
+				this.log('[Auth] Restarting to load new credentials');
 				this.broadcastAll({ type: 'auth_state', state: 'starting', message: 'Signed in — restarting...' });
 				// Exit 76: launcher restarts the CLI server (so it re-reads creds)
 				// then relaunches the portal, which reconnects authenticated.
@@ -2185,6 +2256,7 @@ export class PortalServer {
 			this.log(`[Pool] Could not fetch portal info: ${e}`);
 		}
 
+		this.log(`[Auth] Signed in — token storage: ${this.describeTokenStorage()}`);
 		this.setAuthState('ok');
 
 		// Start periodic update checker (disabled in container mode — updates

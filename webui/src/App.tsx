@@ -3004,6 +3004,22 @@ export default function App() {
 		} catch { /* expected — server is shutting down */ }
 	}, []);
 
+	const logoutGitHub = useCallback(async () => {
+		try {
+			const res = await apiFetch('/api/auth/logout', { method: 'POST' });
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({})) as { error?: string };
+				setNotification({ type: 'warning', message: data.error ?? 'Could not sign out.' });
+				return;
+			}
+			setNotification({ type: 'info', message: 'Signing out of GitHub… the portal will return to the sign-in screen.' });
+			// Server exits 76 → launcher restarts → auth-watcher reconnects to the
+			// sign-in screen and reloads once authenticated again.
+		} catch {
+			setNotification({ type: 'warning', message: 'Could not sign out.' });
+		}
+	}, []);
+
 	const restartCli = useCallback(async () => {
 		try {
 			const res = await apiFetch('/api/restart-cli', { method: 'POST' });
@@ -4297,6 +4313,22 @@ export default function App() {
 										<path d="M21 12a9 9 0 1 1-2.64-6.36" />
 										<path d="M21 4v4h-4" />
 										<text x="11" y="13" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700" fill="currentColor" stroke="none">C</text>
+									</svg>
+								</button>
+								<button
+									className="inline-flex items-center justify-center rounded-lg px-2 py-1.5"
+									style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+									onClick={() => setServerConfirm({
+										message: 'Sign out of GitHub? Stored credentials are cleared and the portal returns to the sign-in screen.',
+										onConfirm: () => { setServerConfirm(null); setShowPicker(false); logoutGitHub(); },
+									})}
+									type="button"
+									title="Log out of GitHub"
+								>
+									<svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+										<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+										<polyline points="16 17 21 12 16 7" />
+										<line x1="21" y1="12" x2="9" y2="12" />
 									</svg>
 								</button>
 								<button
