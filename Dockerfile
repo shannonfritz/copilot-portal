@@ -73,10 +73,13 @@ COPY --from=builder --chown=copilot:copilot /app/package.json ./package.json
 COPY --from=builder --chown=copilot:copilot /app/BUILD ./BUILD
 COPY --from=builder --chown=copilot:copilot /app/bin ./bin
 
-# Entrypoint (strip any CRLS so it runs on Linux regardless of host checkout).
+# Entrypoint (strip any CRLs so it runs on Linux regardless of host checkout).
+# Use an absolute chmod mode (0755) — `chmod +x` is masked by the build host's
+# umask, which on some hosts leaves the file non-readable/-executable for the
+# non-root runtime user (exit 126: Permission denied).
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
- && chmod +x /usr/local/bin/docker-entrypoint.sh
+ && chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 # Container-mode behavior:
 #  - COPILOT_CONTAINER=1 disables the portal's in-app self-updater (updates come
