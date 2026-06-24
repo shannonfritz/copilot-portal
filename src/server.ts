@@ -9,6 +9,7 @@ import { exec, execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
+import { NotAuthenticatedError } from './session.js';
 import { RulesStore } from './rules.js';
 import { UpdateChecker } from './updater.js';
 import type { PortalEvent, PortalInfo } from './session.js';
@@ -43,6 +44,9 @@ export class PortalServer {
 	private clientCounter = 0;
 	private logStream: fs.WriteStream | null = null;
 	private portalInfo: PortalInfo | null = null;
+	/** Lifecycle of the CLI/auth connection, surfaced to the UI and /healthz. */
+	private authState: 'starting' | 'ok' | 'needs-auth' | 'error' = 'starting';
+	private authMessage: string | null = null;
 	private shields: Record<string, boolean> = {};
 	private sessionAgents: Record<string, string> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
@@ -119,6 +123,22 @@ export class PortalServer {
 
 			// Management connections: no session, just here to receive broadcasts
 			if (isManagement) {
+				const pingInterval = setInterval(() => {
+					if (ws.readyState === WebSocket.OPEN) ws.ping();
+				}, 30_000);
+				ws.on('message', (data) => {
+					try { if (JSON.parse(data.toString()).type === 'ping') ws.send('{"type":"pong"}'); } catch {}
+				});
+				ws.on('close', () => clearInterval(pingInterval));
+				return;
+			}
+
+			// Not authenticated yet: don't try to resolve/create a session (the CLI
+			// isn't usable). Tell the client to show the sign-in screen and stop here.
+			if (this.authState !== 'ok') {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({ type: 'auth_state', state: this.authState, message: this.authMessage }));
+				}
 				const pingInterval = setInterval(() => {
 					if (ws.readyState === WebSocket.OPEN) ws.ping();
 				}, 30_000);
@@ -525,7 +545,7 @@ export class PortalServer {
 				status: 'ok',
 				version: __VERSION__,
 				build: __BUILD__,
-				cli: this.portalInfo ? 'ready' : 'starting',
+				cli: this.authState === 'ok' ? 'ready' : this.authState,
 			});
 			return;
 		}
@@ -537,6 +557,16 @@ export class PortalServer {
 
 		if (url.pathname === '/api/info' && method === 'GET') {
 			this.sendJson(res, 200, this.portalInfo ?? { version: 'unknown', login: 'unknown', models: [] });
+			return;
+		}
+
+		// Current auth/CLI connection state — drives the sign-in screen (M2).
+		if (url.pathname === '/api/auth/status' && method === 'GET') {
+			this.sendJson(res, 200, {
+				state: this.authState,
+				login: this.portalInfo?.login ?? null,
+				message: this.authMessage,
+			});
 			return;
 		}
 
@@ -1897,8 +1927,53 @@ export class PortalServer {
 		this.loadShields();
 		this.loadSessionAgents();
 		this.loadSessionPrompts();
-		await this.pool.start();
-		// Cache portal info (version, user, models) once at startup
+
+		// Bind the HTTP/WS listener FIRST so the portal is always reachable — even
+		// when the CLI isn't authenticated. Auth + CLI connection then happen in the
+		// background (initAuth); failures surface as a "needs-auth" sign-in screen
+		// instead of crash-looping the process.
+		await new Promise<void>((resolve, reject) => {
+			this.httpServer.on('error', reject);
+			this.httpServer.listen(this.port, '0.0.0.0', () => {
+				this.initDebugFiles();
+				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
+				this.log(`Server started on port ${this.port}`);
+				this.log(`Open: ${this.getURL()}`);
+				resolve();
+			});
+		});
+
+		void this.initAuth();
+	}
+
+	/** Update the auth/CLI lifecycle state and notify all connected clients. */
+	private setAuthState(state: 'starting' | 'ok' | 'needs-auth' | 'error', message: string | null = null): void {
+		this.authState = state;
+		this.authMessage = message;
+		this.broadcastAll({ type: 'auth_state', state, message });
+	}
+
+	/**
+	 * Connect to the CLI and resolve auth, AFTER the HTTP listener is up. Never
+	 * throws — auth/connection problems set a non-fatal state the UI can act on.
+	 */
+	private async initAuth(): Promise<void> {
+		this.setAuthState('starting');
+		try {
+			await this.pool.start();
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (e instanceof NotAuthenticatedError || /auth|token|login|credential|unauthorized/i.test(msg)) {
+				this.log(`[Auth] Not signed in — portal is up; awaiting browser sign-in`);
+				this.setAuthState('needs-auth', 'Copilot is not signed in.');
+			} else {
+				this.log(`[Auth] CLI connection failed: ${msg}`);
+				this.setAuthState('error', msg);
+			}
+			return;
+		}
+
+		// Authenticated — cache portal info (version, user, models).
 		try {
 			const [status, auth, allModels] = await Promise.all([
 				this.pool.getStatus(),
@@ -1930,10 +2005,14 @@ export class PortalServer {
 					}),
 			};
 			this.log(`[Pool] CLI runtime: v${status.version}`);
+			this.log(`[Mode] ${this.pool.shared ? 'Connected (--server on port 3848)' : 'Standalone (own CLI subprocess)'}`);
 			this.log(`[Pool] Models available: ${this.portalInfo.models.length}`);
 		} catch (e) {
 			this.log(`[Pool] Could not fetch portal info: ${e}`);
 		}
+
+		this.setAuthState('ok');
+
 		// Start periodic update checker (disabled in container mode — updates
 		// are delivered by rebuilding/pulling the image, not at runtime).
 		if (CONTAINER_MODE) {
@@ -1941,17 +2020,6 @@ export class PortalServer {
 		} else {
 			this.updater.start();
 		}
-		return new Promise((resolve, reject) => {
-			this.httpServer.on('error', reject);
-			this.httpServer.listen(this.port, '0.0.0.0', () => {
-				this.initDebugFiles();
-				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
-				this.log(`[Mode] ${this.pool.shared ? 'Connected (--server on port 3848)' : 'Standalone (own CLI subprocess)'}`);
-				this.log(`Server started on port ${this.port}`);
-				this.log(`Open: ${this.getURL()}`);
-				resolve();
-			});
-		});
 	}
 
 	private initDebugFiles() {

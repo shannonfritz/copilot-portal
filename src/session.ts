@@ -38,6 +38,21 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import * as net from 'node:net';
+
+/** True when running inside the container image (set via COPILOT_CONTAINER=1). */
+const CONTAINER_MODE = process.env.COPILOT_CONTAINER === '1' || process.env.COPILOT_CONTAINER === 'true';
+
+/**
+ * Thrown by SessionPool.start() when the Copilot CLI is reachable/launchable but
+ * has no valid GitHub credentials. The server catches this to enter a non-fatal
+ * "needs-auth" state (show a sign-in screen) instead of crash-looping.
+ */
+export class NotAuthenticatedError extends Error {
+	constructor(message = 'Copilot is not signed in') {
+		super(message);
+		this.name = 'NotAuthenticatedError';
+	}
+}
 import { RulesStore } from './rules.js';
 import type { ApprovalRule } from './rules.js';
 
@@ -1718,12 +1733,22 @@ export class SessionPool {
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
 			if (/auth|token|login|credential|unauthorized/i.test(msg)) {
-				this.log(`\n❌ Authentication failed. Please run:\n\n   npx copilot login\n\nThen restart the server.\n`);
+				// Surface as a typed, non-fatal auth error — the server shows a
+				// sign-in screen instead of letting the process crash-loop.
+				throw new NotAuthenticatedError(msg);
 			}
 			throw e;
 		}
 		const auth = await this.client.getAuthStatus();
 		if (!auth.isAuthenticated) {
+			// In the container there is no TTY, so an interactive `copilot login`
+			// can't work — signal needs-auth and let the Portal Server drive the
+			// browser device-code flow (M2). On a desktop with a console we keep
+			// the legacy interactive login fallback.
+			if (CONTAINER_MODE) {
+				this.log(`[Pool] Not authenticated — portal will prompt for sign-in`);
+				throw new NotAuthenticatedError('Copilot is not signed in');
+			}
 			this.log(`[Pool] Not authenticated — attempting login...`);
 			try {
 				const { execSync } = await import('child_process');
@@ -1738,13 +1763,14 @@ export class SessionPool {
 				const recheck = await this.client.getAuthStatus();
 				if (!recheck.isAuthenticated) {
 					this.log(`\n❌ Login completed but still not authenticated.\n`);
-					throw new Error('Not authenticated after login attempt');
+					throw new NotAuthenticatedError('Not authenticated after login attempt');
 				}
 				this.log(`[Pool] Authenticated as: ${recheck.login ?? 'unknown'}`);
 				return;
 			} catch (loginErr) {
+				if (loginErr instanceof NotAuthenticatedError) throw loginErr;
 				this.log(`\n❌ Login failed. Please run manually:\n\n   npx copilot login\n\nThen restart the server.\n`);
-				throw new Error('Not authenticated — run "npx copilot login" first');
+				throw new NotAuthenticatedError('Not authenticated — run "npx copilot login" first');
 			}
 		}
 		this.log(`[Pool] Authenticated as: ${auth.login ?? 'unknown'}`);

@@ -174,7 +174,14 @@ process.on('SIGTERM', async () => {
 	process.exit(0);
 });
 
-await server.start();
+try {
+	await server.start();
+} catch (e) {
+	// start() now binds the listener before auth, so this only fires on a hard
+	// listen/bind failure. Auth problems are handled non-fatally inside the server.
+	console.error('[Server] Fatal startup error:', e);
+	process.exit(1);
+}
 
 // Initialize tunnel manager
 const dataDir = DATA_DIR ?? 'data';
