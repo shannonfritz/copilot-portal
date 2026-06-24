@@ -16,6 +16,13 @@ services:
     build: .
     image: copilot-portal:dev
     container_name: copilot-portal
+    # Run an init (tini) as PID 1 so signals are forwarded and zombie
+    # subprocesses (e.g. the CLI server) are reaped on shutdown.
+    init: true
+    # The image runs as the non-root user baked in at build time (default
+    # 568:568 — TrueNAS's "apps" user). To run as a different host user without
+    # rebuilding, uncomment and set this (must be able to write the volumes):
+    #   user: "1000:1000"
     ports:
       - "3847:3847"
     environment:
@@ -25,6 +32,8 @@ services:
       # Container-mode flags (also set in the image; repeated here for clarity).
       COPILOT_CONTAINER: "1"
       COPILOT_AUTO_UPDATE: "0"
+      # Local timezone for log + workspace-folder (YYMMDD-NN) timestamps.
+      TZ: "${TZ:-UTC}"
       # Where new sessions auto-create their per-session work/YYMMDD-NN folders.
       # Points at the persistent /work volume below so workspaces survive rebuilds.
       PORTAL_WORKSPACE_DIR: "/work"
@@ -35,7 +44,7 @@ services:
     volumes:
       # The important one: auth, sessions, skills, agents, and MCP config all
       # live under ~/.copilot. Persisting it survives restarts AND image rebuilds.
-      - copilot-config:/root/.copilot
+      - copilot-config:/home/copilot/.copilot
       # Portal-side state: access token, tunnel config, debug logs.
       - portal-data:/app/data
       # Per-session workspaces. A named volume persists across rebuilds out of the

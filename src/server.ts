@@ -518,6 +518,18 @@ export class PortalServer {
 		const url = new URL(req.url ?? '/', 'http://localhost');
 		const method = req.method ?? 'GET';
 
+		// Unauthenticated health probe (for Docker HEALTHCHECK / orchestrators).
+		// Returns 200 once the HTTP server is up; never exposes secrets.
+		if (url.pathname === '/healthz' && method === 'GET') {
+			this.sendJson(res, 200, {
+				status: 'ok',
+				version: __VERSION__,
+				build: __BUILD__,
+				cli: this.portalInfo ? 'ready' : 'starting',
+			});
+			return;
+		}
+
 		// API routes — require token
 		if (url.pathname.startsWith('/api/')) {
 			if (!this.checkToken(url, req)) { res.writeHead(401); res.end('Unauthorized'); return; }

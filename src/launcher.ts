@@ -89,6 +89,7 @@ function launchCli(port: number): boolean {
 			console.error(`[Launcher] Install GitHub Copilot CLI: https://docs.github.com/copilot/how-tos/copilot-cli`);
 			cliLaunched = false;
 		});
+		cliPid = child.pid ?? null;
 		child.unref();
 	}
 	cliLaunched = true;
@@ -98,6 +99,7 @@ function launchCli(port: number): boolean {
 
 let cliLaunched = false;
 let cliStartVersion: string | null = null;
+let cliPid: number | null = null;
 
 /** Capture the current on-disk CLI version */
 function captureCliVersion(): void {
@@ -118,6 +120,10 @@ function stopCli(): void {
 			spawnSync('pwsh', ['-NoProfile', '-Command',
 				`Get-NetTCPConnection -LocalPort ${CLI_PORT} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
 			], { stdio: 'ignore', windowsHide: true });
+		} else if (cliPid) {
+			// Kill the detached CLI we spawned (and its group) so it doesn't
+			// linger when the launcher shuts down (e.g. SIGTERM from `docker stop`).
+			try { process.kill(cliPid, 'SIGTERM'); } catch { /* already gone */ }
 		}
 	} catch { /* already dead */ }
 }

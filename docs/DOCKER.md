@@ -17,6 +17,16 @@ port and the portal web server on **3847**. It includes:
 - The built portal (`dist/`) and the **patched** `node_modules` (the `patch.mjs`
   SDK fix is applied at build time)
 
+It also:
+
+- **Runs as a non-root user** (`568:568` by default — TrueNAS SCALE's `apps`
+  user) so files it writes to mounted datasets are owned sensibly. Override with
+  `--build-arg PUID=… --build-arg PGID=…` at build, or `user: "uid:gid"` at run.
+- **Exposes a health probe** at `GET /healthz` (unauthenticated, no secrets), wired
+  to a Docker `HEALTHCHECK` so the engine/TrueNAS report real readiness.
+- **Auto-creates a fresh per-session workspace** (`/work/YYMMDD-NN`) for each new
+  session — see `PORTAL_WORKSPACE_DIR` below.
+
 ## Authentication
 
 The CLI is interactive to log in (`copilot login` opens a browser), which a
@@ -44,19 +54,39 @@ login` using the device-code flow), and the cached credentials in the persisted
 
 | Volume | Container path | Holds |
 | --- | --- | --- |
-| `copilot-config` | `/root/.copilot` | **Auth, sessions, skills, agents, MCP config** — the important one |
+| `copilot-config` | `/home/copilot/.copilot` | **Auth, sessions, skills, agents, MCP config** — the important one |
 | `portal-data` | `/app/data` | Portal access token, tunnel config, debug logs |
-| *(your choice)* | e.g. `/work` | The directories you want Copilot to be able to read/edit |
+| `work-data` *(or a bind mount)* | `/work` | Per-session workspaces Copilot reads/edits |
 
 Mount the folders you want Copilot to operate on, or it only sees its own scratch
 space. Example in `docker-compose.yml`:
 
 ```yaml
     volumes:
-      - copilot-config:/root/.copilot
+      - copilot-config:/home/copilot/.copilot
       - portal-data:/app/data
-      - /mnt/tank/projects:/work
+      - /mnt/tank/apps/copilot-work:/work   # bind mount for LAN/SMB access
 ```
+
+> **File ownership:** the container writes as `568:568` by default. Named volumes
+> get this ownership automatically. For a **bind mount** (e.g. an SMB-shared
+> dataset), make sure the host directory is owned by — or group-writable to —
+> `568`, or set `user:` in compose to match your host account.
+
+## Environment variables (config contract)
+
+All optional unless noted. Defaults are baked into the image; the compose file
+sets the common ones explicitly for visibility.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | *(empty)* | GitHub token with Copilot access (auth path #1). Also read: `GITHUB_COPILOT_GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`. |
+| `PORTAL_WORKSPACE_DIR` | `/work` | Root under which new sessions auto-create `YYMMDD-NN` workspace folders. |
+| `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. |
+| `TZ` | `UTC` | Local timezone for log and workspace-folder timestamps (e.g. `America/Chicago`). |
+| `COPILOT_CONTAINER` | `1` | Container mode: disables the in-app self-updater and apply endpoints. |
+| `COPILOT_AUTO_UPDATE` | `0` | Stops the CLI layer from self-updating (image-managed instead). |
+| `PUID` / `PGID` | `568` / `568` | **Build args** (not runtime env) for the non-root uid/gid. Use `user:` in compose to override at runtime. |
 
 ## Quick start (any Docker host)
 
@@ -109,9 +139,15 @@ build time.
 
 - **In-app update banners/buttons are suppressed** — `/api/updates/apply*` return a
   "managed by the image" message instead of mutating the container.
+- **Runs non-root** (`568:568`) — see the file-ownership note under Volumes.
+- **Health probe** — `GET /healthz` backs a Docker `HEALTHCHECK`; orchestrators show
+  the container as healthy once the HTTP server is answering.
+- **Graceful shutdown** — `init: true` (tini) runs as PID 1 to forward `SIGTERM` and
+  reap the CLI subprocess on `docker stop`.
 - **The terminal Console keys** (`[u]`, `[t]`, `[r]`, …) require a TTY and are
   inactive in a detached container. Native equivalents: `docker logs` (event log),
-  `docker restart` (restart), rebuild/pull (update), `docker stop` (quit).
+  the in-UI **Restart Portal / Restart Copilot** buttons, rebuild/pull (update),
+  `docker stop` (quit).
 
 ## Caveats / open items
 
