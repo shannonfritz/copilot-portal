@@ -47,8 +47,40 @@ Authenticate once (on a desktop, or via `docker exec -it copilot-portal copilot
 login` using the device-code flow), and the cached credentials in the persisted
 `~/.copilot` volume survive restarts and rebuilds.
 
-> The portal also has its **own** access token (printed in the logs / shown in the
-> QR code) that gates who can open the web UI. That is separate from GitHub auth.
+> The portal also has its **own** session token (the key that gates who can open
+> the web UI). That is separate from GitHub auth — see the next section.
+
+## Portal session token (web access)
+
+The portal is gated by a **session token** — a secret that anyone opening the web
+UI must present (it's appended to the URL as `?token=...` and remembered by the
+browser). This is independent of the GitHub credential the CLI uses.
+
+**First run (claim it):** if no token is set, the first browser visit shows a
+**"Generate session token"** screen. Click it, **copy the token (you won't see it
+again)**, and you're in. Other devices open the same URL and paste the token once.
+
+**Pin it instead (recommended for shared/exposed deployments):** set `PORTAL_TOKEN`
+in `.env` to a known secret. The claim screen is skipped, the Open-WebUI URL is
+predictable, and you rotate access by changing the value and redeploying.
+
+**Remove it from the UI:** when signed in, the key icon next to **Log out**
+(Sessions panel) removes the token — every device is signed out and the portal
+returns to the claim screen. (This is disabled when `PORTAL_TOKEN` is set; change
+the env var instead.)
+
+**Forgot the token? Reset it from the host:**
+
+```bash
+# File-based token (no PORTAL_TOKEN set): delete it and restart.
+docker compose exec copilot-portal rm -f /app/data/token.txt
+docker compose restart copilot-portal
+# → comes back up tokenless; the next browser visit shows "Generate session token".
+```
+
+If you pinned it with `PORTAL_TOKEN`, deleting the file won't help (the env value
+re-pins on every boot) — change `PORTAL_TOKEN` in `.env` and run
+`docker compose up -d` instead.
 
 ## Volumes (persist these)
 
@@ -135,6 +167,7 @@ sets the common ones explicitly for visibility.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | *(empty)* | GitHub token with Copilot access (auth path #1). Also read: `GITHUB_COPILOT_GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`. |
+| `PORTAL_TOKEN` | *(empty)* | Pins the portal **session token** (web-access key). Unset = first visit offers a one-time "Generate session token" claim. Set = predictable URL; rotate/reset by changing it + redeploying. See [Portal session token](#portal-session-token-web-access). |
 | `PORTAL_WORKSPACE_DIR` | `/work` | Root under which new sessions auto-create `YYMMDD-NN` workspace folders. |
 | `PORTAL_WORK_HOST_DIR` | `./work` | **Host** path bind-mounted to `/work`. Set to your shared dataset (e.g. `/mnt/SSDs/copilot-work`) for SMB access. |
 | `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. |

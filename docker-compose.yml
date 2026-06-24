@@ -9,6 +9,11 @@
 #        (copy it — you won't see it again). Or set PORTAL_TOKEN below to pick your
 #        own and skip the prompt. Opening the URL with ?token=<token> logs you in.
 #
+# Forgot the session token? Reset it from the host (file-based token only):
+#        docker compose exec copilot-portal rm -f /app/data/token.txt
+#        docker compose restart copilot-portal
+#   (If PORTAL_TOKEN is set, change it in .env and `docker compose up -d` instead.)
+#
 # See docs/DOCKER.md for the full guide (TrueNAS SCALE, private image transfer,
 # updates, and caveats).
 
