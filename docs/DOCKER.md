@@ -56,7 +56,7 @@ login` using the device-code flow), and the cached credentials in the persisted
 | --- | --- | --- |
 | `copilot-config` | `/home/copilot/.copilot` | **Auth, sessions, skills, agents, MCP config** — the important one |
 | `portal-data` | `/app/data` | Portal access token, tunnel config, debug logs |
-| `work-data` *(or a bind mount)* | `/work` | Per-session workspaces Copilot reads/edits |
+| `work` *(bind mount)* | `/work` | Per-session workspaces Copilot reads/edits — bind-mounted to a host dir so it's easy to share on your LAN |
 
 Mount the folders you want Copilot to operate on, or it only sees its own scratch
 space. Example in `docker-compose.yml`:
@@ -65,7 +65,13 @@ space. Example in `docker-compose.yml`:
     volumes:
       - copilot-config:/home/copilot/.copilot
       - portal-data:/app/data
-      - /mnt/tank/apps/copilot-work:/work   # bind mount for LAN/SMB access
+      - "${PORTAL_WORK_HOST_DIR:-./work}:/work"   # bind mount for LAN/SMB access
+```
+
+Set the host path in `.env` (defaults to `./work` next to the compose file):
+
+```bash
+PORTAL_WORK_HOST_DIR=/mnt/SSDs/copilot-work
 ```
 
 > **File ownership:** the container writes as `568:568` by default. Named volumes
@@ -87,6 +93,40 @@ space. Example in `docker-compose.yml`:
 > (`<project>` is the compose project name — usually the folder name. Check with
 > `docker volume ls`.)
 
+## Sharing `/work` over SMB
+
+The `/work` directory is a **bind mount** to a host directory precisely so you can
+share it on your LAN. The container and an SMB share point at the *same* host
+directory — Copilot writes session files there, and your other computers read/edit
+them over the network.
+
+The only thing to get right is **permissions**, because the container writes as
+`568:568` and your SMB users are different accounts. The clean model (mirrors a
+`media-ro` / `media-rw` setup) is a read-only and a read-write group:
+
+1. **Create a host directory / dataset** and point both compose and SMB at it,
+   e.g. `/mnt/SSDs/copilot-work` (set `PORTAL_WORK_HOST_DIR` in `.env`).
+2. **Create two groups** — e.g. `copilot-ro` (read-only) and `copilot-rw`
+   (read-write) — and add your users to them.
+3. **Own + setgid the directory** so the container can write and new files inherit
+   the share group:
+   ```bash
+   chown -R 568:copilot-rw /mnt/SSDs/copilot-work
+   chmod -R 2775 /mnt/SSDs/copilot-work      # 2 = setgid: new files keep the group
+   ```
+4. **Keep `UMASK=002`** (already set in compose) so files the container creates are
+   group-writable (`664`/`775`) — without it the `copilot-rw` group could read but
+   not modify them.
+5. **Create the SMB share** on that directory; grant `copilot-rw` read/write and
+   `copilot-ro` read-only.
+
+> Do steps 1–4 **before** the first `docker compose up` — a bind mount (unlike a
+> named volume) is **not** auto-chowned, so the directory must already be writable
+> by `568` or the container will stop with a clear permission error.
+
+Over SMB you'll see one folder per session (`<session-id>/YYMMDD-NN/…`); that's
+expected and makes browsing per-session output easy.
+
 ## Environment variables (config contract)
 
 All optional unless noted. Defaults are baked into the image; the compose file
@@ -96,6 +136,7 @@ sets the common ones explicitly for visibility.
 | --- | --- | --- |
 | `GITHUB_TOKEN` | *(empty)* | GitHub token with Copilot access (auth path #1). Also read: `GITHUB_COPILOT_GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`. |
 | `PORTAL_WORKSPACE_DIR` | `/work` | Root under which new sessions auto-create `YYMMDD-NN` workspace folders. |
+| `PORTAL_WORK_HOST_DIR` | `./work` | **Host** path bind-mounted to `/work`. Set to your shared dataset (e.g. `/mnt/SSDs/copilot-work`) for SMB access. |
 | `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. |
 | `TZ` | `UTC` | Local timezone for log and workspace-folder timestamps (e.g. `America/Chicago`). |
 | `COPILOT_CONTAINER` | `1` | Container mode: disables the in-app self-updater and apply endpoints. |

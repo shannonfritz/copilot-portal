@@ -47,14 +47,16 @@ services:
       - copilot-config:/home/copilot/.copilot
       # Portal-side state: access token, tunnel config, debug logs.
       - portal-data:/app/data
-      # Per-session workspaces. A named volume persists across rebuilds out of the
-      # box. For LAN file access (e.g. an SMB share), replace this line with a bind
-      # mount to a NAS dataset instead, e.g.:
-      #   - /mnt/tank/apps/copilot-work:/work
-      - work-data:/work
+      # Per-session workspaces (work/<session>/YYMMDD-NN). This is a BIND MOUNT to
+      # a host directory so the files are easy to share on your LAN (e.g. point an
+      # SMB share at the same directory). Override the host path in .env, e.g.:
+      #   PORTAL_WORK_HOST_DIR=/mnt/SSDs/copilot-work
+      # The directory must be writable by the container user (default 568:568) —
+      # see "Sharing /work over SMB" in docs/DOCKER.md. Defaults to ./work next to
+      # this compose file.
+      - "${PORTAL_WORK_HOST_DIR:-./work}:/work"
     restart: unless-stopped
 
 volumes:
   copilot-config:
   portal-data:
-  work-data:
