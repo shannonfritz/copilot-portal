@@ -90,6 +90,8 @@ export class PortalServer {
 				// Rate limit: 15 failed attempts per 60s per IP
 				const attempt = this.failedAuth.get(ip);
 				if (attempt && now < attempt.resetTime && attempt.count >= 15) {
+					const secs = Math.ceil((attempt.resetTime - now) / 1000);
+					this.log(`[Auth] Blocked ${ip} (banned, ${secs}s remaining)`);
 					callback(false, 429, 'Too many attempts');
 					return;
 				}
@@ -537,38 +539,38 @@ export class PortalServer {
 	}
 
 	/**
-	 * Record a failed auth attempt for an IP and emit one log line per state.
-	 * Block/unblock is lazy (no timer): an IP is refused while count >= 15 within
-	 * the 60s window; the window is reset the next time the IP is seen after it
-	 * expires. We log the Blocked transition exactly once (when count hits 15) and
-	 * the lazy Unblocked transition once (when a previously-blocked IP returns past
-	 * its window), instead of logging on every refused request.
+	 * Record a failed auth attempt for an IP and emit the right log line.
+	 * Ban/lift is lazy (no timer): an IP is banned once it reaches 15 failed
+	 * attempts inside the 60s window; the window resets the next time the IP is
+	 * seen after it expires. We log the Banned transition once (when count hits 15)
+	 * and the lazy "Ban lifted" transition once (when a previously-banned IP returns
+	 * past its window). Every individual blocked connection is logged separately at
+	 * the 429 gate so each refused attempt is visible.
 	 */
 	private recordFailedAuth(ip: string): void {
 		const now = Date.now();
 		const attempt = this.failedAuth.get(ip);
 		const within = !!attempt && now < attempt.resetTime;
 		if (attempt && !within && attempt.count >= 15) {
-			this.log(`[Auth] Unblocked ${ip} (rate-limit window expired)`);
+			this.log(`[Auth] Ban lifted for ${ip} (rate-limit window expired)`);
 		}
 		const entry = within
 			? { count: attempt!.count + 1, resetTime: attempt!.resetTime }
 			: { count: 1, resetTime: now + 60_000 };
 		this.failedAuth.set(ip, entry);
 		if (entry.count === 15) {
-			const secs = Math.ceil((entry.resetTime - now) / 1000);
-			this.log(`[Auth] Blocked ${ip} — 15 failed auth attempts in 60s; refusing further attempts for ${secs}s`);
+			this.log(`[Auth] Banned ${ip} — 15 failed auth attempts in 60s`);
 		} else if (entry.count < 15) {
 			this.log(`[Auth] Failed attempt from ${ip} (${entry.count}/15)`);
 		}
 	}
 
-	/** Clear an IP's failed-attempt record on success; logs the lazy Unblocked transition if it had expired while blocked. */
+	/** Clear an IP's failed-attempt record on success; logs the lazy "Ban lifted" transition if it had expired while banned. */
 	private clearFailedAuth(ip: string): void {
 		const attempt = this.failedAuth.get(ip);
 		if (!attempt) return;
 		if (attempt.count >= 15 && Date.now() >= attempt.resetTime) {
-			this.log(`[Auth] Unblocked ${ip} (rate-limit window expired)`);
+			this.log(`[Auth] Ban lifted for ${ip} (rate-limit window expired)`);
 		}
 		this.failedAuth.delete(ip);
 	}
@@ -577,7 +579,10 @@ export class PortalServer {
 	private isRateLimited(req: http.IncomingMessage, res: http.ServerResponse): boolean {
 		const ip = req.socket.remoteAddress ?? 'unknown';
 		const attempt = this.failedAuth.get(ip);
-		if (attempt && Date.now() < attempt.resetTime && attempt.count >= 15) {
+		const now = Date.now();
+		if (attempt && now < attempt.resetTime && attempt.count >= 15) {
+			const secs = Math.ceil((attempt.resetTime - now) / 1000);
+			this.log(`[Auth] Blocked ${ip} (banned, ${secs}s remaining)`);
 			res.writeHead(429); res.end('Too many attempts');
 			return true;
 		}
