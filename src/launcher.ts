@@ -33,6 +33,7 @@ const serverScript = path.join(__dirname, 'server.js');
 const args = process.argv.slice(2);
 
 const RESTART_CODE = 75;
+const REAUTH_CODE = 76;
 const CLI_PORT = 3848;
 
 const standalone = args.includes('--standalone');
@@ -181,6 +182,15 @@ function launch(cliUrl?: string) {
 	});
 
 	child.on('exit', (code) => {
+		if (code === REAUTH_CODE) {
+			// Portal completed a sign-in. Restart the CLI server so it re-reads the
+			// new credentials, then relaunch the portal (it reconnects authenticated).
+			log('[Launcher] Re-authenticated — restarting CLI server to load new credentials');
+			process.stdout.write('\x1b]0;Copilot Portal\x07');
+			stopCli();
+			setTimeout(() => start(), 800);
+			return;
+		}
 		if (code === RESTART_CODE) {
 			log('[Launcher] Restarting server...');
 			process.stdout.write('\x1b]0;Copilot Portal\x07');

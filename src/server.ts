@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as net from 'node:net';
 import * as crypto from 'node:crypto';
-import { exec, execSync, spawnSync } from 'node:child_process';
+import { exec, execSync, spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
@@ -47,6 +47,9 @@ export class PortalServer {
 	/** Lifecycle of the CLI/auth connection, surfaced to the UI and /healthz. */
 	private authState: 'starting' | 'ok' | 'needs-auth' | 'error' = 'starting';
 	private authMessage: string | null = null;
+	/** Active `copilot login` device-flow child + the device code/URL it emitted. */
+	private authLoginChild: ChildProcess | null = null;
+	private authDevice: { code: string; verificationUri: string } | null = null;
 	private shields: Record<string, boolean> = {};
 	private sessionAgents: Record<string, string> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
@@ -566,7 +569,32 @@ export class PortalServer {
 				state: this.authState,
 				login: this.portalInfo?.login ?? null,
 				message: this.authMessage,
+				device: this.authDevice,
 			});
+			return;
+		}
+
+		// Start the GitHub device-code sign-in flow (M2 2b). Spawns `copilot login`,
+		// scrapes the device code + URL, and broadcasts them to connected clients.
+		if (url.pathname === '/api/auth/login' && method === 'POST') {
+			if (this.authState === 'ok') {
+				this.sendJson(res, 400, { error: 'Already signed in.' });
+				return;
+			}
+			if (this.authLoginChild) {
+				// Flow already running — return whatever code we have so far.
+				this.sendJson(res, 200, { started: true, device: this.authDevice });
+				return;
+			}
+			this.startDeviceLogin();
+			this.sendJson(res, 202, { started: true, device: this.authDevice });
+			return;
+		}
+
+		// Cancel an in-progress sign-in flow.
+		if (url.pathname === '/api/auth/login/cancel' && method === 'POST') {
+			this.cancelDeviceLogin();
+			this.sendJson(res, 200, { cancelled: true });
 			return;
 		}
 
@@ -1951,6 +1979,92 @@ export class PortalServer {
 		this.authState = state;
 		this.authMessage = message;
 		this.broadcastAll({ type: 'auth_state', state, message });
+	}
+
+	/**
+	 * Spawn `copilot login` (GitHub OAuth device flow), scrape the device code +
+	 * verification URL from its output, and broadcast them so the browser can show
+	 * a sign-in screen. On success the launcher restarts the CLI (exit code 76) so
+	 * the freshly-written credentials are picked up; on failure we return to
+	 * needs-auth so the user can retry.
+	 */
+	private startDeviceLogin(): void {
+		if (this.authLoginChild) return;
+		this.authDevice = null;
+
+		const isWin = process.platform === 'win32';
+		const bin = isWin ? 'copilot.cmd' : 'copilot';
+		this.log('[Auth] Starting GitHub device-code sign-in...');
+
+		const child = spawn(bin, ['login'], {
+			cwd: process.cwd(),
+			env: process.env,
+			stdio: ['ignore', 'pipe', 'pipe'],
+			shell: isWin, // resolve copilot.cmd via PATHEXT on Windows
+			windowsHide: true,
+		});
+		this.authLoginChild = child;
+		this.setAuthState('needs-auth', 'Starting sign-in...');
+
+		const onChunk = (buf: Buffer) => {
+			const text = buf.toString();
+			for (const line of text.split(/\r?\n/)) {
+				if (!line.trim()) continue;
+				this.log(`[Auth:login] ${line.trim()}`);
+				// "...visit https://github.com/login/device and enter code 998B-81E8."
+				const codeMatch = line.match(/\bcode\s+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
+				const uriMatch = line.match(/(https?:\/\/\S*github\.com\/login\/device\S*)/i);
+				if (codeMatch || uriMatch) {
+					const code = codeMatch ? codeMatch[1].toUpperCase() : this.authDevice?.code ?? '';
+					const verificationUri = uriMatch
+						? uriMatch[1].replace(/[.,)]+$/, '')
+						: this.authDevice?.verificationUri ?? 'https://github.com/login/device';
+					if (code && (!this.authDevice || this.authDevice.code !== code)) {
+						this.authDevice = { code, verificationUri };
+						this.log(`[Auth] Device code ${code} — visit ${verificationUri}`);
+						this.broadcastAll({ type: 'auth_device_code', code, verificationUri });
+						this.setAuthState('needs-auth', 'Waiting for authorization...');
+					}
+				}
+			}
+		};
+		child.stdout?.on('data', onChunk);
+		child.stderr?.on('data', onChunk);
+
+		child.on('error', (err) => {
+			this.log(`[Auth] login spawn failed: ${err.message}`);
+			this.authLoginChild = null;
+			this.authDevice = null;
+			this.setAuthState('needs-auth', `Sign-in failed to start: ${err.message}`);
+		});
+
+		child.on('exit', (code) => {
+			const wasRunning = this.authLoginChild === child;
+			this.authLoginChild = null;
+			this.authDevice = null;
+			if (!wasRunning) return; // cancelled
+			if (code === 0) {
+				this.log('[Auth] Sign-in succeeded — restarting to load new credentials');
+				this.broadcastAll({ type: 'auth_state', state: 'starting', message: 'Signed in — restarting...' });
+				// Exit 76: launcher restarts the CLI server (so it re-reads creds)
+				// then relaunches the portal, which reconnects authenticated.
+				setTimeout(() => process.exit(76), 250);
+			} else {
+				this.log(`[Auth] Sign-in process exited ${code}`);
+				this.setAuthState('needs-auth', 'Sign-in was not completed. Please try again.');
+			}
+		});
+	}
+
+	/** Cancel an in-progress device-login flow. */
+	private cancelDeviceLogin(): void {
+		const child = this.authLoginChild;
+		this.authLoginChild = null;
+		this.authDevice = null;
+		if (child) {
+			try { child.kill(); } catch { /* already gone */ }
+		}
+		this.setAuthState('needs-auth', null);
 	}
 
 	/**

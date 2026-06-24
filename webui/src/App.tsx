@@ -1535,6 +1535,12 @@ export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
 	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
+	// M2 first-run auth: 'unknown' until the first /api/auth/status resolves.
+	const [authState, setAuthState] = useState<'unknown' | 'starting' | 'ok' | 'needs-auth' | 'error'>('unknown');
+	const [authDevice, setAuthDevice] = useState<{ code: string; verificationUri: string } | null>(null);
+	const [authMessage, setAuthMessage] = useState<string | null>(null);
+	const [authBusy, setAuthBusy] = useState(false);
+	const authWasNonOk = useRef(false);
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 	const [serverConfirm, setServerConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -1737,6 +1743,80 @@ export default function App() {
 		if (!hasSessionInUrl) {
 			apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
 		}
+	}, []);
+
+	// M2 first-run auth watcher: track CLI auth state and drive the sign-in screen.
+	// Keeps a dedicated management WS open for auth_state / auth_device_code events so
+	// it also catches credentials expiring mid-session. After a successful sign-in the
+	// server restarts (exit 76); we detect the reconnect and reload into the authed app.
+	useEffect(() => {
+		let cancelled = false;
+		let ws: WebSocket | null = null;
+		let retry: ReturnType<typeof setTimeout> | null = null;
+
+		const noteState = (state: string | undefined, message?: string | null) => {
+			if (cancelled || !state) return;
+			setAuthState(state as typeof authState);
+			if (message !== undefined) setAuthMessage(message ?? null);
+			if (state !== 'ok') authWasNonOk.current = true;
+			if (state === 'ok') {
+				setAuthDevice(null);
+				if (authWasNonOk.current) window.location.reload();
+			}
+		};
+
+		const poll = () => apiFetch('/api/auth/status').then(r => r.json()).then((s: { state?: string; message?: string | null; device?: { code: string; verificationUri: string } | null }) => {
+			if (cancelled) return;
+			if (s.device) setAuthDevice(s.device);
+			noteState(s.state, s.message);
+		}).catch(() => {});
+
+		const openWs = () => {
+			const token = getToken();
+			if (!token || cancelled) return;
+			ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}?token=${token}&management=1`);
+			ws.onmessage = (e) => {
+				try {
+					const ev = JSON.parse(e.data as string) as { type: string; state?: string; message?: string | null; code?: string; verificationUri?: string };
+					if (ev.type === 'auth_state') {
+						noteState(ev.state, ev.message);
+					} else if (ev.type === 'auth_device_code' && ev.code) {
+						setAuthDevice({ code: ev.code, verificationUri: ev.verificationUri ?? 'https://github.com/login/device' });
+					}
+				} catch {}
+			};
+			ws.onclose = () => {
+				// Server may be restarting after a successful sign-in — keep retrying
+				// and re-polling until it's back and reports its auth state.
+				ws = null;
+				if (cancelled) return;
+				retry = setTimeout(() => { poll(); openWs(); }, 1500);
+			};
+			ws.onerror = () => { try { ws?.close(); } catch {} };
+		};
+
+		poll();
+		openWs();
+		return () => {
+			cancelled = true;
+			if (retry) clearTimeout(retry);
+			if (ws) { ws.onclose = null; ws.onerror = null; try { ws.close(); } catch {} }
+		};
+	}, []);
+
+	const startLogin = useCallback(() => {
+		setAuthBusy(true);
+		setAuthMessage(null);
+		apiFetch('/api/auth/login', { method: 'POST' })
+			.then(r => r.json())
+			.then((d: { device?: { code: string; verificationUri: string } | null }) => { if (d?.device) setAuthDevice(d.device); })
+			.catch(() => setAuthMessage('Could not start sign-in. Please try again.'))
+			.finally(() => setAuthBusy(false));
+	}, []);
+
+	const cancelLogin = useCallback(() => {
+		apiFetch('/api/auth/login/cancel', { method: 'POST' }).catch(() => {});
+		setAuthDevice(null);
 	}, []);
 
 	// Track visit count for PWA install hint (show on 2nd+ mobile visit)
@@ -3215,6 +3295,85 @@ export default function App() {
 					<p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
 						Open the URL shown in the terminal (includes <code>?token=…</code>).
 					</p>
+				</div>
+			</div>
+		);
+	}
+
+	// M2 first-run sign-in screen. Shown whenever the CLI has no valid GitHub
+	// credentials (and during the brief restart right after a successful sign-in).
+	if (authState === 'needs-auth' || authState === 'error' || (authState === 'starting' && authWasNonOk.current)) {
+		const restarting = authState === 'starting';
+		const Spinner = () => (
+			<svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+				<circle cx="12" cy="12" r="10" stroke="var(--border)" strokeWidth="4" />
+				<path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" />
+			</svg>
+		);
+		return (
+			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
+				<div className="w-full max-w-md rounded-2xl p-8" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+					<div className="mb-4 flex items-center justify-center">
+						<svg width="40" height="40" viewBox="0 0 16 16" fill="var(--text)" aria-hidden>
+							<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+						</svg>
+					</div>
+					<h1 className="mb-2 text-xl font-semibold">Sign in to GitHub Copilot</h1>
+
+					{restarting ? (
+						<div className="mt-6 flex flex-col items-center gap-3">
+							<Spinner />
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>Signed in — restarting Copilot…</p>
+						</div>
+					) : authDevice ? (
+						<div className="mt-4 flex flex-col items-center gap-4">
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+								Open the link below and enter this one-time code:
+							</p>
+							<div
+								className="select-all rounded-lg px-5 py-3 font-mono text-2xl font-bold tracking-[0.3em]"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+							>
+								{authDevice.code}
+							</div>
+							<a
+								href={authDevice.verificationUri}
+								target="_blank"
+								rel="noreferrer"
+								className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+								style={{ background: 'var(--accent)', color: 'var(--accent-text, #fff)' }}
+							>
+								Open github.com/login/device →
+							</a>
+							<div className="mt-1 flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
+								<Spinner /> Waiting for authorization…
+							</div>
+							<button onClick={cancelLogin} className="mt-1 text-xs underline" style={{ color: 'var(--text-muted)' }}>
+								Cancel
+							</button>
+						</div>
+					) : (
+						<div className="mt-4 flex flex-col items-center gap-4">
+							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+								This portal needs to connect to your GitHub Copilot account before you can start chatting.
+							</p>
+							<button
+								onClick={startLogin}
+								disabled={authBusy}
+								className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+								style={{ background: 'var(--accent)', color: 'var(--accent-text, #fff)' }}
+							>
+								{authBusy ? <Spinner /> : null}
+								{authBusy ? 'Starting…' : 'Sign in with GitHub'}
+							</button>
+						</div>
+					)}
+
+					{authMessage && !restarting && (
+						<p className="mt-5 text-xs" style={{ color: authState === 'error' ? 'var(--danger, #e5534b)' : 'var(--text-muted)' }}>
+							{authMessage}
+						</p>
+					)}
 				</div>
 			</div>
 		);
