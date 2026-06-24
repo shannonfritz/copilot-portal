@@ -79,10 +79,34 @@ const mdComponents: ComponentProps<typeof Markdown>['components'] = {
 		<a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--accent)' }}>{children}</a>
 	),
 };
+// Once any /api/* call returns 401 the stored token is bad. We clear it everywhere
+// (localStorage + URL), stop all further /api traffic, and signal the UI to drop to
+// the "Enter your session token" screen — instead of letting the pollers and WS keep
+// retrying with a dead token and tripping the server's ban limiter (self-ban).
+let portalTokenInvalid = false;
+function invalidatePortalToken() {
+	if (portalTokenInvalid) return;
+	portalTokenInvalid = true;
+	try { localStorage.removeItem('portal_token'); } catch { /* ignore */ }
+	try {
+		const params = new URLSearchParams(window.location.search);
+		params.delete('token');
+		const qs = params.toString();
+		window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+	} catch { /* ignore */ }
+	try { window.dispatchEvent(new Event('portal-token-invalid')); } catch { /* ignore */ }
+}
+
 const apiFetch= (url: string, init?: RequestInit) => {
+	// Token already known-bad: fail fast without touching the network so a stray
+	// poller can't keep hammering /api and get this client IP temp-banned.
+	if (portalTokenInvalid) return Promise.resolve(new Response(null, { status: 401, statusText: 'token invalid' }));
 	const t = getToken();
 	const headers = { ...(init?.headers ?? {}), ...(t ? { Authorization: `Bearer ${t}` } : {}) };
-	return fetch(url, { ...init, headers });
+	return fetch(url, { ...init, headers }).then(res => {
+		if (res.status === 401 && url.startsWith('/api/')) invalidatePortalToken();
+		return res;
+	});
 };
 
 
@@ -216,6 +240,7 @@ interface UpdateStatus {
 }
 
 function getToken(): string | null {
+	if (portalTokenInvalid) return null;
 	const urlToken = new URLSearchParams(window.location.search).get('token');
 	if (urlToken) {
 		localStorage.setItem('portal_token', urlToken);
@@ -2817,9 +2842,8 @@ export default function App() {
 			if (!hadMsg && Date.now() - lastConnectTime.current < 5000) {
 				fastFailCount.current += 1;
 				if (fastFailCount.current >= 3) {
-					localStorage.removeItem('portal_token');
 					fastFailCount.current = 0;
-					setConnectionState('no_token');
+					invalidatePortalToken(); // clears token everywhere + drops to the claim screen
 					return; // stop retrying — token is invalid
 				}
 			} else {
@@ -2863,6 +2887,20 @@ export default function App() {
 			mgmtWsRef.current = null;
 		};
 	}, [connect]);
+
+	// Centralised bad-token handling: any /api 401 calls invalidatePortalToken(),
+	// which fires this event. Tear down sockets/timers and drop to the claim screen
+	// so nothing keeps retrying with the dead token (which would trip the server ban).
+	useEffect(() => {
+		const onInvalid = () => {
+			if (wsRef.current) { try { wsRef.current.onclose = null; wsRef.current.close(); } catch { /* ignore */ } wsRef.current = null; }
+			if (mgmtWsRef.current) { try { mgmtWsRef.current.close(); } catch { /* ignore */ } mgmtWsRef.current = null; }
+			if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+			setConnectionState('no_token');
+		};
+		window.addEventListener('portal-token-invalid', onInvalid);
+		return () => window.removeEventListener('portal-token-invalid', onInvalid);
+	}, []);
 
 	// Count seconds since entering 'connecting' state (continuously, not reset on retries)
 	useEffect(() => {
