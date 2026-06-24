@@ -2229,7 +2229,7 @@ export class PortalServer {
 			this.portalInfo = {
 				version: status.version,
 				login: auth.login ?? 'unknown',
-				defaultCwd: WORKSPACE_ROOT,
+				defaultCwd: this.pool.workspaceRootDir,
 				lanUrl: this.getURL(),
 				cliConnected: true,
 				models: allModels

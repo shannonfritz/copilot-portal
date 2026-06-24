@@ -1710,6 +1710,10 @@ export class SessionPool {
 	private log: (msg: string) => void;
 	readonly rulesStore: RulesStore;
 	private workspaceRoot: string;
+	/** The root under which auto-created per-session YYMMDD-NN workspaces live.
+	 *  Exposed so the portal reports the exact same root the allocator uses,
+	 *  preventing any drift between the new-session prompt and real folders. */
+	get workspaceRootDir(): string { return this.workspaceRoot; }
 	/** True when connected to an external CLI server (--ui-server mode) */
 	readonly shared: boolean;
 	private cliUrl?: string;
