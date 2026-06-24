@@ -1929,10 +1929,28 @@ export default function App() {
 
 	const copyPortalToken = useCallback(() => {
 		if (!ptGenerated) return;
-		navigator.clipboard?.writeText(ptGenerated).then(() => {
-			setPtCopied(true);
-			setTimeout(() => setPtCopied(false), 2000);
-		}).catch(() => {});
+		const done = () => { setPtCopied(true); setTimeout(() => setPtCopied(false), 2000); };
+		// navigator.clipboard only exists in a secure context (HTTPS or localhost).
+		// On a plain-HTTP LAN it's undefined, so fall back to a hidden textarea +
+		// execCommand('copy'), which still works there.
+		const fallback = () => {
+			try {
+				const ta = document.createElement('textarea');
+				ta.value = ptGenerated;
+				ta.style.position = 'fixed';
+				ta.style.opacity = '0';
+				document.body.appendChild(ta);
+				ta.focus(); ta.select();
+				const ok = document.execCommand('copy');
+				document.body.removeChild(ta);
+				if (ok) done();
+			} catch { /* clipboard unavailable — user can still select the token manually */ }
+		};
+		if (navigator.clipboard?.writeText) {
+			navigator.clipboard.writeText(ptGenerated).then(done).catch(fallback);
+		} else {
+			fallback();
+		}
 	}, [ptGenerated]);
 
 	// Track visit count for PWA install hint (show on 2nd+ mobile visit)
@@ -3475,8 +3493,10 @@ export default function App() {
 							</p>
 							<div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
 								<code className="flex-1 break-all text-left font-mono text-sm" style={{ color: 'var(--text)' }}>{ptGenerated}</code>
-								<button onClick={copyPortalToken} className="shrink-0 rounded-md px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
-									{ptCopied ? 'Copied' : 'Copy'}
+								<button onClick={copyPortalToken} className="inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+									{ptCopied ? (
+										<><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Copied</>
+									) : 'Copy'}
 								</button>
 							</div>
 							<button onClick={() => applyPortalToken(ptGenerated)} className="rounded-lg px-5 py-2.5 text-sm font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
