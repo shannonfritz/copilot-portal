@@ -56,10 +56,14 @@ if (existsSync(stage)) rmSync(stage, { recursive: true });
 mkdirSync(stage, { recursive: true });
 
 const files = [
-	'dist', 'bin', 'examples', 'patches', 'package.dist.json', 'patch.mjs', 'README.md', 'CHANGELOG.md', 'BUILD',
+	'dist', 'bin', 'examples', 'package.dist.json', 'patch.mjs', 'README.md', 'CHANGELOG.md', 'BUILD',
 	'start-portal.cmd', 'start-portal.sh',
 ];
 for (const f of files) {
+	if (!existsSync(f)) {
+		console.log(`  • skipping ${f} (not present)`);
+		continue;
+	}
 	const dest = f === 'package.dist.json' ? join(stage, 'package.json') : join(stage, f);
 	cpSync(f, dest, { recursive: true });
 }

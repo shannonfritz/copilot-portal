@@ -20,7 +20,6 @@
 		"dist/",
 		"bin/",
 		"examples/",
-		"patches/",
 		"patch.mjs",
 		"start-portal.cmd",
 		"start-portal.sh",
