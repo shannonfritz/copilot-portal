@@ -12,6 +12,7 @@ All notable changes to Copilot Portal are documented here.
 - **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
 - **Fail-fast on bad volumes** — clear error when a mounted volume is root-owned and unwritable
 - **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
+- **Slimmer image** — strips ~270 MB of foreign-platform native binaries vendored inside the Copilot CLI (`prebuilds/*` + `mxc-bin/arm64`), keeping only the `linux-x64` builds the container actually loads; a build-time guard fails loudly if the kept binary ever goes missing
 - **Agent tooling bundled** — `python3` (+`venv`/`pip`) and `uv`/`uvx`, plus `git`, `gh`, `wget`, `zip`/`unzip`, `xz-utils`, `patch`, `make`, `jq` (and `openssh-client`, `less`) are baked into the image so the agent can run Python and Python-based MCP servers, clone/commit/diff, use the GitHub CLI, and handle archives (including `.xz`/`.tar.xz`) out of the box; tools are added at image-build time since the non-root runtime user can't `apt install` at runtime. Use `uv`, a venv, or `pip install --user` for Python packages (system Python is PEP 668 externally-managed)
 
 ### 🔐 Authentication

@@ -27,6 +27,29 @@ RUN cd webui && npm ci --no-fund --no-audit
 COPY . .
 RUN npm run build
 
+# Trim foreign-platform native binaries vendored INSIDE @github/copilot. The
+# published package bundles a `runtime.node` prebuilt addon for all 8 platforms
+# (~290MB) plus a multi-arch mxc-bin — but a given runtime image only ever loads
+# the one matching its arch. We keep just that one (~270MB saved on amd64).
+# Arch is derived from `dpkg --print-architecture`, which under buildx returns the
+# TARGET arch (the builder runs emulated as the target), so this is correct for
+# amd64 today AND for a future multi-arch (arm64) build with no edits. The leading
+# `test` asserts our target exists BEFORE deleting the others (a future CLI layout
+# change fails loudly instead of leaving zero prebuilds); the trailing one confirms
+# the prune kept it. An unrecognized arch aborts the build rather than guessing.
+RUN cd node_modules/@github/copilot \
+ && arch="$(dpkg --print-architecture)" \
+ && case "$arch" in \
+      amd64) keep=linux-x64;   mdrop=arm64 ;; \
+      arm64) keep=linux-arm64; mdrop=x64   ;; \
+      *) echo "[trim] unsupported arch '$arch' — refusing to prune" >&2; exit 1 ;; \
+    esac \
+ && test -f "prebuilds/$keep/runtime.node" \
+ && find prebuilds -mindepth 1 -maxdepth 1 -type d ! -name "$keep" -exec rm -rf {} + \
+ && rm -rf "mxc-bin/$mdrop" \
+ && test -f "prebuilds/$keep/runtime.node" \
+ && echo "[trim] kept @github/copilot/prebuilds/$keep (arch=$arch)"
+
 # ---- Stage 2: runtime ----
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
