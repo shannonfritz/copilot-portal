@@ -2,6 +2,47 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.0
+
+### 🐳 Docker Container (experimental)
+- **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
+- **Non-root by default** — runs as `568:568` (TrueNAS `apps` user) so files written to mounted datasets are owned sensibly; override with `PUID`/`PGID`
+- **Real readiness signal** — unauthenticated `/healthz` probe wired to a Docker `HEALTHCHECK`
+- **Graceful shutdown** — `tini` as PID 1 forwards signals and reaps the CLI subprocess
+- **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
+- **Fail-fast on bad volumes** — clear error when a mounted volume is root-owned and unwritable
+- **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
+
+### 🔐 Authentication
+- **Browser sign-in is now the primary path** — both desktop and container default to GitHub browser/device-code sign-in (WAM disabled), with the device-code URL pre-filled
+- **Access Token tab** — paste a fine-grained PAT as an alternative to interactive sign-in
+- **Logout button** — sign out of GitHub from the portal, with token-storage logging
+- **Resilient first run** — the portal stays up when the CLI has no auth yet, guiding you through sign-in instead of crashing
+- **Token persistence fix** — headless sign-in now reliably persists the token (`storeTokenPlaintext` set before login)
+
+### 🔑 Portal Session Token (web access)
+- **Web claim + paste flow** — first visit with no token offers a one-time "Generate session token" (copy it once); later visits prompt to paste the existing token — consistent across desktop and container
+- **Remove from the UI** — clear the session token from the portal, plus a documented host-side reset if you forget it
+- **No more self-bans** — a stale/wrong token no longer lets the client hammer the server into a rate-limit ban; it drops cleanly to the token screen
+- **Copy button fixed on plain-HTTP LAN** — falls back to `execCommand` when `navigator.clipboard` is unavailable, with a ✓ "Copied" confirmation
+
+### 🛡️ Rate-limit Logging
+- **Every blocked connection is logged** — plus a single `Banned`/`Ban lifted` line per lifecycle, so it's clear when an IP is refused and when its window expires
+
+### 🗂️ Sessions & Workspaces
+- **Per-session workspaces** — each new session gets its own `YYMMDD-NN` work folder; existing sessions retain their CWD
+- **Immediate CWD display** — the allocated workspace path shows the moment a session is created
+- **In-UI restart controls** — restart the Copilot CLI or the portal from the web UI
+
+### 📱 QR Codes & URLs
+- **Browser-derived in-portal QR** — the Sessions → QR view now shows the URL text and a QR built from the address that actually reached the portal (`window.location`), instead of an internal IP
+- **Container-aware console** — the boot QR is suppressed in containers (where an internal IP is meaningless); the desktop console keeps its Direct + Tunnel URL/QR
+
+### 🚀 Release Pipeline
+- **CI builds everything from one tag** — pushing a `v*` tag builds the distributable zip, publishes the GitHub Release with notes from this changelog, and builds + pushes an `amd64` image to GHCR
+- **Pre-release safe** — `-rc` tags publish as pre-releases, never move the image `:latest` pointer, and are excluded from the in-app updater (which reads `releases/latest`)
+- **Drift-free build counter** — CI stamps the committed `BUILD` value as-is; the counter is advanced only by local validation builds
+
 ## v0.7.5
 
 ### 💬 Chat & Queue
