@@ -12,6 +12,7 @@ All notable changes to Copilot Portal are documented here.
 - **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
 - **Fail-fast on bad volumes** — clear error when a mounted volume is root-owned and unwritable
 - **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
+- **`git` bundled** — `git` (with `openssh-client` + `less`) is baked into the image so the agent can clone/commit/diff out of the box; tools are added at image-build time since the non-root runtime user can't `apt install` at runtime
 
 ### 🔐 Authentication
 - **Browser sign-in is now the primary path** — both desktop and container default to GitHub browser/device-code sign-in (WAM disabled), with the device-code URL pre-filled

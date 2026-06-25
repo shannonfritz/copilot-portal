@@ -47,9 +47,12 @@ ARG PGID=568
 #  - lsof: used by the "Restart Copilot" control to free port 3848 before
 #    relaunching the CLI server — without it that restart can't reclaim the port.
 #  - tzdata: lets TZ env set the container's local time (log + folder timestamps).
+#  - git (+ openssh-client, less): the agent does software work — clone/commit/diff,
+#    git-over-SSH remotes, and a pager for git output. The non-root runtime user has
+#    no sudo, so tools MUST be baked in here at build time, not apt-installed at runtime.
 ARG PWSH_VERSION=7.4.6
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl libicu72 lsof tzdata \
+ && apt-get install -y --no-install-recommends ca-certificates curl git openssh-client less libicu72 lsof tzdata \
  && curl -fsSL "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" -o /tmp/pwsh.tar.gz \
  && mkdir -p /opt/microsoft/powershell/7 \
  && tar zxf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
