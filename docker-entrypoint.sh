@@ -81,6 +81,40 @@ if [ "$HAS_TOKEN" = "0" ] && [ "$HAS_CREDS" = "0" ]; then
   echo
 fi
 
+# --- Container guidance for the agent (auto-managed) ---
+# The Copilot CLI loads user instructions from ~/.copilot/instructions/*.instructions.md.
+# Drop a Portal-owned, namespaced file there (applyTo:** so it applies globally) telling
+# the agent about this environment's constraints — non-root/no sudo/no apt, Python is
+# PEP 668 externally-managed (use uv / venv / pip --user), what persists, and the /work
+# no-exec caveat. Rewritten each boot to stay current; never touches the user's own
+# ~/.copilot/copilot-instructions.md.
+INSTR_DIR="${HOME}/.copilot/instructions"
+if mkdir -p "$INSTR_DIR" 2>/dev/null; then
+  cat > "${INSTR_DIR}/copilot-portal-container.instructions.md" <<'EOF'
+---
+applyTo: "**"
+description: Copilot Portal container environment
+---
+# Running inside the Copilot Portal container
+
+You are in a headless Linux container, running as a **non-root** user with **no `sudo`**.
+
+- **Do not use `apt`/`apt-get`** (no root). System tools are fixed at image build time;
+  bundled already: git, gh, python3, uv/uvx, node/npx, pwsh, jq, make, patch, zip/unzip, xz.
+- **Python is externally managed (PEP 668)** and system site-packages are not writable, so a
+  bare `pip install <pkg>` will fail by design. Install Python packages this way instead:
+  1. `uv pip install <pkg>` or `uv tool install <cli>` (preferred — fast, isolated)
+  2. a venv: `python3 -m venv .venv && .venv/bin/pip install <pkg>`
+  3. `pip install --user <pkg>` (lands in `~/.local/bin`, which is on `PATH`)
+- **Persistence:** your home (`~`, including `~/.local/bin` and `~/.copilot`) persists across
+  container/image updates, so tools installed there stick. Other paths (`/tmp`, `/usr`, system
+  site-packages) are ephemeral and reset on update — install durable tools under `~`.
+- **`/work`** is the shared workspace (often exposed over the network). It may **not allow
+  `chmod +x`** due to network-share ACLs, so keep executable scripts/tools under `~`, not `/work`.
+EOF
+  echo "  wrote agent container guidance to ~/.copilot/instructions/"
+fi
+
 # Hand off to the launcher (which starts the CLI server + portal). exec so the
 # launcher becomes the container's main process and receives SIGTERM directly.
 exec node dist/launcher.js "$@"

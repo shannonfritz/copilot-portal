@@ -110,9 +110,11 @@ RUN apt-get update \
 # Create the non-root user/group and the directories that volumes mount onto,
 # owned by it. Docker initializes a fresh named volume with the ownership of the
 # image dir it covers, so the default volumes are writable without any chown dance.
+# `~/.local/bin` is pre-created (and on PATH below) so `pip install --user` and
+# `uv tool install` land somewhere runnable that also persists via the home volume.
 RUN groupadd -g "${PGID}" copilot \
  && useradd -u "${PUID}" -g "${PGID}" -m -d /home/copilot -s /usr/sbin/nologin copilot \
- && mkdir -p /home/copilot/.copilot /app/data /work \
+ && mkdir -p /home/copilot/.copilot /home/copilot/.local/bin /app/data /work \
  && chown -R copilot:copilot /home/copilot /app /work
 
 # Bring over the built app and the patched node_modules from the builder.
@@ -135,11 +137,14 @@ RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
 #    from rebuilding/pulling the image, not from mutating this running container).
 #  - COPILOT_AUTO_UPDATE=0 stops the CLI layer from self-updating too.
 #  - HOME points at the non-root user's home so ~/.copilot resolves there.
+#  - PATH puts ~/.local/bin first so agent-installed tools (pip --user, uv tool
+#    install) are runnable by name; the CLI's shells are non-interactive and don't
+#    source ~/.profile, so this must be set explicitly here.
 ENV COPILOT_CONTAINER=1 \
     COPILOT_AUTO_UPDATE=0 \
     NODE_ENV=production \
     HOME=/home/copilot \
-    PATH="/app/node_modules/.bin:${PATH}"
+    PATH="/home/copilot/.local/bin:/app/node_modules/.bin:${PATH}"
 
 EXPOSE 3847
 
