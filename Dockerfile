@@ -50,13 +50,13 @@ ARG PGID=568
 #  - curl/wget: fetch files (curl also used by the HEALTHCHECK and the pwsh download).
 #  - git (+ openssh-client, less): clone/commit/diff, git-over-SSH, pager for git output.
 #  - gh: GitHub CLI (PRs, issues, releases) — installed from GitHub's official apt repo.
-#  - zip/unzip/patch/make/jq: everyday archive, patch, build-driver, and JSON tooling.
+#  - zip/unzip/xz-utils/patch/make/jq: everyday archive (incl. .xz/.tar.xz), patch, build-driver, and JSON tooling.
 #  - lsof: used by "Restart Copilot" to free port 3848 before relaunching the CLI.
 #  - tzdata: lets the TZ env set the container's local time (log + folder timestamps).
 ARG PWSH_VERSION=7.4.6
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget git openssh-client less zip unzip patch make jq libicu72 lsof tzdata \
+      ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq libicu72 lsof tzdata \
  && mkdir -p -m 755 /etc/apt/keyrings \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
