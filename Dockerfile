@@ -44,19 +44,26 @@ ARG PGID=568
 #
 # Runtime tools baked into the final image. The non-root runtime user has no sudo
 # and CANNOT apt-install at runtime, so anything the agent should always have must
-# be added here at build time. Kept lean on purpose — language runtimes (python/go)
-# and compilers (build-essential) are deliberately omitted to keep the image small;
-# add them here if you need a polyglot build environment.
+# be added here at build time. Polyglot-lean: Python is included (Copilot reaches for
+# it constantly + many stdio MCP servers need it); Go and C/C++ compilers are still
+# omitted to keep the image reasonable — add them if you need them.
 #  - curl/wget: fetch files (curl also used by the HEALTHCHECK and the pwsh download).
 #  - git (+ openssh-client, less): clone/commit/diff, git-over-SSH, pager for git output.
 #  - gh: GitHub CLI (PRs, issues, releases) — installed from GitHub's official apt repo.
 #  - zip/unzip/xz-utils/patch/make/jq: everyday archive (incl. .xz/.tar.xz), patch, build-driver, and JSON tooling.
+#  - python3/python3-venv/python3-pip: Python runtime + venv/pip for scripting and Python MCP servers.
+#    NOTE: Debian marks system Python "externally managed" (PEP 668) AND the non-root user can't write
+#    system site-packages, so prefer `uv`, a venv, or `pip install --user` (~/.local persists via the home volume).
+#  - uv: Astral's fast Python package/Tool runner; `uvx` is how many MCP servers launch. Installed as a
+#    static binary to /usr/local/bin; manages venvs/tools into ~ (persistent) and works fine non-root.
 #  - lsof: used by "Restart Copilot" to free port 3848 before relaunching the CLI.
 #  - tzdata: lets the TZ env set the container's local time (log + folder timestamps).
 ARG PWSH_VERSION=7.4.6
+ARG UV_VERSION=0.11.24
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq libicu72 lsof tzdata \
+      ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq \
+      python3 python3-venv python3-pip libicu72 lsof tzdata \
  && mkdir -p -m 755 /etc/apt/keyrings \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -69,6 +76,12 @@ RUN apt-get update \
  && chmod +x /opt/microsoft/powershell/7/pwsh \
  && ln -s /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh \
  && rm /tmp/pwsh.tar.gz \
+ && curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/uv.tar.gz \
+ && tar zxf /tmp/uv.tar.gz -C /tmp \
+ && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv \
+ && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/uvx \
+ && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu \
+ && ln -sf /usr/bin/python3 /usr/local/bin/python \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create the non-root user/group and the directories that volumes mount onto,
