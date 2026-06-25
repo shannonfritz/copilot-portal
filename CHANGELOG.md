@@ -24,6 +24,7 @@ All notable changes to Copilot Portal are documented here.
 - **Web claim + paste flow** — first visit with no token offers a one-time "Generate session token" (copy it once); later visits prompt to paste the existing token — consistent across desktop and container
 - **Remove from the UI** — clear the session token from the portal, plus a documented host-side reset if you forget it
 - **No more self-bans** — a stale/wrong token no longer lets the client hammer the server into a rate-limit ban; it drops cleanly to the token screen
+- **Survives server restarts** — a transient `401` (e.g. while a container image update restarts the server) no longer wipes your saved token and forces re-sign-in; the client re-validates against `/api/info` + `/api/portal-token/status` and only drops to the token screen when the token is genuinely rejected
 - **Copy button fixed on plain-HTTP LAN** — falls back to `execCommand` when `navigator.clipboard` is unavailable, with a ✓ "Copied" confirmation
 
 ### 🛡️ Rate-limit Logging

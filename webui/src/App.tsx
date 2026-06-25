@@ -97,6 +97,63 @@ function invalidatePortalToken() {
 	try { window.dispatchEvent(new Event('portal-token-invalid')); } catch { /* ignore */ }
 }
 
+function readStoredToken(): string | null {
+	try { return localStorage.getItem('portal_token'); } catch { return null; }
+}
+
+// Single check: does the server accept OUR stored token *right now*?
+//  'ok'          — accepted (non-401) → token is fine.
+//  'rejected'    — server is reachable and definitively rejects it (wrong token, or
+//                  the server has no token configured at all).
+//  'unreachable' — couldn't reach the server (down/restarting) → inconclusive.
+async function probeStoredToken(): Promise<'ok' | 'rejected' | 'unreachable'> {
+	const t = readStoredToken();
+	if (!t) return 'rejected';
+	try {
+		const r = await fetch('/api/info', { headers: { Authorization: `Bearer ${t}` }, cache: 'no-store' });
+		if (r.status !== 401) return 'ok';
+	} catch {
+		return 'unreachable';
+	}
+	// A 401 could mean the token is wrong OR the server is still booting with no token
+	// configured. The unauthenticated status endpoint is reachable either way; if we
+	// can't even reach it, treat the whole thing as a transient blip.
+	try {
+		const s = await fetch('/api/portal-token/status', { cache: 'no-store' });
+		return s.ok ? 'rejected' : 'unreachable';
+	} catch {
+		return 'unreachable';
+	}
+}
+
+let tokenCheckInFlight: Promise<boolean> | null = null;
+// Corroborate a *suspected*-bad token before discarding it. A lone 401 — or a burst
+// of fast WS closes — around a server restart (e.g. a container image update where the
+// new instance comes up with no token for a beat) must NOT nuke a still-valid token and
+// bounce the user back to the sign-in screen. We only clear the token once the server is
+// confirmably reachable AND rejects it across two checks ~1.2s apart. Returns true if the
+// token was confirmed bad (and invalidated), false if the failure was transient.
+async function confirmTokenInvalid(): Promise<boolean> {
+	if (portalTokenInvalid) return true;
+	if (tokenCheckInFlight) return tokenCheckInFlight;
+	tokenCheckInFlight = (async () => {
+		try {
+			let rejected = 0;
+			for (let i = 0; i < 2; i++) {
+				const verdict = await probeStoredToken();
+				if (verdict === 'ok') return false; // token works → the 401 was transient
+				if (verdict === 'rejected') rejected++;
+				if (i === 0) await new Promise(r => setTimeout(r, 1200));
+			}
+			if (rejected >= 2) { invalidatePortalToken(); return true; } // genuinely bad
+			return false; // unreachable / momentary blip → keep the token and reconnect
+		} finally {
+			tokenCheckInFlight = null;
+		}
+	})();
+	return tokenCheckInFlight;
+}
+
 const apiFetch= (url: string, init?: RequestInit) => {
 	// Token already known-bad: fail fast without touching the network so a stray
 	// poller can't keep hammering /api and get this client IP temp-banned.
@@ -104,7 +161,9 @@ const apiFetch= (url: string, init?: RequestInit) => {
 	const t = getToken();
 	const headers = { ...(init?.headers ?? {}), ...(t ? { Authorization: `Bearer ${t}` } : {}) };
 	return fetch(url, { ...init, headers }).then(res => {
-		if (res.status === 401 && url.startsWith('/api/')) invalidatePortalToken();
+		// Don't trust a lone 401 — corroborate before discarding the token, so a
+		// transient 401 during a server restart can't force an unnecessary re-auth.
+		if (res.status === 401 && url.startsWith('/api/')) void confirmTokenInvalid();
 		return res;
 	});
 };
@@ -2861,8 +2920,12 @@ export default function App() {
 				fastFailCount.current += 1;
 				if (fastFailCount.current >= 3) {
 					fastFailCount.current = 0;
-					invalidatePortalToken(); // clears token everywhere + drops to the claim screen
-					return; // stop retrying — token is invalid
+					// Don't assume a bad token from fast closes alone — the server may just
+					// be restarting (e.g. a container image update, which briefly serves with
+					// no token). Corroborate; this only clears the token if it's genuinely
+					// rejected. Either way we fall through and keep reconnecting below: if it
+					// was bad, the next connect() sees no token and drops to the claim screen.
+					void confirmTokenInvalid();
 				}
 			} else {
 				fastFailCount.current = 0; // reset on non-fast failures
