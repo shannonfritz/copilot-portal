@@ -41,18 +41,28 @@ ARG PGID=568
 
 # PowerShell 7 — the Copilot CLI uses `pwsh` to execute shell-command tools.
 # Without it, command-running tools degrade. Pinned; bump as needed.
-# Runtime tools kept in the final image:
-#  - curl: used to fetch PowerShell during build, and kept because Copilot's
-#    command-running tools commonly reach for it at runtime (and the HEALTHCHECK).
-#  - lsof: used by the "Restart Copilot" control to free port 3848 before
-#    relaunching the CLI server — without it that restart can't reclaim the port.
-#  - tzdata: lets TZ env set the container's local time (log + folder timestamps).
-#  - git (+ openssh-client, less): the agent does software work — clone/commit/diff,
-#    git-over-SSH remotes, and a pager for git output. The non-root runtime user has
-#    no sudo, so tools MUST be baked in here at build time, not apt-installed at runtime.
+#
+# Runtime tools baked into the final image. The non-root runtime user has no sudo
+# and CANNOT apt-install at runtime, so anything the agent should always have must
+# be added here at build time. Kept lean on purpose — language runtimes (python/go)
+# and compilers (build-essential) are deliberately omitted to keep the image small;
+# add them here if you need a polyglot build environment.
+#  - curl/wget: fetch files (curl also used by the HEALTHCHECK and the pwsh download).
+#  - git (+ openssh-client, less): clone/commit/diff, git-over-SSH, pager for git output.
+#  - gh: GitHub CLI (PRs, issues, releases) — installed from GitHub's official apt repo.
+#  - zip/unzip/patch/make/jq: everyday archive, patch, build-driver, and JSON tooling.
+#  - lsof: used by "Restart Copilot" to free port 3848 before relaunching the CLI.
+#  - tzdata: lets the TZ env set the container's local time (log + folder timestamps).
 ARG PWSH_VERSION=7.4.6
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl git openssh-client less libicu72 lsof tzdata \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl wget git openssh-client less zip unzip patch make jq libicu72 lsof tzdata \
+ && mkdir -p -m 755 /etc/apt/keyrings \
+ && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
  && curl -fsSL "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" -o /tmp/pwsh.tar.gz \
  && mkdir -p /opt/microsoft/powershell/7 \
  && tar zxf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
