@@ -106,6 +106,14 @@ You are in a headless Linux container, running as a **non-root** user with **no 
   1. `uv pip install <pkg>` or `uv tool install <cli>` (preferred — fast, isolated)
   2. a venv: `python3 -m venv .venv && .venv/bin/pip install <pkg>`
   3. `pip install --user <pkg>` (lands in `~/.local/bin`, which is on `PATH`)
+  Do **not** use `pip install --break-system-packages`: it works but writes into the system
+  Python under `/usr`, which is **wiped on every image update** and pollutes the base — the
+  three options above persist on the `~` volume and survive updates.
+- **Standalone/downloaded binaries** (release tarballs, `go install` output, single-file CLIs):
+  put them in `~/.local/bin` — `install -m 0755 <bin> ~/.local/bin/` (or `mv` then `chmod +x`).
+  That dir is on `PATH`, persists across updates, and allows execution. Avoid `/usr/local/bin`
+  (needs root, wiped on update), `/tmp` (ephemeral), and `/work` (network-share ACLs may block
+  `chmod +x`).
 - **Persistence:** your home (`~`, including `~/.local/bin` and `~/.copilot`) persists across
   container/image updates, so tools installed there stick. Other paths (`/tmp`, `/usr`, system
   site-packages) are ephemeral and reset on update — install durable tools under `~`.
