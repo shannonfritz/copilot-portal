@@ -1,0 +1,140 @@
+# Release pipeline — runs on GitHub's servers when a version tag is pushed.
+#
+# Trigger: pushing a tag that looks like a version (v0.8.0, v0.8.0-rc.1, ...).
+# From that ONE tag this builds three things:
+#   1. the distributable .zip  (same artifact `npm run package` makes on the dev PC)
+#   2. a GitHub Release with that zip attached + notes pulled from CHANGELOG.md
+#   3. a Docker image pushed to GHCR (ghcr.io/<owner>/copilot-portal)
+#
+# Pre-releases (tags containing "-rc") are marked as pre-release on GitHub and do
+# NOT move the image's :latest pointer — only a real stable tag does. So you can
+# push v0.8.0-rc.1, test it, delete it, and it never looks like "the" release.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"          # any tag starting with v (v0.8.0, v0.8.0-rc.1, ...)
+
+# Permissions the auto-provided GITHUB_TOKEN gets for THIS run.
+# No manual secrets needed: contents:write lets us publish the Release,
+# packages:write lets us push the image to GHCR (this repo's own registry).
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest        # a fresh x86_64 Linux machine GitHub gives us
+
+    steps:
+      # 1. Get the repo at the exact tagged commit.
+      - name: Checkout (tagged commit)
+        uses: actions/checkout@v4
+
+      # 2. Derive the version + whether this is a pre-release, from the tag name.
+      #    GITHUB_REF_NAME is e.g. "v0.8.0" or "v0.8.0-rc.1".
+      - name: Resolve version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # v0.8.0-rc.1
+          VERSION="${TAG#v}"                # strip leading v -> 0.8.0-rc.1
+          BASE="v${VERSION%%-*}"            # base section for CHANGELOG -> v0.8.0
+          if [[ "$TAG" == *-rc* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          echo "base=$BASE"             >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Tag=$TAG  Version=$VERSION  Base=$BASE  Prerelease=$PRERELEASE"
+
+      # 3. Node toolchain (matches package.json engines: >=22.5.0).
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 4. Install deps. Root install runs postinstall (patch.mjs, which fixes the
+      #    @github/copilot-sdk ESM import). The web UI has its own lockfile.
+      - name: Install dependencies
+        run: |
+          npm ci --no-fund --no-audit
+          npm ci --no-fund --no-audit --prefix webui
+
+      # 5. Build the zip exactly like the dev PC does (esbuild + vite, then zip).
+      #    package.mjs writes the artifact into releases/.
+      - name: Build distributable zip
+        run: node package.mjs
+
+      # 6. Locate the produced zip (releases/ holds exactly one on a fresh checkout).
+      - name: Find zip
+        id: zip
+        run: |
+          ZIP="$(ls releases/*.zip | head -n1)"
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built: $ZIP"
+
+      # 7. Pull this version's notes out of CHANGELOG.md (the "## vX.Y.Z" block).
+      #    For an -rc tag we look up the base version's section. Fallback to a
+      #    generic line so a dry-run rc without a changelog entry still releases.
+      - name: Extract release notes
+        run: |
+          BASE='${{ steps.ver.outputs.base }}'
+          awk -v ver="$BASE" '
+            $0 ~ "^## " ver "($|[ \t])" { found=1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "Automated build for ${GITHUB_REF_NAME}." > RELEASE_NOTES.md
+          fi
+          echo "----- release notes -----"; cat RELEASE_NOTES.md
+
+      # 8. Docker Buildx (the builder that can push straight to a registry).
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 9. Log in to GHCR using the run's own token — no PAT/secret to manage.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 10. Compute image tags. type=semver emits the version tag; flavor latest=auto
+      #     adds :latest ONLY for a stable (non-pre-release) version. That is the
+      #     "stable moves latest, rc does not" rule, handled for us.
+      - name: Image tags/labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+          flavor: |
+            latest=auto
+
+      # 11. Build the amd64 image from the Dockerfile and push it to GHCR.
+      #     gha cache speeds up repeated rc iterations.
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 12. Publish the GitHub Release: attach the zip, use the CHANGELOG notes,
+      #     and flag it pre-release for -rc tags.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          files: ${{ steps.zip.outputs.path }}
