@@ -15,13 +15,26 @@ const dd = String(now.getUTCDate()).padStart(2, '0');
 const today = `${yy}${mm}${dd}`;
 
 const buildRaw = readFileSync('BUILD', 'utf8').trim();
-// BUILD file format: "YYMMDD-NN" (e.g. "260323-01") or legacy plain number
-const match = buildRaw.match(/^(\d{6})-(\d+)$/);
-const prevDate = match ? match[1] : '';
-const prevNum = match ? parseInt(match[2], 10) : 0;
-const buildNum = (prevDate === today) ? prevNum + 1 : 1;
-const build = `${today}-${String(buildNum).padStart(2, '0')}`;
-writeFileSync('BUILD', `${build}\n`);
+// The BUILD counter is owned SOLELY by local validation/package runs. When
+// NO_BUILD_BUMP is set (CI release builds), stamp the artifact with exactly the
+// committed value and do NOT advance or rewrite it. This keeps the counter
+// drift-free: the shipped build number always equals the last build you
+// committed, and rebuilding the same tag is reproducible.
+const noBump = process.env.NO_BUILD_BUMP === '1' || process.env.NO_BUILD_BUMP === 'true';
+let build;
+if (noBump) {
+	// Use the committed value verbatim (no +1, no write).
+	build = buildRaw;
+	console.log('  • NO_BUILD_BUMP set — using committed BUILD as-is (no increment)');
+} else {
+	// BUILD file format: "YYMMDD-NN" (e.g. "260323-01") or legacy plain number
+	const match = buildRaw.match(/^(\d{6})-(\d+)$/);
+	const prevDate = match ? match[1] : '';
+	const prevNum = match ? parseInt(match[2], 10) : 0;
+	const buildNum = (prevDate === today) ? prevNum + 1 : 1;
+	build = `${today}-${String(buildNum).padStart(2, '0')}`;
+	writeFileSync('BUILD', `${build}\n`);
+}
 
 // 2. Read version from package.json and sync to package.dist.json
 const { version: pkgVersion } = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -69,5 +82,5 @@ if (process.platform === 'win32') {
 rmSync(stage, { recursive: true });
 
 console.log(`\n  ✔ ${zipName} created`);
-console.log(`  ✔ BUILD bumped to ${buildNum}`);
+console.log(noBump ? `  ✔ BUILD kept at ${build} (no increment)` : `  ✔ BUILD bumped to ${build}`);
 console.log(`\n  Don't forget to commit the BUILD file!\n`);

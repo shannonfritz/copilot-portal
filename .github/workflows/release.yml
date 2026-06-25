@@ -62,8 +62,12 @@ jobs:
           npm ci --no-fund --no-audit --prefix webui
 
       # 5. Build the zip exactly like the dev PC does (esbuild + vite, then zip).
-      #    package.mjs writes the artifact into releases/.
+      #    package.mjs writes the artifact into releases/. NO_BUILD_BUMP makes CI
+      #    stamp the committed BUILD value as-is (no increment, no write-back) —
+      #    the counter is owned only by local validation builds, so it never drifts.
       - name: Build distributable zip
+        env:
+          NO_BUILD_BUMP: "1"
         run: node package.mjs
 
       # 6. Locate the produced zip (releases/ holds exactly one on a fresh checkout).
