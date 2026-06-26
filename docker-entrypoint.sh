@@ -6,6 +6,42 @@
 # heavy setup (deps, patch.mjs, pwsh, build) is already baked into the image.
 set -e
 
+PUID="${PUID:-568}"
+PGID="${PGID:-568}"
+
+# --- First boot as root: fix volume ownership, then drop privileges ---
+# The image ships NO `USER` directive, so we start as root. Freshly-mounted volumes
+# need attention: Docker *named* volumes inherit the image dir's 568 ownership, but
+# TrueNAS ixVolumes and host bind-mounts arrive EMPTY and root-owned. We chown the
+# data dirs to the runtime user ONCE here, then re-exec ourselves as ${PUID}:${PGID}
+# via gosu so the app itself runs unprivileged. On later boots ownership is already
+# correct, so the chown is a no-op.
+if [ "$(id -u)" = "0" ]; then
+  # Align the baked `copilot` user/group if PUID/PGID were overridden at run time.
+  if [ "$(id -u copilot 2>/dev/null)" != "$PUID" ]; then
+    usermod -o -u "$PUID" copilot 2>/dev/null || true
+  fi
+  if [ "$(getent group copilot | cut -d: -f3)" != "$PGID" ]; then
+    groupmod -o -g "$PGID" copilot 2>/dev/null || true
+  fi
+  # Data dirs the container must write. They mount onto volumes; chown only when the
+  # top-level owner is wrong (cheap on first boot — the fresh volume is near-empty).
+  for d in /home/copilot /app/data; do
+    if [ -d "$d" ] && [ "$(stat -c '%u' "$d")" != "$PUID" ]; then
+      echo "  fixing ownership of $d -> ${PUID}:${PGID}"
+      chown -R "${PUID}:${PGID}" "$d" || echo "  WARNING: could not chown $d"
+    fi
+  done
+  # /work is a host-managed bind mount (often shared over SMB). Do NOT recursively
+  # rewrite the admin's dataset; just make the mount point itself writable if we can.
+  if [ -d /work ] && [ "$(stat -c '%u' /work)" != "$PUID" ]; then
+    chown "${PUID}:${PGID}" /work 2>/dev/null \
+      || echo "  NOTE: /work is owned by another user; set its host owner/ACL to ${PUID} if the agent needs to write there"
+  fi
+  exec gosu "${PUID}:${PGID}" "$0" "$@"
+fi
+
+# ---- From here on we run as the unprivileged runtime user (${PUID}:${PGID}). ----
 echo "  Copilot Portal — container mode"
 
 # Apply a umask if requested (e.g. UMASK=002 makes files the container writes
@@ -15,22 +51,22 @@ if [ -n "${UMASK:-}" ]; then
   echo "  umask set to ${UMASK}"
 fi
 
-# --- Writable-volume check (fail fast with a clear message) ---
-# The container runs as a non-root user (default 568). A volume first created by
-# an OLDER root container is owned by root, so this user can't write it and the
-# CLI dies with a cryptic "I/O error: Permission denied (os error 13)". Detect
-# that here and explain the one-time host-side fix instead of crash-looping.
+# --- Writable-volume check (safety net) ---
+# Normally the root entrypoint above chowns these dirs and this never trips. It can
+# still fire if the container was forced to start as a non-root user (e.g. a
+# TrueNAS "Custom User" override or `docker run --user`), which prevents the
+# self-heal. Explain both fixes instead of crash-looping with a cryptic
+# "Permission denied (os error 13)".
 UID_NOW="$(id -u)"; GID_NOW="$(id -g)"
 for d in "${HOME}/.copilot" "/app/data" "${PORTAL_WORKSPACE_DIR:-/work}"; do
   if [ -d "$d" ] && [ ! -w "$d" ]; then
     echo
     echo "  ERROR: '$d' is not writable by this user (${UID_NOW}:${GID_NOW})."
-    echo "  This usually means the volume was created by an older root container."
-    echo "  Fix it once from the Docker host, then start again, e.g.:"
-    echo "    docker compose down"
-    echo "    docker run --rm -v <project>_copilot-config:/c -v <project>_portal-data:/d \\"
-    echo "      alpine chown -R ${UID_NOW}:${GID_NOW} /c /d"
-    echo "    docker compose up -d"
+    echo "  The container was started as a non-root user, so it could not fix the"
+    echo "  volume's ownership itself. Either:"
+    echo "    - let it start as root (remove any Custom User / --user override) so it"
+    echo "      self-heals on boot, or"
+    echo "    - chown the volume on the host once: chown -R ${UID_NOW}:${GID_NOW} <path>"
     echo
     exit 1
   fi

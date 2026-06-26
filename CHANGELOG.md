@@ -6,11 +6,11 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
-- **Non-root by default** — runs as `568:568` (TrueNAS `apps` user) so files written to mounted datasets are owned sensibly; override with `PUID`/`PGID`
+- **Runs unprivileged, fixes volumes automatically** — the entrypoint starts as root, chowns the mounted data volumes to `568:568` (TrueNAS `apps` user) on first boot, then drops to that non-root user via `gosu`; override the target with `PUID`/`PGID`
 - **Real readiness signal** — unauthenticated `/healthz` probe wired to a Docker `HEALTHCHECK`
 - **Graceful shutdown** — `tini` as PID 1 forwards signals and reaps the CLI subprocess
 - **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
-- **Fail-fast on bad volumes** — clear error when a mounted volume is root-owned and unwritable
+- **Self-healing volumes** — freshly-mounted TrueNAS ixVolumes and host bind-mounts (which arrive empty and root-owned) are chowned automatically on boot, so a Custom App "just works" with no manual `chown`; a clear, actionable error appears only if the container is *forced* to run as a non-root user (which prevents the self-heal)
 - **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
 - **Slimmer image** — strips ~270 MB of foreign-platform native binaries vendored inside the Copilot CLI (`prebuilds/*` + `mxc-bin/arm64`), keeping only the `linux-x64` builds the container actually loads; a build-time guard fails loudly if the kept binary ever goes missing
 - **Persistent home + user-tool PATH** — the container's whole `~` persists on a single `copilot-home` volume (survives image updates and supports `chmod +x`), and `~/.local/bin` is on `PATH` so tools the agent installs with `pip install --user` or `uv tool install` are runnable by name and stick around

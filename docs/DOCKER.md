@@ -14,14 +14,30 @@ port and the portal web server on **3847**. It includes:
 
 - **Node 22** (base image)
 - **PowerShell 7** (`pwsh`) — the Copilot CLI uses it to run shell-command tools
+- **An agent toolset**, baked in so Copilot can actually do work in the box (the
+  non-root user can't `apt install` at runtime): **Python 3** (+`venv`/`pip`) and
+  **`uv`/`uvx`**, **`git`**, **`gh`** (GitHub CLI), **`jq`**, **`make`**,
+  **`patch`**, **`zip`/`unzip`**, **`xz`** (so `.tar.xz` works), plus `wget`,
+  `less`, and `openssh-client`. `npx`/`node` come with the base image.
 - The built portal (`dist/`) and the **patched** `node_modules` (the `patch.mjs`
-  SDK fix is applied at build time)
+  SDK fix is applied at build time). Foreign-platform CLI binaries are stripped
+  to keep the image lean — only the `linux-x64` builds the container loads remain.
 
 It also:
 
 - **Runs as a non-root user** (`568:568` by default — TrueNAS SCALE's `apps`
   user) so files it writes to mounted datasets are owned sensibly. Override with
   `--build-arg PUID=… --build-arg PGID=…` at build, or `user: "uid:gid"` at run.
+- **Puts `~/.local/bin` on `PATH`** so anything the agent installs with
+  `uv tool install`, `pip install --user`, or a downloaded static binary is
+  runnable by name — and, because `~` is a persistent volume (below), survives
+  image updates.
+- **Tells the agent about the container** — on boot the entrypoint writes a
+  Portal-managed `~/.copilot/instructions/copilot-portal-container.instructions.md`
+  so Copilot knows it's non-root with no `sudo`/`apt`, that system Python is
+  PEP 668 externally-managed (use `uv`, a venv, or `pip install --user`), where to
+  put binaries (`~/.local/bin`), and what persists. It never touches your own
+  `~/.copilot/copilot-instructions.md`.
 - **Exposes a health probe** at `GET /healthz` (unauthenticated, no secrets), wired
   to a Docker `HEALTHCHECK` so the engine/TrueNAS report real readiness.
 - **Auto-creates a fresh per-session workspace** (`/work/YYMMDD-NN`) for each new
@@ -29,23 +45,31 @@ It also:
 
 ## Authentication
 
-The CLI is interactive to log in (`copilot login` opens a browser), which a
-headless container can't do. Two supported paths — you can use either or both:
+Authenticate GitHub one of two ways:
 
-### 1. Token (simplest)
+### Environment token (primary — best for headless)
 
-Set a GitHub token with Copilot access in the environment. The CLI reads, in
+Set a GitHub token with Copilot access in the environment and the CLI picks it up
+on every boot — nothing to click, ideal for an always-on box. The CLI reads, in
 order: `GITHUB_COPILOT_GITHUB_TOKEN`, `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`.
 
 ```bash
 echo "GITHUB_TOKEN=ghp_xxxxxxxx" > .env   # next to docker-compose.yml
 ```
 
-### 2. Mounted, pre-authenticated `~/.copilot`
+(On TrueNAS, set it as an environment variable in the Custom App instead of `.env`.)
 
-Authenticate once (on a desktop, or via `docker exec -it copilot-portal copilot
-login` using the device-code flow), and the cached credentials in the persisted
-`~/.copilot` volume survive restarts and rebuilds.
+### Sign in from the web UI (the normal interactive way)
+
+No token set? The portal shows a sign-in screen with two tabs:
+
+- **Browser sign-in (default)** — the portal runs GitHub's device-code flow and
+  pre-fills the code/URL: open the link, authorize, done.
+- **Access Token** — paste a fine-grained PAT with Copilot access instead.
+
+Either way the credential persists (browser sign-in in the `copilot-home` volume;
+a pasted PAT in `portal-data`, re-injected as `COPILOT_GITHUB_TOKEN` each boot), so
+you only do it once. The **Log out** button (Sessions panel) clears it.
 
 > The portal also has its **own** session token (the key that gates who can open
 > the web UI). That is separate from GitHub auth — see the next section.
@@ -86,16 +110,21 @@ re-pins on every boot) — change `PORTAL_TOKEN` in `.env` and run
 
 | Volume | Container path | Holds |
 | --- | --- | --- |
-| `copilot-config` | `/home/copilot/.copilot` | **Auth, sessions, skills, agents, MCP config** — the important one |
-| `portal-data` | `/app/data` | Portal access token, tunnel config, debug logs |
+| `copilot-home` | `/home/copilot` | **The whole home dir** — GitHub auth, sessions, skills, agents, MCP config (`~/.copilot`) **and** anything the agent installs (`~/.local/bin`, venvs, caches). The important one. |
+| `portal-data` | `/app/data` | Portal session token, pasted GitHub PAT, tunnel config, debug logs |
 | `work` *(bind mount)* | `/work` | Per-session workspaces Copilot reads/edits — bind-mounted to a host dir so it's easy to share on your LAN |
+
+> **Why the whole home dir?** A single `copilot-home` volume (rather than just
+> `~/.copilot`) means tools the agent installs into `~/.local/bin`, venvs, and npm
+> caches also persist — and, being a real volume (not a network-share bind mount),
+> it supports `chmod +x`, so those tools are actually runnable.
 
 Mount the folders you want Copilot to operate on, or it only sees its own scratch
 space. Example in `docker-compose.yml`:
 
 ```yaml
     volumes:
-      - copilot-config:/home/copilot/.copilot
+      - copilot-home:/home/copilot
       - portal-data:/app/data
       - "${PORTAL_WORK_HOST_DIR:-./work}:/work"   # bind mount for LAN/SMB access
 ```
@@ -106,35 +135,25 @@ Set the host path in `.env` (defaults to `./work` next to the compose file):
 PORTAL_WORK_HOST_DIR=/mnt/SSDs/copilot-work
 ```
 
-> **File ownership:** the container writes as `568:568` by default. Named volumes
-> get this ownership automatically. For a **bind mount** (e.g. an SMB-shared
-> dataset), make sure the host directory is owned by — or group-writable to —
-> `568`, or set `user:` in compose to match your host account.
-
-> **Upgrading from a pre-`568` (root-era) image:** volumes created when the
-> container ran as root are owned by `root` and the non-root user can't write them
-> — the CLI fails with `Permission denied (os error 13)` and the entrypoint stops
-> with a clear message. Fix it once from the host:
->
-> ```bash
-> docker compose down
-> docker run --rm -v <project>_copilot-config:/c -v <project>_portal-data:/d \
->   alpine chown -R 568:568 /c /d
-> docker compose up -d
-> ```
-> (`<project>` is the compose project name — usually the folder name. Check with
-> `docker volume ls`.)
+> **File ownership:** the container runs its first-boot setup as **root**, chowns the
+> managed data volumes (`/home/copilot`, `/app/data`) to `568:568`, and makes the
+> `/work` mount point writable — then drops to that unprivileged user. So named
+> volumes, TrueNAS ixVolumes, and a fresh bind mount all become writable
+> automatically; there's no pre-chown dance. For an SMB-shared `/work` you'll still
+> want the group setup below so your *other* accounts can read/write the files too.
 
 ## Sharing `/work` over SMB
 
 The `/work` directory is a **bind mount** to a host directory precisely so you can
 share it on your LAN. The container and an SMB share point at the *same* host
-directory — Copilot writes session files there, and your other computers read/edit
-them over the network.
+directory — it's the **default place where each new Copilot session gets its
+working folder (CWD)** and where the agent writes any files it produces, so your
+other computers can read/edit that output over the network. (Sessions, auth, and
+keys live in the Docker-managed volumes, *not* here.)
 
 The only thing to get right is **permissions**, because the container writes as
-`568:568` and your SMB users are different accounts. The clean model (mirrors a
-`media-ro` / `media-rw` setup) is a read-only and a read-write group:
+`568:568` and your SMB users are different accounts. A clean model is a read-only
+and a read-write group:
 
 1. **Create a host directory / dataset** and point both compose and SMB at it,
    e.g. `/mnt/SSDs/copilot-work` (set `PORTAL_WORK_HOST_DIR` in `.env`).
@@ -152,9 +171,11 @@ The only thing to get right is **permissions**, because the container writes as
 5. **Create the SMB share** on that directory; grant `copilot-rw` read/write and
    `copilot-ro` read-only.
 
-> Do steps 1–4 **before** the first `docker compose up` — a bind mount (unlike a
-> named volume) is **not** auto-chowned, so the directory must already be writable
-> by `568` or the container will stop with a clear permission error.
+> The container makes the `/work` mount point writable on boot (it chowns the
+> top-level to `568`), so it won't crash on a fresh dataset. Steps 1–4 are what make
+> the share usable by your *other* SMB accounts (group ownership + setgid + umask) —
+> do them ideally before first use. The container leaves an existing `568:`-owned
+> dataset alone, so it won't clobber your group setup.
 
 Over SMB you'll see one folder per session (`<session-id>/YYMMDD-NN/…`); that's
 expected and makes browsing per-session output easy.
@@ -166,7 +187,7 @@ sets the common ones explicitly for visibility.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GITHUB_TOKEN` | *(empty)* | GitHub token with Copilot access (auth path #1). Also read: `GITHUB_COPILOT_GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`. |
+| `GITHUB_TOKEN` | *(empty)* | GitHub token with Copilot access — the **primary** auth path for headless use. Also read: `GITHUB_COPILOT_GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`. |
 | `PORTAL_TOKEN` | *(empty)* | Pins the portal **session token** (web-access key). Unset = first visit offers a one-time "Generate session token" claim. Set = predictable URL; rotate/reset by changing it + redeploying. See [Portal session token](#portal-session-token-web-access). |
 | `PORTAL_WORKSPACE_DIR` | `/work` | Root under which new sessions auto-create `YYMMDD-NN` workspace folders. |
 | `PORTAL_WORK_HOST_DIR` | `./work` | **Host** path bind-mounted to `/work`. Set to your shared dataset (e.g. `/mnt/SSDs/copilot-work`) for SMB access. |
@@ -174,54 +195,101 @@ sets the common ones explicitly for visibility.
 | `TZ` | `UTC` | Local timezone for log and workspace-folder timestamps (e.g. `America/Chicago`). |
 | `COPILOT_CONTAINER` | `1` | Container mode: disables the in-app self-updater and apply endpoints. |
 | `COPILOT_AUTO_UPDATE` | `0` | Stops the CLI layer from self-updating (image-managed instead). |
-| `PUID` / `PGID` | `568` / `568` | **Build args** (not runtime env) for the non-root uid/gid. Use `user:` in compose to override at runtime. |
+| `PUID` / `PGID` | `568` / `568` | The uid/gid the app drops to after the root entrypoint fixes volume ownership. Also build args. Override via env (e.g. `PUID=1000`) to match a host account that owns your `/work` dataset. |
 
 ## Quick start (any Docker host)
 
-```bash
-echo "GITHUB_TOKEN=ghp_xxxxxxxx" > .env
-docker compose up -d --build
-docker compose logs -f copilot-portal      # grab the login URL/token
-# open http://<host>:3847
+Drop this `docker-compose.yml` next to an (optional) `.env`, then run
+`docker compose up -d`. It pulls the published image — no build step. You can also
+paste this same YAML straight into a TrueNAS Custom App's **Install via YAML** editor.
+
+```yaml
+services:
+  copilot-portal:
+    image: ghcr.io/shannonfritz/copilot-portal:latest
+    container_name: copilot-portal
+    init: true
+    ports:
+      - "3847:3847"
+    environment:
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"   # optional — or sign in from the web UI
+      PORTAL_TOKEN: "${PORTAL_TOKEN:-}"   # optional — pins the web-access token
+      TZ: "${TZ:-UTC}"
+      UMASK: "002"
+    volumes:
+      - copilot-home:/home/copilot
+      - portal-data:/app/data
+      - "${PORTAL_WORK_HOST_DIR:-./work}:/work"   # host dir for the agent's CWD / LAN share
+    restart: unless-stopped
+
+volumes:
+  copilot-home:
+  portal-data:
 ```
 
-## TrueNAS SCALE
-
-TrueNAS SCALE (Electric Eel 24.10+) runs Docker Compose. Two ways to get the
-image onto the box **without publishing it anywhere public**:
-
-**Option A — build on the NAS**
-1. Copy this repo to the NAS (git clone or a file share).
-2. In **Apps → Discover → Custom App** (or via the CLI), use the compose file in
-   this repo. It builds the image locally on first `up`.
-
-**Option B — build elsewhere, ship a tarball** (the "zip equivalent" for Docker)
 ```bash
-# on a build machine (x86_64):
-docker build -t copilot-portal:dev .
-docker save copilot-portal:dev -o copilot-portal.tar
-# copy copilot-portal.tar to the NAS, then on the NAS:
-docker load -i copilot-portal.tar
+docker compose up -d                       # pulls the image and starts it
+docker compose logs -f copilot-portal      # grab the session-token line
+# open http://<host>:3847 and sign in to GitHub
 ```
-Then deploy a Custom App that references the local `copilot-portal:dev` image and
-the volumes/ports above. No registry, nothing public.
 
-> TrueNAS SCALE is x86_64. Build the image on an x86_64 host (the CLI ships
-> platform-specific binaries selected at `npm ci` time).
+(Prefer to build from source? Use the repo's `docker-compose.yml` with `build: .`
+uncommented and `image:` commented out.)
+
+## TrueNAS SCALE (Custom App)
+
+TrueNAS SCALE (Electric Eel 24.10+) runs Docker. Deploy the **published GHCR
+image** as a **Custom App** — no building required. Easiest is to paste the
+[compose YAML above](#quick-start-any-docker-host) into the app's **Install via
+YAML** editor. If you'd rather use the GUI wizard, here are its fields in the order
+TrueNAS presents them:
+
+| Wizard field | What to set |
+| --- | --- |
+| **Application Name** | App name `copilot-portal` (your choice); leave **Version** as-is — it's the Custom App wrapper's version, not the image's (you pick the image via Image Tag below). |
+| **General** | **Notes:** optional free-text description. |
+| **Image Configuration** | **Repository** `ghcr.io/shannonfritz/copilot-portal` (public — no login), **Tag** `latest` (or pin e.g. `0.8.0`), **Pull Policy** `Pull the image if it is not already present on the host` (choose the "always pull" option to force-refresh `latest` on every redeploy). |
+| **Container Configuration** | Leave **Hostname** blank; **Entrypoint** and **Command** empty (the image defines them); set **Timezone** (e.g. `America/Chicago`); **Restart Policy** `Unless Stopped`; leave **Disable Built-in Healthcheck** unchecked (the image ships its own `/healthz`); leave **TTY** and **Stdin** unchecked (runs headless); no **Devices**. |
+| **Container Configuration › Environment Variables** | Click **Add**, then set Name `UMASK` and Value `002` (makes agent-created files group-writable — needed for SMB sharing). Optionally add `GITHUB_TOKEN=<token>` (primary auth) and/or `PORTAL_TOKEN=<secret>` (pin the web-access token). `COPILOT_CONTAINER=1` is already baked in. |
+| **Security Context Configuration** | Leave **Privileged** unchecked, **Capabilities** empty, and **Custom User** unchecked — the image already runs as `568:568` (TrueNAS's `apps` user). Only set a custom `uid:gid` if your `/work` dataset is owned by a different account. |
+| **Network Configuration** | Leave **Host Network** unchecked (use the port mapping below, not the host's network stack); leave **Networks** empty (default bridge); leave **Custom DNS** (Nameservers / Search Domains / DNS Options) all empty. |
+| **Network Configuration › Ports** | Add a port: Port Bind Mode `Publish port on the host for external access`, Host Port `3847` (pick another if taken), Container Port `3847`, Protocol `TCP`, Host IPs none. |
+| **Portal Configuration** | Click **Add** and set Name `Web UI`, Protocol `HTTP`, **Use Node IP** checked, Port `3847`, Path `/`. Gives you a clickable button on the app card. **Tip:** once you have a session token — either the one you generate from the portal UI on first visit or a pinned `PORTAL_TOKEN` — edit Path to `/?token=<that-value>` so the button opens already signed in. The token is stored in the app config, so only do this on a trusted/personal NAS. |
+| **Storage Configuration** | Add the three mounts below. |
+
+**Storage Configuration** — add three mounts. For every entry, leave **Read Only**
+and **Enable ACL** off; you only set the **Type**, the **Mount Path** (the
+in-container path), and the one type-specific field:
+
+| Type | Mount Path | Then set | Holds |
+| --- | --- | --- | --- |
+| `ixVolume` | `/home/copilot` | Dataset Name `copilot-home` | Auth, sessions, skills, agents, and agent-installed tools. |
+| `ixVolume` | `/app/data` | Dataset Name `portal-data` | Portal session token + saved PAT. |
+| `Host Path` | `/work` | Host Path, e.g. `/mnt/SSDs/copilot-work` | The agent's working dir — share it over SMB. Must be writable by `568:568`. |
+
+> **Why ACL/user are left alone:** the image already runs as `568:568` (TrueNAS's
+> `apps` user), so you don't set a user unless your `/work` dataset is owned by a
+> different account. Leave **Enable ACL** off on all three — the volumes don't need
+> it, and for `/work` you manage the share's permissions on the dataset itself (see
+> [Sharing /work over SMB](#sharing-work-over-smb)).
+
+Click **Install**, then open `http://<nas-ip>:3847` (or click the **Web UI** button)
+and sign in.
 
 ## Updates
 
 The container is immutable, so the in-app self-updater is **disabled**
-(`COPILOT_CONTAINER=1`). Update by replacing the image:
+(`COPILOT_CONTAINER=1`). Update by **pulling a newer image** — the portal and the
+bundled `@github/copilot` CLI/SDK are versioned together in the image tag:
 
 ```bash
-git pull                       # get the new portal + pinned CLI/SDK versions
-docker compose up -d --build   # rebuild + recreate; volumes carry over
+docker compose pull            # fetch the newest :latest (or change the pinned tag)
+docker compose up -d           # recreate the container; volumes carry over
 ```
 
-Your `~/.copilot` (auth, sessions, skills) and `portal-data` persist across the
-swap. Both the portal and the bundled `@github/copilot` CLI update together at
-build time.
+On TrueNAS, edit the Custom App and bump the image tag (or re-pull `latest`), then
+redeploy. Your `copilot-home` (auth, sessions, skills, **and agent-installed
+tools**) and `portal-data` (portal token + PAT) persist across the swap.
 
 ## What changes in container mode
 
@@ -234,17 +302,16 @@ build time.
   reap the CLI subprocess on `docker stop`.
 - **The terminal Console keys** (`[u]`, `[t]`, `[r]`, …) require a TTY and are
   inactive in a detached container. Native equivalents: `docker logs` (event log),
-  the in-UI **Restart Portal / Restart Copilot** buttons, rebuild/pull (update),
+  the in-UI **Restart Portal / Restart Copilot** buttons, an image pull (update),
   `docker stop` (quit).
 
 ## Caveats / open items
 
-- **Token expiry/refresh** in a long-lived headless container — if a token expires,
-  refresh the env value (or re-`copilot login` into the mounted `~/.copilot`).
+- **Token expiry/refresh** in a long-lived headless container — if a credential
+  expires, just sign in again from the web UI (or refresh the `.env` token value).
 - **Tunnel** (remote access) is untested in-container; LAN access works out of the
   box since the server binds `0.0.0.0`. Don't expose 3847 to the internet without a
   reverse proxy + real auth.
-- **MCP servers** that themselves need binaries/tools must have those present in the
-  image or be reachable from it.
-- Single GitHub identity for everyone who can reach the portal — appropriate for a
-  personal NAS.
+- **MCP servers** — Node (`npx`) and Python (`uvx`/venv) based servers run out of
+  the box thanks to the bundled toolset. A server that needs some *other* binary
+  must have it present in the image (rebuild) or be reachable as a remote/HTTP MCP.

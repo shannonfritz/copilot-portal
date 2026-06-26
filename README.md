@@ -16,6 +16,7 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 - **Multi-device** — use the same session from PC and phone simultaneously
 - **In-portal updates** — check for and apply CLI/SDK updates without leaving the browser
 - **Remote access** — DevTunnel integration for HTTPS access from anywhere
+- **Run in a container** — optional headless/NAS deployment via a published Docker image (TrueNAS SCALE, Synology, any Docker host)
 
 ## Prerequisites
 
@@ -42,6 +43,26 @@ On first run, the script will:
 <a href="img/screenshot-tools.png"><img src="img/screenshot-tools.png" width="395" alt="Tool summaries"></a>
 <a href="img/screenshot-approvals.png"><img src="img/screenshot-approvals.png" width="395" alt="Approval flow"></a>
 </p>
+
+## Run in a container (headless / NAS)
+
+Prefer an always-on, headless deployment (TrueNAS SCALE, Synology, or any Docker
+host)? A published image bundles the portal **and** the Copilot CLI with a ready
+agent toolset (Python/`uv`, `git`, `gh`, `jq`, PowerShell, …):
+
+```bash
+docker run -d -p 3847:3847 \
+  -v copilot-home:/home/copilot \
+  -v portal-data:/app/data \
+  -v "$(pwd)/work:/work" \
+  ghcr.io/shannonfritz/copilot-portal:latest
+# then open http://<host>:3847 and sign in to GitHub from the web UI
+```
+
+Or use the repo's `docker-compose.yml`. Auth, sessions, and agent-installed tools
+persist in the `copilot-home` volume across image updates. See
+**[docs/DOCKER.md](docs/DOCKER.md)** for the full guide — volumes, authentication,
+the TrueNAS Custom App walkthrough, sharing `/work` over SMB, and updates.
 
 ## Console Keys
 

@@ -85,7 +85,7 @@ ARG PWSH_VERSION=7.4.6
 ARG UV_VERSION=0.11.24
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq \
+      ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq gosu \
       python3 python3-venv python3-pip libicu72 lsof tzdata \
  && mkdir -p -m 755 /etc/apt/keyrings \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -143,6 +143,8 @@ RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
 ENV COPILOT_CONTAINER=1 \
     COPILOT_AUTO_UPDATE=0 \
     NODE_ENV=production \
+    PUID=${PUID} \
+    PGID=${PGID} \
     HOME=/home/copilot \
     PATH="/home/copilot/.local/bin:/app/node_modules/.bin:${PATH}"
 
@@ -153,5 +155,8 @@ EXPOSE 3847
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS "http://localhost:3847/healthz" > /dev/null || exit 1
 
-USER ${PUID}:${PGID}
+# NOTE: we intentionally do NOT set `USER` here. The container starts as root so
+# the entrypoint can fix ownership of freshly-mounted volumes (TrueNAS ixVolumes
+# and host bind-mounts arrive empty + root-owned), then drops to ${PUID}:${PGID}
+# via gosu before launching the app. The running process is therefore unprivileged.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
