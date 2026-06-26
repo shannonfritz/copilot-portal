@@ -30,6 +30,7 @@ All notable changes to Copilot Portal are documented here.
 - **No more self-bans** — a stale/wrong token no longer lets the client hammer the server into a rate-limit ban; it drops cleanly to the token screen
 - **Survives server restarts** — a transient `401` (e.g. while a container image update restarts the server) no longer wipes your saved token and forces re-sign-in; the client re-validates against `/api/info` + `/api/portal-token/status` and only drops to the token screen when the token is genuinely rejected
 - **Copy button fixed on plain-HTTP LAN** — falls back to `execCommand` when `navigator.clipboard` is unavailable, with a ✓ "Copied" confirmation
+- **Polished claim screen** — the first-run setup and token screens now lead with the Copilot Portal logo, show the token on its own centered line (no wrapping), and open straight to the right screen with no flash of the main UI before the token check resolves
 
 ### 🛡️ Rate-limit Logging
 - **Every blocked connection is logged** — plus a single `Banned`/`Ban lifted` line per lifecycle, so it's clear when an IP is refused and when its window expires

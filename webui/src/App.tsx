@@ -1614,10 +1614,39 @@ function SessionDrawer({
 	);
 }
 
+// Copilot Portal mark — the stylized "open ring revealing an app window" logo.
+// Shared by the app header and the portal-token claim screen.
+function PortalLogo({ className }: { className?: string }) {
+	return (
+		<svg className={className} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<defs>
+				<clipPath id="pcpOuter"><ellipse cx="8" cy="12" rx="7.5" ry="10" transform="rotate(20, 8, 12)"/></clipPath>
+			</defs>
+			{/* Outer ellipse — forms the ring body */}
+			<ellipse cx="8" cy="12" rx="7.5" ry="10" fill="currentColor" transform="rotate(20, 8, 12)"/>
+			{/* Inner ellipse punched out, offset right — left rim thicker (near), right rim thinner (far) */}
+			<ellipse cx="8.2" cy="13" rx="4.8" ry="7.8" fill="var(--bg)" transform="rotate(20, 8.2, 13)"/>
+			{/* Dark halo behind app rect */}
+			<g clipPath="url(#pcpOuter)">
+				<rect x="8" y="4" width="17" height="16" rx="2.5" fill="var(--bg)" stroke="none"/>
+			</g>
+			{/* App window */}
+			<rect x="11" y="8" width="13" height="10" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5"/>
+			<line x1="11" y1="10" x2="24" y2="10" stroke="currentColor" strokeWidth="1.5"/>
+		</svg>
+	);
+}
+
 
 export default function App() {
 	const hasSessionInUrl = !!new URLSearchParams(window.location.search).get('session');
-	const [connectionState, setConnectionState] = useState<ConnectionState>(hasSessionInUrl ? 'connecting' : 'disconnected');
+	// Decide the very first paint synchronously to avoid a flash of the main UI before
+	// the connect effect resolves auth. With no token available anywhere (first visit),
+	// we already know the portal-token claim screen is what's coming, so start there.
+	const hasAnyToken = !!new URLSearchParams(window.location.search).get('token') || !!readStoredToken();
+	const [connectionState, setConnectionState] = useState<ConnectionState>(
+		!hasAnyToken ? 'no_token' : hasSessionInUrl ? 'connecting' : 'disconnected',
+	);
 	const [cliStatus, setCliStatus] = useState<'connected' | 'disconnected' | 'restarting' | 'error'>('connected');
 	// M2 first-run auth: 'unknown' until the first /api/auth/status resolves.
 	const [authState, setAuthState] = useState<'unknown' | 'starting' | 'ok' | 'needs-auth' | 'error'>('unknown');
@@ -3543,6 +3572,10 @@ export default function App() {
 		return (
 			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
 				<div className="w-full max-w-sm rounded-xl p-8" style={{ background: 'var(--surface)' }}>
+					<div className="mb-5 flex items-center justify-center gap-2">
+						<PortalLogo className="size-9" />
+						<span className="text-lg font-semibold">Copilot Portal</span>
+					</div>
 					{ptStatus === 'loading' ? (
 						<div className="flex flex-col items-center gap-3">
 							<Spin />
@@ -3554,9 +3587,9 @@ export default function App() {
 							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
 								Make sure to copy your session token now. <strong>You won't be able to see it again.</strong> You'll need it to open this portal from any browser.
 							</p>
-							<div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-								<code className="flex-1 break-all text-left font-mono text-sm" style={{ color: 'var(--text)' }}>{ptGenerated}</code>
-								<button onClick={copyPortalToken} className="inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
+							<div className="flex flex-col gap-2 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+								<code className="block w-full break-all text-center font-mono text-sm leading-snug" style={{ color: 'var(--text)' }}>{ptGenerated}</code>
+								<button onClick={copyPortalToken} className="inline-flex shrink-0 items-center justify-center gap-1 self-center rounded-md px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
 									{ptCopied ? (
 										<><svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Copied</>
 									) : 'Copy'}
@@ -3570,17 +3603,13 @@ export default function App() {
 						<div className="flex flex-col gap-4">
 							<h1 className="text-xl font-semibold">Set up this portal</h1>
 							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-								This portal isn't protected yet. Generate a session token to lock it to you — you'll paste it whenever you open the portal in a new browser.
+								This portal isn't protected yet. Generate a session token to lock it to you — you'll need it whenever you open the portal in a new browser.
 							</p>
 							<button onClick={generatePortalToken} disabled={ptBusy} className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
 								{ptBusy ? <Spin /> : null}
 								{ptBusy ? 'Generating…' : 'Generate session token'}
 							</button>
 							{ptError ? <p className="text-xs" style={{ color: 'var(--danger, #f87171)' }}>{ptError}</p> : null}
-							<p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-								Already have a token?{' '}
-								<button onClick={() => { setPtStatus('enter'); setPtError(null); }} className="font-medium underline" style={{ color: 'var(--accent)' }}>Enter it</button>
-							</p>
 						</div>
 					) : (
 						<div className="flex flex-col gap-4">
@@ -3596,7 +3625,7 @@ export default function App() {
 								placeholder="Session token"
 								autoComplete="off"
 								spellCheck={false}
-								className="w-full rounded-lg px-3 py-2 font-mono text-sm outline-none"
+								className="w-full rounded-lg px-3 py-2 text-center font-mono text-sm outline-none"
 								style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
 							/>
 							<button onClick={submitPortalToken} disabled={ptBusy || !ptInput.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}>
@@ -4866,25 +4895,7 @@ export default function App() {
 				style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
 			>
 				<div className="flex items-center gap-2.5">
-					<svg className="size-8" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-								{/* Original logo preserved as comment:
-								  Filled oval: <ellipse cx="8" cy="12" rx="7" ry="9.5" fill/stroke, rotate(20,8,12)>
-								*/}
-								<defs>
-									<clipPath id="pcpOuter"><ellipse cx="8" cy="12" rx="7.5" ry="10" transform="rotate(20, 8, 12)"/></clipPath>
-								</defs>
-								{/* Outer ellipse — forms the ring body */}
-								<ellipse cx="8" cy="12" rx="7.5" ry="10" fill="currentColor" transform="rotate(20, 8, 12)"/>
-								{/* Inner ellipse punched out, offset right — left rim thicker (near), right rim thinner (far) */}
-								<ellipse cx="8.2" cy="13" rx="4.8" ry="7.8" fill="var(--bg)" transform="rotate(20, 8.2, 13)"/>
-								{/* Dark halo behind app rect */}
-								<g clipPath="url(#pcpOuter)">
-									<rect x="8" y="4" width="17" height="16" rx="2.5" fill="var(--bg)" stroke="none"/>
-								</g>
-								{/* App window */}
-								<rect x="11" y="8" width="13" height="10" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5"/>
-								<line x1="11" y1="10" x2="24" y2="10" stroke="currentColor" strokeWidth="1.5"/>
-							</svg>
+					<PortalLogo className="size-8" />
 					<div>
 						<span className="font-semibold">Copilot Portal</span>
 						<div className="text-xs" style={{ color: 'var(--text-muted)' }}>v{__VERSION__} · {__BUILD__}</div>
