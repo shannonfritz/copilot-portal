@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SessionPool } from './session.js';
 import { NotAuthenticatedError } from './session.js';
+import { isSafeSessionId } from './session.js';
 import { RulesStore } from './rules.js';
 import { UpdateChecker } from './updater.js';
 import type { PortalEvent, PortalInfo } from './session.js';
@@ -39,6 +40,12 @@ export class PortalServer {
 	private token: string | null;
 	/** True when the token came from the PORTAL_TOKEN env (admin-managed, not web-claimable). */
 	private tokenEnvManaged = false;
+	/** Extra hostnames (besides IP literals + localhost) permitted in the Host
+	 *  header, to defeat DNS-rebinding. Populated from PORTAL_ALLOWED_HOSTS. */
+	private allowedHosts = new Set<string>(
+		(process.env.PORTAL_ALLOWED_HOSTS ?? '')
+			.split(',').map(h => h.trim().toLowerCase()).filter(Boolean),
+	);
 	private pool: SessionPool;
 	private webuiPath: string;
 	private debugDir: string;
@@ -49,6 +56,8 @@ export class PortalServer {
 	/** Lifecycle of the CLI/auth connection, surfaced to the UI and /healthz. */
 	private authState: 'starting' | 'ok' | 'needs-auth' | 'error' = 'starting';
 	private authMessage: string | null = null;
+	/** Resolvers waiting for authState to leave the transient 'starting' state. */
+	private authSettleWaiters: Array<() => void> = [];
 	/** Active `copilot login` device-flow child + the device code/URL it emitted. */
 	private authLoginChild: ChildProcess | null = null;
 	private authDevice: { code: string; verificationUri: string } | null = null;
@@ -87,6 +96,14 @@ export class PortalServer {
 			verifyClient: ({ req }, callback) => {
 				const ip = req.socket.remoteAddress ?? 'unknown';
 				const now = Date.now();
+				// DNS-rebinding defense: reject WS upgrades whose Host header is an
+				// unknown domain (legit access is via IP literal / localhost / an
+				// allowlisted name). Defends the same-origin rebinding chain.
+				if (!this.isHostAllowed(req)) {
+					this.log(`[WS] Rejected upgrade with disallowed Host header: ${req.headers['host'] ?? '(none)'}`);
+					callback(false, 403, 'Forbidden');
+					return;
+				}
 				// Rate limit: 15 failed attempts per 60s per IP
 				const attempt = this.failedAuth.get(ip);
 				if (attempt && now < attempt.resetTime && attempt.count >= 15) {
@@ -97,7 +114,7 @@ export class PortalServer {
 				}
 				const url = new URL(req.url ?? '/', 'http://localhost');
 				const t = url.searchParams.get('token');
-				if (this.token == null || t !== this.token) {
+				if (!this.tokenMatches(t)) {
 					this.recordFailedAuth(ip);
 					callback(false, 401, 'Unauthorized');
 				} else {
@@ -123,6 +140,18 @@ export class PortalServer {
 				const historyLimit = historyParam === 'all' ? undefined : (historyParam ? parseInt(historyParam, 10) || 50 : 50);
 			const isManagement = url.searchParams.get('management') === '1';
 
+			// Reject a malformed session id before it can reach any filesystem path
+			// (events.jsonl repair, rules store). Legit IDs are CLI-generated UUIDs;
+			// a null id (auto / last-session) is fine and resolved below.
+			if (sessionId && !isSafeSessionId(sessionId)) {
+				this.log(`[${clientId}] Rejected malformed session id`);
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({ type: 'error', content: 'Invalid session id' }));
+				}
+				try { ws.close(); } catch {}
+				return;
+			}
+
 			this.log(`[${clientId}] Connected, session=${sessionId?.slice(0, 8) ?? (isManagement ? 'mgmt' : 'auto')}`);
 
 			// Management connections: no session, just here to receive broadcasts
@@ -139,7 +168,19 @@ export class PortalServer {
 
 			// Not authenticated yet: don't try to resolve/create a session (the CLI
 			// isn't usable). Tell the client to show the sign-in screen and stop here.
+			//
+			// First, if auth is still in the transient 'starting' state, wait briefly
+			// for it to settle. A client auto-reconnecting immediately after a server
+			// restart ([r]) can beat initAuth() by a fraction of a second; without this
+			// wait it would hit the branch below and get stranded with a session-less
+			// ping-only handler, silently dropping the user's next send until they
+			// manually refresh the page. 'starting' is transient (CLI is coming up),
+			// unlike 'needs-auth'/'error' which need real user action.
+			if (this.authState === 'starting') {
+				await this.waitForAuthSettled(15_000);
+			}
 			if (this.authState !== 'ok') {
+				this.log(`[${clientId}] Auth not ready (${this.authState}) — deferring session setup`);
 				if (ws.readyState === WebSocket.OPEN) {
 					ws.send(JSON.stringify({ type: 'auth_state', state: this.authState, message: this.authMessage }));
 				}
@@ -152,6 +193,24 @@ export class PortalServer {
 				ws.on('close', () => clearInterval(pingInterval));
 				return;
 			}
+
+			// Buffer client messages that arrive *before* the session handle is ready.
+			// Resolving + resuming a session can take many seconds (or stall) when it
+			// re-initializes remote/stdio MCP servers (e.g. an npx-spawned server that's
+			// slow to connect). Until then the real message handler (registered after the
+			// connect below) doesn't exist, so a prompt sent in that window would be
+			// silently dropped — the client shows "pushing…"/thinking forever and only a
+			// manual page refresh recovers (it reconnects to the now-warm pooled session).
+			// Instead we attach a temporary listener that answers pings inline and queues
+			// everything else, then flush the queue once the handle is connected.
+			let handleReady = false;
+			const earlyQueue: string[] = [];
+			const earlyListener = (data: import('ws').RawData) => {
+				const str = data.toString();
+				if (str === '{"type":"ping"}') { ws.send('{"type":"pong"}'); return; }
+				if (!handleReady) earlyQueue.push(str);
+			};
+			ws.on('message', earlyListener);
 
 			// Resolve session — use requested ID, fall back to last session
 			try {
@@ -348,6 +407,19 @@ export class PortalServer {
 				if (str === '{"type":"ping"}') { ws.send('{"type":"pong"}'); return; }
 				this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws);
 			});
+
+			// Session is now wired up: stop buffering, swap to the real handler, and
+			// replay anything the client sent while the (possibly slow) connect was in
+			// flight so no prompt is lost to a slow/stalled MCP resume.
+			handleReady = true;
+			ws.off('message', earlyListener);
+			if (earlyQueue.length) {
+				this.log(`[${clientId}] Flushing ${earlyQueue.length} buffered message(s) sent during connect`);
+				for (const str of earlyQueue) {
+					this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws);
+				}
+				earlyQueue.length = 0;
+			}
 			ws.on('error', (err) => this.log(`[${clientId}] Error: ${err.message}`));
 			ws.on('close', (code, reason) => {
 				cancelled = true;
@@ -526,10 +598,52 @@ export class PortalServer {
 		return token;
 	}
 
+	/**
+	 * DNS-rebinding defense for unauthenticated/bootstrap surfaces. A rebinding
+	 * attack relies on a victim's browser sending the *attacker's domain* in the
+	 * Host header while the connection lands on a LAN IP. We therefore accept only
+	 * IP-literal hosts (how the portal is normally reached: http://192.168.x.y:3847),
+	 * localhost, and any operator-configured names in PORTAL_ALLOWED_HOSTS (for
+	 * reverse-proxy / custom-domain deployments). Unknown domain Host headers are
+	 * rejected. Missing Host (raw clients, health probes) is allowed.
+	 */
+	private isHostAllowed(req?: http.IncomingMessage): boolean {
+		const raw = req?.headers['host'];
+		if (!raw) return true;
+		const host = raw.toLowerCase();
+		// Strip the port: handle [::1]:3847, 1.2.3.4:3847, host:3847.
+		let name = host;
+		if (name.startsWith('[')) {
+			name = name.slice(1, name.indexOf(']') > 0 ? name.indexOf(']') : undefined);
+		} else if (name.includes(':') && name.split(':').length === 2) {
+			name = name.split(':')[0];
+		}
+		if (name === 'localhost' || name === '0.0.0.0') return true;
+		// IPv4 literal
+		if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+		// IPv6 literal (the [..] form was stripped above; bare form still has colons)
+		if (name.includes(':')) return true;
+		return this.allowedHosts.has(name);
+	}
+
+	/** Constant-time comparison of a presented token against the real one.
+	 *  Defense-in-depth against remote timing attacks (the 15/60s ban already
+	 *  makes them impractical, but a non-leaky compare costs nothing). */
+	private tokenMatches(presented: string | null | undefined): boolean {
+		if (this.token == null || presented == null) return false;
+		const a = Buffer.from(presented);
+		const b = Buffer.from(this.token);
+		if (a.length !== b.length) return false;
+		return crypto.timingSafeEqual(a, b);
+	}
+
 	private checkToken(url: URL, req?: http.IncomingMessage): boolean {
 		if (this.token == null) return false;
 		const ip = req?.socket.remoteAddress ?? 'unknown';
-		if (url.searchParams.get('token') === this.token || req?.headers['authorization'] === `Bearer ${this.token}`) {
+		const authHeader = req?.headers['authorization'];
+		const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+			? authHeader.slice(7) : null;
+		if (this.tokenMatches(url.searchParams.get('token')) || this.tokenMatches(bearer)) {
 			if (req) this.clearFailedAuth(ip);
 			return true;
 		}
@@ -609,11 +723,18 @@ export class PortalServer {
 		// Portal session-token bootstrap — unauthenticated by necessity (the caller
 		// can't present a token before one exists). status leaks only a boolean;
 		// create is a one-shot claim that refuses (409) once a token is set.
+		// Both are guarded against DNS-rebinding via the Host allowlist so a
+		// remote attacker can't drive them through a victim's rebound browser.
 		if (url.pathname === '/api/portal-token/status' && method === 'GET') {
+			if (!this.isHostAllowed(req)) { res.writeHead(403); res.end('Forbidden'); return; }
 			this.sendJson(res, 200, { configured: this.token != null, envManaged: this.tokenEnvManaged });
 			return;
 		}
 		if (url.pathname === '/api/portal-token/create' && method === 'POST') {
+			if (!this.isHostAllowed(req)) {
+				this.log(`[Auth] Rejected token claim with disallowed Host header: ${req.headers['host'] ?? '(none)'}`);
+				res.writeHead(403); res.end('Forbidden'); return;
+			}
 			if (this.tokenEnvManaged) { this.sendJson(res, 409, { error: 'env_managed' }); return; }
 			if (this.token != null) { this.sendJson(res, 409, { error: 'already_configured' }); return; }
 			this.token = this.createAndPersistToken();
@@ -1450,6 +1571,7 @@ export class PortalServer {
 			try {
 				const body = await this.readBody(req);
 				const { exampleId, copyGuide, copyPrompts, name } = JSON.parse(body) as { exampleId: string; copyGuide?: boolean; copyPrompts?: boolean; name?: string };
+				if (!exampleId || !/^[a-zA-Z0-9_-]+$/.test(exampleId)) { this.sendJson(res, 400, { error: 'exampleId must be alphanumeric with dashes/underscores only' }); return; }
 				const targetName = name || exampleId;
 				if (!/^[a-zA-Z0-9_-]+$/.test(targetName)) { this.sendJson(res, 400, { error: 'name must be alphanumeric with dashes/underscores only' }); return; }
 				const exBase = path.join(__dirname, '..', 'examples');
@@ -2141,7 +2263,30 @@ export class PortalServer {
 	private setAuthState(state: 'starting' | 'ok' | 'needs-auth' | 'error', message: string | null = null): void {
 		this.authState = state;
 		this.authMessage = message;
+		// Release anything waiting for auth to leave the transient 'starting' state.
+		if (state !== 'starting' && this.authSettleWaiters.length) {
+			const waiters = this.authSettleWaiters;
+			this.authSettleWaiters = [];
+			for (const w of waiters) w();
+		}
 		this.broadcastAll({ type: 'auth_state', state, message });
+	}
+
+	/**
+	 * Resolve once authState is no longer the transient 'starting' state (i.e. it
+	 * has settled to 'ok', 'needs-auth', or 'error'), or after `timeoutMs`. Used by
+	 * the WS connection handler so a client auto-reconnecting in the brief window
+	 * right after a server restart — before initAuth() finishes — waits for auth to
+	 * confirm instead of being stranded with a session-less ping-only handler.
+	 */
+	private waitForAuthSettled(timeoutMs: number): Promise<void> {
+		if (this.authState !== 'starting') return Promise.resolve();
+		return new Promise<void>((resolve) => {
+			let done = false;
+			const finish = () => { if (!done) { done = true; resolve(); } };
+			this.authSettleWaiters.push(finish);
+			setTimeout(finish, timeoutMs);
+		});
 	}
 
 	/**
@@ -2434,7 +2579,12 @@ export class PortalServer {
 	private initDebugFiles() {
 		try {
 			if (!fs.existsSync(this.debugDir)) fs.mkdirSync(this.debugDir, { recursive: true });
-			this.logStream = fs.createWriteStream(path.join(this.debugDir, 'server.log'), { flags: 'w' });
+			// Preserve the previous process's log (single generation) so a [r] restart
+			// followed by a failure is fully diagnosable — the new process truncates
+			// server.log, which would otherwise discard the very session that hit the bug.
+			const logPath = path.join(this.debugDir, 'server.log');
+			try { if (fs.existsSync(logPath)) fs.renameSync(logPath, logPath + '.prev'); } catch { /* best-effort */ }
+			this.logStream = fs.createWriteStream(logPath, { flags: 'w' });
 		} catch (e) {
 			process.stderr.write(`[Debug] Could not init debug files: ${e}\n`);
 		}

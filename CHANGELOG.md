@@ -49,6 +49,22 @@ All notable changes to Copilot Portal are documented here.
 - **Pre-release safe** — `-rc` tags publish as pre-releases, never move the image `:latest` pointer, and are excluded from the in-app updater (which reads `releases/latest`)
 - **Drift-free build counter** — CI stamps the committed `BUILD` value as-is; the counter is advanced only by local validation builds
 
+### 🔄 Reconnect resilience
+- **Safe to disconnect mid-turn** — a turn that finishes while a client is disconnected (e.g. you lock your phone) now renders correctly on reconnect; the final assistant message is reconciled from server history by content, not just message count, so it no longer stays invisible until a manual refresh
+- **No more stranded tool spinner** — reconnecting after a tool ran no longer leaves a "Running" tool card spinning forever above the history; live tool cards are cleared on each reconnect and a genuinely active turn re-streams its in-flight tools
+- **Restart-then-send works without a refresh** — pressing `[r]` to restart the portal and immediately sending no longer hangs; a client that auto-reconnects in the brief window before auth re-confirms now waits for auth to settle instead of being stranded with a session-less connection
+- **Buffered first send during a slow resume** — messages sent before a (potentially slow) session resume + MCP re-init finishes are queued and flushed once the session is ready, instead of being silently dropped
+
+### 🛡️ Approval-rule hardening
+- **Prefix shell rules can't be smuggled** — a `prefix *` approval rule (e.g. `git *`) now only auto-approves a single simple command; chained, piped, redirected, or command-substituted input falls back to the human approval gate instead of being silently approved
+- **Session-id validation** — websocket and rules-store paths reject malformed session ids before they can reach the filesystem
+- **Hardened token + host checks** — portal-token comparison is timing-safe and disallowed hosts/paths return `403`
+
+### 🔧 Stability & diagnostics
+- **Self-update no longer falsely fails** — the updater's command buffer was raised to 64 MB so a verbose `npm ci` + build no longer aborts with a max-buffer error and reports a successful update as failed
+- **Clearer pool/MCP logs** — connection logs now show `Resuming <session> — connecting N MCP server(s): …` before the resume, and per-session `[Event]` lines are tagged with their session id so multi-session activity is easy to follow
+- **Crash-surviving debug log** — the previous `server.log` is preserved as `server.log.prev` across a restart so a restart-triggered issue can still be diagnosed
+
 ## v0.7.5
 
 ### 💬 Chat & Queue

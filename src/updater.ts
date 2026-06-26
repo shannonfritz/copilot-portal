@@ -310,7 +310,10 @@ function isNewer(a: string, b: string): boolean {
 /** Run a shell command and return stdout. Rejects on non-zero exit. */
 function runCommand(cmd: string, cwd: string): Promise<string> {
 	return new Promise((resolve, reject) => {
-		exec(cmd, { cwd, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
+		// maxBuffer raised to 64MB: `npm ci` + build emit far more than the 1MB
+		// default, which would otherwise abort with ERR_CHILD_PROCESS_STDIO_MAXBUFFER
+		// and report the update as failed even when it actually succeeded.
+		exec(cmd, { cwd, timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
 			if (err) {
 				const details = [stderr, stdout, err.message].filter(s => s?.trim()).join('\n');
 				reject(new Error(`${cmd} failed: ${details}`));

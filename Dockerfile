@@ -137,6 +137,12 @@ RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
 #    from rebuilding/pulling the image, not from mutating this running container).
 #  - COPILOT_AUTO_UPDATE=0 stops the CLI layer from self-updating too.
 #  - HOME points at the non-root user's home so ~/.copilot resolves there.
+#  - PORTAL_WORKSPACE_DIR=/work makes new sessions auto-create their per-session
+#    workspace (YYMMDD-NN) under the mounted /work volume by default. Without this
+#    the portal falls back to <appRoot>/work (/app/work) — ephemeral and NOT the
+#    bind mount — so workspaces wouldn't survive updates or appear over SMB. Setting
+#    it here means a bare `docker run` or a TrueNAS Custom App works with no extra
+#    env var (compose still sets the same value explicitly).
 #  - PATH puts ~/.local/bin first so agent-installed tools (pip --user, uv tool
 #    install) are runnable by name; the CLI's shells are non-interactive and don't
 #    source ~/.profile, so this must be set explicitly here.
@@ -146,6 +152,7 @@ ENV COPILOT_CONTAINER=1 \
     PUID=${PUID} \
     PGID=${PGID} \
     HOME=/home/copilot \
+    PORTAL_WORKSPACE_DIR=/work \
     PATH="/home/copilot/.local/bin:/app/node_modules/.bin:${PATH}"
 
 EXPOSE 3847

@@ -40,6 +40,16 @@ import * as crypto from 'node:crypto';
 import * as net from 'node:net';
 
 /**
+ * True if `id` is a safe session/store identifier — no path separators, no `..`
+ * traversal, no NUL. Copilot CLI session IDs are generated UUIDs (hex + dashes),
+ * which match this. Anything else is rejected before it is interpolated into a
+ * filesystem path (events.jsonl repair, rules store, etc.).
+ */
+export function isSafeSessionId(id: string | null | undefined): id is string {
+	return typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[A-Za-z0-9_-]+$/.test(id);
+}
+
+/**
  * Thrown by SessionPool.start() when the Copilot CLI is reachable/launchable but
  * has no valid GitHub credentials. The server catches this to enter a non-fatal
  * "needs-auth" state (show a sign-in screen) instead of crash-looping.
@@ -639,7 +649,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log('[Session] Proactively compacting context before send...');
 			this.broadcast({ type: 'thinking', content: 'Compacting context…' });
 			try {
-				await this.session.rpc.compaction.compact();
+				await this.session.rpc.history.compact();
 				this.log('[Session] Proactive compaction complete');
 				// tokensSinceCompaction will be reset by the session.compaction_complete event
 			} catch (e) {
@@ -684,7 +694,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				this.log('[Session] 400 on send — compacting context and retrying...');
 				this.broadcast({ type: 'thinking', content: 'Compacting context…' });
 				try {
-					await this.session.rpc.compaction.compact();
+					await this.session.rpc.history.compact();
 					this.log('[Session] Fallback compaction complete, retrying send');
 					await this.session.send({ prompt });
 					return;
@@ -1220,6 +1230,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	/** Static repair: scan events.jsonl and fix orphaned tool starts. Usable from both SessionHandle and SessionPool. */
 	private async repairOrphanedToolsDirect(sessionId: string): Promise<number> {
+		if (!isSafeSessionId(sessionId)) return 0;
 		const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
 		if (!fs.existsSync(eventsPath)) return 0;
 
@@ -1333,7 +1344,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.broadcast({ type: 'cli_input_resolved' });
 		}
 		if (this.toolsInFlight > 0) {
-			this.log(`[Event] session.idle with ${this.toolsInFlight} tools still in flight — resetting counter`);
+			this.log(`[Session] [Event] session.idle with ${this.toolsInFlight} tools still in flight — resetting counter`);
 			this.toolsInFlight = 0;
 		}
 		this.activeUserMessage = '';
@@ -1678,7 +1689,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				} else if (event.type === 'session.mcp_servers_loaded' && event.data) {
 					extra = ` ${JSON.stringify(event.data)}`;
 				}
-				this.log(`[Event] ${event.type}${extra}`);
+				this.log(`[Session] [Event] ${event.type}${extra}`);
 			}
 			const handler = this.eventHandlers[event.type];
 			if (handler) handler(event.data, gen);
@@ -1904,14 +1915,14 @@ export class SessionPool {
 			}
 		} catch { /* ignore */ }
 		if (Object.keys(servers).length > 0) {
-			this.log(`[Pool] MCP servers loaded: ${Object.keys(servers).join(', ')}`);
+			this.log(`[Pool] MCP config: ${Object.keys(servers).join(', ')}`);
 		}
 		return servers;
 	}
 
 	async discoverMcpServers(directory?: string): Promise<Array<{ name: string; type: string; source: string; enabled: boolean }>> {
 		try {
-			const result = await this.client.rpc.mcp.discover({ directory: directory ?? process.cwd() });
+			const result = await this.client.rpc.mcp.discover({ workingDirectory: directory ?? process.cwd() });
 			return result.servers ?? [];
 		} catch { return []; }
 	}
@@ -2048,6 +2059,7 @@ export class SessionPool {
 	 */
 	private async repairOrphanedTools(sessionId: string): Promise<void> {
 		try {
+			if (!isSafeSessionId(sessionId)) return;
 			const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
 			if (!fs.existsSync(eventsPath)) return;
 
@@ -2114,8 +2126,12 @@ export class SessionPool {
 		// Fetch the session's original CWD — resumeSession defaults to process.cwd() if not specified
 		const allSessions = await this.client.listSessions();
 		const meta = allSessions.find(s => s.sessionId === sessionId);
-		const sessionCwd = meta?.context?.cwd;
+		const sessionCwd = meta?.context?.workingDirectory;
 		const mcpServers = this.loadMcpServers();
+		const mcpNames = Object.keys(mcpServers);
+		if (mcpNames.length) {
+			this.log(`[Pool] Resuming ${sessionId.slice(0, 8)} — connecting ${mcpNames.length} MCP server(s): ${mcpNames.join(', ')}…`);
+		}
 		let handle!: SessionHandle;
 		const session = await this.client.resumeSession(sessionId, {
 			workingDirectory: sessionCwd,

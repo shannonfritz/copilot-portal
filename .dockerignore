@@ -5,6 +5,14 @@ dist
 releases
 data
 work
+debug
+spike
+*.tar.gz
+*.zip
+
+# Secrets — never copy a local token/secret into a build layer.
+.env
+.env.*
 
 # Local/editor/VCS noise
 .git

@@ -194,6 +194,7 @@ sets the common ones explicitly for visibility.
 | `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. |
 | `TZ` | `UTC` | Local timezone for log and workspace-folder timestamps (e.g. `America/Chicago`). |
 | `COPILOT_CONTAINER` | `1` | Container mode: disables the in-app self-updater and apply endpoints. |
+| `PORTAL_ALLOWED_HOSTS` | *(empty)* | Comma-separated extra hostnames allowed in the `Host` header (DNS-rebinding defense). IP-literal and `localhost` access always works; **only needed if you reach the portal through a custom domain or reverse proxy** (e.g. `portal.example.com,nas.local`). Unknown domain Hosts get `403`. |
 | `COPILOT_AUTO_UPDATE` | `0` | Stops the CLI layer from self-updating (image-managed instead). |
 | `PUID` / `PGID` | `568` / `568` | The uid/gid the app drops to after the root entrypoint fixes volume ownership. Also build args. Override via env (e.g. `PUID=1000`) to match a host account that owns your `/work` dataset. |
 
