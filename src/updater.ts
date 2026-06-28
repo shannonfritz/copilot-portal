@@ -97,9 +97,19 @@ export class UpdateChecker {
 			lastChecked: this.lastChecked,
 			checking: this.checking,
 			applying: this.applying,
-			restartNeeded: this.isRestartNeeded(),
+			// Never surface "restart needed" while an apply is still running — npm
+			// install rewrites the on-disk version BEFORE `npm run build` finishes,
+			// which would otherwise pop the Restart button mid-build (and a restart
+			// there corrupts node_modules/dist). Only report it once we're idle.
+			restartNeeded: this.applying ? false : this.isRestartNeeded(),
 			error: this.error,
 		};
+	}
+
+	/** True while an update (packages or portal) is being applied. Single source
+	 *  of truth used to hard-gate every restart path. */
+	isBusy(): boolean {
+		return this.applying;
 	}
 
 	/** True if on-disk versions differ from what this process loaded at startup */

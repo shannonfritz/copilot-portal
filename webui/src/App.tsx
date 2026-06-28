@@ -424,6 +424,29 @@ function CopyRichButton({ htmlRef, plainText }: { htmlRef: React.RefObject<HTMLD
 	);
 }
 
+function describeDataUrl(src: string): { mime?: string; bytes?: number } {
+	// Parse a data: URL to surface its mime type and approximate byte size.
+	const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(src);
+	if (!m) return {};
+	const mime = m[1] || undefined;
+	const isB64 = !!m[2];
+	const payload = m[3] ?? '';
+	let bytes: number | undefined;
+	if (isB64) {
+		const pad = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+		bytes = Math.max(0, Math.floor((payload.length * 3) / 4) - pad);
+	} else {
+		try { bytes = new TextEncoder().encode(decodeURIComponent(payload)).length; } catch { bytes = payload.length; }
+	}
+	return { mime, bytes };
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function AssistantMessageBlock({ content, timestamp, bytes }: { content: string; timestamp: number; bytes?: number }) {
 	const htmlRef = useRef<HTMLDivElement>(null);
 	return (
@@ -1683,6 +1706,7 @@ export default function App() {
 	const [input, setInput] = useState('');
 	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string; name: string }>>([]);
 	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+	const [lightboxDims, setLightboxDims] = useState<{ w: number; h: number } | null>(null);
 	const [isDraggingImage, setIsDraggingImage] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isStreaming, setIsStreaming] = useState(false);
@@ -2240,6 +2264,7 @@ export default function App() {
 					displayLabel?: string;
 					intermediate?: boolean;
 					role?: string;
+					images?: string[];
 				};
 
 				if (event.type === 'pong') {
@@ -2508,7 +2533,31 @@ export default function App() {
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';
 						if (event.timestamp) historyTimestampRef.current = event.timestamp;
-					} else if (event.type === 'idle') {
+						} else if (event.type === 'history_image') {
+							// A tool produced an image earlier in this conversation. Flush any
+							// pending assistant content first, then add a standalone image bubble
+							// (mirrors the live tool_complete image path).
+							if (streamingRef.current) {
+								historyBufferRef.current.push({
+									id: `hist-${historyIdCounter.current++}-a`,
+									role: 'assistant',
+									content: streamingRef.current,
+									timestamp: historyTimestampRef.current ?? Date.now(),
+									bytes: new TextEncoder().encode(streamingRef.current).length,
+								});
+								streamingRef.current = '';
+								historyTimestampRef.current = undefined;
+							}
+							if (event.images?.length) {
+								historyBufferRef.current.push({
+									id: `hist-${historyIdCounter.current++}-img`,
+									role: 'assistant',
+									content: '',
+									timestamp: event.timestamp ?? Date.now(),
+									images: event.images,
+								});
+							}
+						} else if (event.type === 'idle') {
 						if (streamingRef.current) {
 							historyBufferRef.current.push({
 								id: `hist-${historyIdCounter.current++}-a`,
@@ -2680,6 +2729,15 @@ export default function App() {
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const, content: event.content } : te));
+					// A tool may return inline image content (e.g. an MCP `view_image` tool).
+					// Surface it as a standalone assistant image message so it renders in the
+					// conversation (reuses the existing <img>+lightbox path). These arrive on
+					// the live event only and are not in events.jsonl, so we add them here.
+					if (event.images?.length) {
+						const imgs = event.images;
+						const imgKey = `img-${event.toolCallId ?? Date.now()}`;
+						setMessages(prev => prev.some(m => m.id === imgKey) ? prev : [...prev, { id: imgKey, role: 'assistant', content: '', timestamp: Date.now(), images: imgs }]);
+					}
 					const completedId = event.toolCallId;
 					// Decide whether this completion finishes a message's tool group, then
 					// (after a 2s green flash) collapse it. Read current messages from the
@@ -3261,7 +3319,13 @@ export default function App() {
 				body: JSON.stringify({ force }),
 			});
 			if (res.status === 409) {
-				const data = await res.json() as { activeSessions?: string[] };
+				const data = await res.json() as { activeSessions?: string[]; updateInProgress?: boolean; message?: string };
+				// An update is mid-flight — restarting now would corrupt the install.
+				// Don't offer a force option; just tell the user to wait.
+				if (data.updateInProgress) {
+					setNotification({ type: 'warning', message: data.message ?? 'An update is being applied. Wait for it to finish before restarting.' });
+					return;
+				}
 				const ids = data.activeSessions?.join(', ') ?? 'unknown';
 				if (confirm(`Active turns in progress (${ids}). Force restart anyway?`)) {
 					restartServer(true);
@@ -3312,8 +3376,8 @@ export default function App() {
 		try {
 			const res = await apiFetch('/api/restart-cli', { method: 'POST' });
 			if (!res.ok) {
-				const data = await res.json().catch(() => ({})) as { error?: string };
-				setNotification({ type: 'warning', message: data.error ?? 'Could not restart the Copilot server.' });
+				const data = await res.json().catch(() => ({})) as { error?: string; message?: string };
+				setNotification({ type: 'warning', message: data.message ?? data.error ?? 'Could not restart the Copilot server.' });
 				return;
 			}
 			setNotification({ type: 'info', message: 'Restarting Copilot server…' });
@@ -4592,11 +4656,35 @@ export default function App() {
 			{/* Image Lightbox */}
 			{lightboxImage && (
 				<div
-					className="fixed inset-0 z-50 flex items-center justify-center p-4"
+					className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 gap-3"
 					style={{ background: 'rgba(0,0,0,0.85)' }}
-					onClick={() => setLightboxImage(null)}
+					onClick={() => { setLightboxImage(null); setLightboxDims(null); }}
 				>
-					<img src={lightboxImage} alt="Full size" className="rounded-lg" style={{ maxWidth: '95vw', maxHeight: '90vh', objectFit: 'contain' }} onClick={(e) => e.stopPropagation()} />
+					<img
+						src={lightboxImage}
+						alt="Full size"
+						className="rounded-lg"
+						style={{ maxWidth: '95vw', maxHeight: '85vh', objectFit: 'contain' }}
+						onClick={(e) => e.stopPropagation()}
+						onLoad={(e) => setLightboxDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+					/>
+					{(() => {
+						const meta = describeDataUrl(lightboxImage);
+						const parts: string[] = [];
+						if (lightboxDims) parts.push(`${lightboxDims.w} × ${lightboxDims.h}`);
+						if (meta.mime) parts.push(meta.mime);
+						if (meta.bytes != null) parts.push(formatBytes(meta.bytes));
+						if (!parts.length) return null;
+						return (
+							<div
+								className="rounded-md px-3 py-1.5 text-xs font-mono"
+								style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.15)' }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								{parts.join('  ·  ')}
+							</div>
+						);
+					})()}
 				</div>
 			)}
 
@@ -5397,8 +5485,17 @@ export default function App() {
 										</div>
 									</details>
 								)}
+								{msg.images && msg.images.length > 0 && (
+									<div className="flex gap-2 mb-2 flex-wrap">
+										{msg.images.map((src, i) => (
+											<img key={i} src={src} alt="Image" className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} onClick={() => { setLightboxDims(null); setLightboxImage(src); }} />
+										))}
+									</div>
+								)}
 								{msg.role === 'assistant'
-									? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} bytes={msg.bytes} />
+									? (msg.content.trim() || !msg.images?.length
+										? <AssistantMessageBlock content={msg.content} timestamp={msg.timestamp} bytes={msg.bytes} />
+										: null)
 									: <>
 										{msg.askUserChoices && msg.askUserChoices.length > 0 && (
 											<details style={{ marginBottom: '6px' }}>
@@ -5418,13 +5515,6 @@ export default function App() {
 													))}
 												</div>
 											</details>
-										)}
-										{msg.images && msg.images.length > 0 && (
-											<div className="flex gap-2 mb-2 flex-wrap">
-												{msg.images.map((src, i) => (
-													<img key={i} src={src} alt="Attached" className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} onClick={() => setLightboxImage(src)} />
-												))}
-											</div>
 										)}
 										{msg.role === 'assistant' ? <AssistantMarkdown content={msg.content} /> : <div className="whitespace-pre-wrap break-words">{msg.content}</div>}
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">

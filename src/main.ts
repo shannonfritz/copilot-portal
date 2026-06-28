@@ -587,6 +587,10 @@ if (process.stdin.isTTY) {
 				break;
 			}
 			case 'r':
+				if (updateInProgress || server.isUpdateBusy()) {
+					console.log('\n  Update in progress — wait for it to finish before restarting.\n');
+					break;
+				}
 				console.log('\nRestarting...');
 				process.exit(75); // launcher catches this and relaunches
 				break;

@@ -316,3 +316,32 @@ tools**) and `portal-data` (portal token + PAT) persist across the swap.
 - **MCP servers** — Node (`npx`) and Python (`uvx`/venv) based servers run out of
   the box thanks to the bundled toolset. A server that needs some *other* binary
   must have it present in the image (rebuild) or be reachable as a remote/HTTP MCP.
+  See **Adding a local (stdio) MCP server** below for how install-time files persist.
+
+## Adding a local (stdio) MCP server
+
+Remote/HTTP MCP servers are just a URL — nothing to persist. **Local `stdio` servers**
+(a script the CLI launches, e.g. a Python `server.py`) have two parts, and **both live
+under `~/.copilot`, so both persist** via the `copilot-home` volume across container
+restarts **and** image updates:
+
+| Part | Path | Persists? |
+| --- | --- | --- |
+| Registration (command/args/env) | `~/.copilot/mcp-config.json` | ✅ in `copilot-home` |
+| The server's own files/code | `~/.copilot/mcp-servers/<name>/…` | ✅ in `copilot-home` |
+| Its runtime deps (if `--user`/`uv`) | `~/.local/…`, venvs | ✅ in `copilot-home` |
+
+Guidance:
+
+- **Add the server from *inside* the container** (via the web UI / agent), not by copying
+  a config from your desktop. The `command`/`args` paths are **OS-specific** — a desktop
+  config points at a Windows/macOS path (e.g. `C:\Users\you\.copilot\mcp-servers\…`) that
+  doesn't exist in the Linux container. Installing in-container writes a native path.
+- **Install Python deps so they persist:** the non-root user can't write system
+  site-packages (PEP 668), so use `uv`/`uvx`, a venv, or `pip install --user`. Anything in
+  `~/.local` / venvs under `~` rides the `copilot-home` volume and survives updates.
+  (System `pip install` would be lost on the next image pull *and* fails for the non-root user.)
+- **Interpreters already resolve:** `python` (aliased to `python3`), `python3`, `uv`, `uvx`,
+  and `node`/`npx` are all on `PATH` in the image — no extra setup needed to launch them.
+- **A server needing some *other* binary** (not Python/Node) must be baked into the image
+  (rebuild) — the agent can't `apt-get` at runtime as the non-root user.

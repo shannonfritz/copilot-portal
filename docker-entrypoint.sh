@@ -153,6 +153,13 @@ You are in a headless Linux container, running as a **non-root** user with **no 
 - **Persistence:** your home (`~`, including `~/.local/bin` and `~/.copilot`) persists across
   container/image updates, so tools installed there stick. Other paths (`/tmp`, `/usr`, system
   site-packages) are ephemeral and reset on update — install durable tools under `~`.
+- **Local (stdio) MCP servers:** put the server's files under `~` (e.g.
+  `~/.copilot/mcp-servers/<name>/`) and install its deps with uv/venv/`pip --user` so both the
+  code and its dependencies persist across updates. When registering it in
+  `~/.copilot/mcp-config.json`, the `command`/`args` must use **this container's paths** (e.g.
+  `/home/copilot/.copilot/mcp-servers/<name>/server.py`) — never a Windows/macOS path copied from
+  another machine, which won't exist here. `python`, `python3`, `uv`/`uvx`, and `node`/`npx` are
+  all on `PATH`, so any of them is fine as the launch command.
 - **`/work`** is the shared workspace (often exposed over the network). It may **not allow
   `chmod +x`** due to network-share ACLs, so keep executable scripts/tools under `~`, not `/work`.
 EOF

@@ -44,8 +44,8 @@
 		"typescript": "^5.0.0"
 	},
 	"dependencies": {
-		"@github/copilot": "^1.0.63",
-		"@github/copilot-sdk": "^1.0.3",
+		"@github/copilot": "^1.0.65",
+		"@github/copilot-sdk": "^1.0.4",
 		"qrcode": "^1.5.4",
 		"qrcode-terminal": "^0.12.0",
 		"ws": "^8.18.0"

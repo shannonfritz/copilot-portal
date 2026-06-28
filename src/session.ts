@@ -82,7 +82,7 @@ export interface PortalInfo {
 }
 
 export interface PortalEvent {
-	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info' | 'session_usage' | 'context_usage' | 'cli_status';
+	type: 'delta' | 'idle' | 'message_end' | 'error' | 'approval_request' | 'approval_resolved' | 'input_request' | 'tool_call' | 'tool_start' | 'tool_complete' | 'tool_update' | 'intent' | 'session_switched' | 'session_not_found' | 'session_renamed' | 'thinking' | 'reasoning_delta' | 'sync' | 'model_changed' | 'rules_list' | 'history_meta' | 'history_user' | 'history_image' | 'cli_approval_pending' | 'cli_approval_resolved' | 'cli_input_pending' | 'cli_input_resolved' | 'turn_stopping' | 'history_start' | 'history_end' | 'session_context_updated' | 'session_created' | 'session_deleted' | 'session_shield_changed' | 'approve_all_changed' | 'warning' | 'info' | 'session_usage' | 'context_usage' | 'cli_status';
 	content?: string;
 	role?: 'user' | 'assistant';
 	intermediate?: boolean; // true for assistant.message events that were mid-turn (history replay)
@@ -110,8 +110,13 @@ export interface PortalEvent {
 	images?: string[]; // data: URIs for image attachments (history replay)
 }
 
-type PendingApproval = {
-	resolve: (r: PermissionRequestResult) => void;
+/** Subset of the SDK's ToolExecutionCompleteResult we read for inline media. */
+interface ToolResultShape {
+	contents?: Array<{ type?: string; data?: string; mimeType?: string }>;
+	binaryResultsForLlm?: Array<{ type?: string; assetId?: string; data?: string; mimeType?: string; byteLength?: number }>;
+}
+
+type PendingApproval = {	resolve: (r: PermissionRequestResult) => void;
 	reject: (e: Error) => void;
 	event: PortalEvent;
 	req: PermissionRequest;
@@ -172,6 +177,18 @@ export class SessionHandle {
 	// When estimated total approaches the context limit, compact before the next portal send.
 	private tokensSinceCompaction = 0;
 	private static readonly COMPACT_TOKEN_THRESHOLD = 120_000; // ~80% of 150k context window
+	// Inline tool-result images (e.g. an MCP `view_image` tool). Caps guard against
+	// pathologically large or numerous payloads being pushed over the WS.
+	private static readonly MAX_TOOL_IMAGES = 8;
+	private static readonly MAX_TOOL_IMAGE_B64 = 12_000_000; // ~9 MB decoded per image
+	private static readonly MAX_ASSET_CACHE = 64; // FIFO cap on the per-session binary-asset cache
+	// Content-addressed binary assets (session.binary_asset) keyed by assetId. Tools emit
+	// the bytes here once (before the referencing tool.execution_complete), so we cache them
+	// and resolve `binaryResultsForLlm[].assetId` back to a renderable `data:` URI on complete.
+	// This is the GENERIC path: it covers built-in tools (e.g. `view` on an image) AND MCP
+	// tools, live AND history — not tied to any one MCP. Keyed by mimeType so it extends to
+	// audio/other media later.
+	private assetCache = new Map<string, { src: string; mimeType: string; byteLength: number }>();
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
 	knownCwd: string | undefined = undefined; // cwd known at create/resume time, before SDK metadata catches up
 
@@ -313,6 +330,15 @@ export class SessionHandle {
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
 		const events = await getSessionEvents(this.session, this.log);
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
+		return SessionHandle.buildHistoryEvents(events, limit, this.isTurnActive);
+	}
+
+	/**
+	 * Pure transform from raw SDK session events to the PortalEvent history stream.
+	 * Extracted as a static, side-effect-free function so it can be unit-tested offline
+	 * against a real events.jsonl without a live SDK connection.
+	 */
+	static buildHistoryEvents(events: Array<{ type: string; data?: unknown }>, limit: number | undefined, isTurnActive: boolean): PortalEvent[] {
 		const relevantEvents = events.filter((e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message');
 const total = relevantEvents.length;
 const slicedEvents = (limit != null && total > limit)
@@ -343,6 +369,26 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const askUserQuestions = new Map<string, string>();
 		let pendingAskUserAnswers: Array<{ question: string; content: string; choices?: string[]; timestamp?: number }> = [];
 		let currentMsgTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
+		// Pre-scan: map content-addressed assetId -> data: URI for renderable images. The
+		// bytes live in `session.binary_asset` events (persisted to events.jsonl); each
+		// referencing tool.execution_complete points at them via binaryResultsForLlm[].assetId.
+		// This is what lets tool images survive a refresh/resume — they are NOT inlined on the
+		// persisted tool.execution_complete. Generic across built-in tools and MCP servers.
+		const assetMap = new Map<string, string>();
+		for (const e of slicedEvents) {
+			if (e.type !== 'session.binary_asset') continue;
+			const a = (e as { data?: { assetId?: string; mimeType?: string; data?: string } }).data;
+			if (!a?.assetId || typeof a.data !== 'string' || a.data.length === 0) continue;
+			const mime = a.mimeType || '';
+			if (!/^image\//.test(mime)) continue; // audio/* seam: extend here + a renderer
+			if (a.data.length > SessionHandle.MAX_TOOL_IMAGE_B64) continue;
+			assetMap.set(a.assetId, `data:${mime};base64,${a.data}`);
+		}
+		// Images produced by tools in the current round, emitted as standalone image
+		// messages at round flush (positioned after the assistant turn that produced them).
+		// Carry the tool-completion timestamp so the FE (which sorts messages by timestamp)
+		// places them at the right point in the timeline instead of defaulting to now().
+		const roundImages: Array<{ src: string; ts?: number }> = [];
 
 		const flushRound = (allIntermediate = false) => {
 			// Collect all tools in this round so the final message gets the summary
@@ -383,6 +429,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					result.push({ type: 'history_user', content: qa.content, timestamp: qa.timestamp, askUserChoices: qa.choices });
 				}
 			}
+			// Emit any tool-produced images for this round as standalone image messages,
+			// positioned after the assistant turn that called the tool (mirrors live behavior).
+			for (const img of roundImages) {
+				result.push({ type: 'history_image', images: [img.src], timestamp: img.ts });
+			}
+			roundImages.length = 0;
 			roundMsgs.length = 0;
 			roundTimestamps.length = 0;
 			roundFollowingTools.length = 0;
@@ -439,7 +491,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				}
 				if (toolName !== 'report_intent') currentMsgTools.push(SessionHandle.parseToolEvent(raw.data));
 			} else if (e.type === 'tool.execution_complete') {
-				const d = raw.data as { toolCallId?: string; result?: { content?: string } };
+				const d = raw.data as { toolCallId?: string; result?: { content?: string; binaryResultsForLlm?: Array<{ assetId?: string }> } };
 				if (d.toolCallId && askUserToolIds.has(d.toolCallId)) {
 					const answer = d.result?.content ?? '';
 					const choices = askUserChoices.get(d.toolCallId);
@@ -448,6 +500,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					askUserToolIds.delete(d.toolCallId);
 					askUserChoices.delete(d.toolCallId);
 					askUserQuestions.delete(d.toolCallId);
+				}
+				// Resolve any content-addressed images this tool produced (built-in or MCP).
+				const br = d.result?.binaryResultsForLlm;
+				if (Array.isArray(br)) {
+					for (const b of br) {
+						const src = b?.assetId ? assetMap.get(b.assetId) : undefined;
+						if (src && roundImages.length < SessionHandle.MAX_TOOL_IMAGES) roundImages.push({ src, ts });
+					}
 				}
 			}
 		}
@@ -458,7 +518,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			roundPerMsgTools[roundMsgs.length - 1] = currentMsgTools;
 			currentMsgTools = [];
 		}
-		flushRound(this.isTurnActive);
+		flushRound(isTurnActive);
 		return result;
 	}
 
@@ -1128,18 +1188,106 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onToolExecutionComplete(data: unknown): void {
 		this.toolsInFlight = Math.max(0, this.toolsInFlight - 1);
-		const d = data as { toolCallId?: string; success?: boolean; error?: { message?: string } };
+		const d = data as {
+			toolCallId?: string;
+			success?: boolean;
+			error?: { message?: string };
+			result?: ToolResultShape;
+		};
 		this.log(`[Session] Tool complete (${this.toolsInFlight} remaining): ${d.toolCallId}`);
 		if (d.success === false && d.error?.message) {
 			this.log(`[Session] ⚠ Tool failed: ${d.error.message}`);
 		}
 		const errorMsg = (d.success === false && d.error?.message) ? d.error.message : undefined;
-		this.broadcast({ type: 'tool_complete', toolCallId: d.toolCallId, content: errorMsg ?? (d.success === false ? 'done' : 'success') });
+		// Tool results may carry native image content (e.g. a built-in `view` of an image
+		// file, or an MCP `view_image` tool). Resolve them generically: prefer the
+		// content-addressed `binaryResultsForLlm[].assetId` (covers built-in + MCP, and is
+		// the only shape that survives to events.jsonl), falling back to inline `contents[]`
+		// bytes that some MCP tools send live. See resolveToolImages for details.
+		const images = this.resolveToolImages(d.result);
+		if (images.length > 0) {
+			this.log(`[Session] Tool returned ${images.length} image(s): ${d.toolCallId}`);
+		}
+		this.broadcast({
+			type: 'tool_complete',
+			toolCallId: d.toolCallId,
+			content: errorMsg ?? (d.success === false ? 'done' : 'success'),
+			images: images.length > 0 ? images : undefined,
+		});
 		// Clear CLI input pending when any tool completes (ask_user resolved)
 		if (this.cliInputPending) {
 			this.cliInputPending = null;
 			this.broadcast({ type: 'cli_input_resolved' });
 		}
+	}
+
+	/**
+	 * Cache the bytes of a content-addressed binary asset. The SDK emits one
+	 * `session.binary_asset` event carrying the canonical base64 just before the
+	 * `tool.execution_complete` that references it by `assetId`. We keep renderable media
+	 * (image/* today; audio/* is a ready seam) so the complete handler can resolve it.
+	 */
+	private onBinaryAsset(data: unknown): void {
+		const d = data as { assetId?: string; mimeType?: string; byteLength?: number; data?: string; type?: string };
+		if (!d.assetId || typeof d.data !== 'string' || d.data.length === 0) return;
+		if (d.data.length > SessionHandle.MAX_TOOL_IMAGE_B64) return;
+		const mime = d.mimeType || '';
+		// Only cache media we can render inline. Audio is a deliberate seam — the data
+		// plumbing already supports it; the FE renderer is the only missing piece.
+		if (!/^image\//.test(mime) && !/^audio\//.test(mime)) return;
+		this.assetCache.set(d.assetId, {
+			src: `data:${mime || 'image/png'};base64,${d.data}`,
+			mimeType: mime || 'image/png',
+			byteLength: d.byteLength ?? 0,
+		});
+		// FIFO cap to bound memory across a long session.
+		while (this.assetCache.size > SessionHandle.MAX_ASSET_CACHE) {
+			const oldest = this.assetCache.keys().next().value;
+			if (oldest === undefined) break;
+			this.assetCache.delete(oldest);
+		}
+	}
+
+	/**
+	 * Resolve the renderable images for a completed tool result into `data:` URIs.
+	 * Order of preference (generic across built-in tools and MCP servers):
+	 *   1. `binaryResultsForLlm[].assetId` resolved via the binary-asset cache — the
+	 *      content-addressed shape used by built-in tools AND persisted to events.jsonl.
+	 *   2. `binaryResultsForLlm[]` inline base64 (defensive; some shapes inline the bytes).
+	 *   3. `contents[]` inline image blocks — sent live by some MCP tools (e.g. ComfyUI).
+	 * Falls through only when earlier sources yield nothing, so MCP images aren't double-rendered.
+	 */
+	private resolveToolImages(result: ToolResultShape | undefined): string[] {
+		const out: string[] = [];
+		const push = (src: string) => {
+			if (out.length >= SessionHandle.MAX_TOOL_IMAGES) return;
+			if (src.length > SessionHandle.MAX_TOOL_IMAGE_B64) return;
+			out.push(src);
+		};
+		const br = result?.binaryResultsForLlm;
+		if (Array.isArray(br)) {
+			for (const b of br) {
+				if (out.length >= SessionHandle.MAX_TOOL_IMAGES) break;
+				const cached = b?.assetId ? this.assetCache.get(b.assetId) : undefined;
+				if (cached && /^image\//.test(cached.mimeType)) { push(cached.src); continue; }
+				// Defensive: a result that inlines the bytes directly.
+				if (b?.type === 'image' && typeof b.data === 'string' && b.data.length > 0) {
+					push(`data:${b.mimeType || 'image/png'};base64,${b.data}`);
+				}
+			}
+		}
+		if (out.length > 0) return out;
+		// Fallback: inline contents[] image blocks (live MCP path).
+		const contents = result?.contents;
+		if (Array.isArray(contents)) {
+			for (const c of contents) {
+				if (out.length >= SessionHandle.MAX_TOOL_IMAGES) break;
+				if (c?.type === 'image' && typeof c.data === 'string' && c.data.length > 0) {
+					push(`data:${c.mimeType || 'image/png'};base64,${c.data}`);
+				}
+			}
+		}
+		return out;
 	}
 
 	private onSubagentStarted(data: unknown): void {
@@ -1639,6 +1787,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'assistant.message':                (d) => this.onAssistantMessage(d),
 		'tool.execution_start':             (d) => this.onToolExecutionStart(d),
 		'tool.execution_complete':          (d) => this.onToolExecutionComplete(d),
+		'session.binary_asset':             (d) => this.onBinaryAsset(d),
 		'subagent.started':                 (d) => this.onSubagentStarted(d),
 		'subagent.failed':                  (d) => this.onSubagentFailed(d),
 		'tool.execution_partial_result':    (d) => this.onToolExecutionPartialResult(d),

@@ -1298,6 +1298,18 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/restart' && method === 'POST') {
+			// Hard gate: never restart while an update is being applied. npm install /
+			// build / portal-zip extraction are mid-write; exiting here corrupts
+			// node_modules or dist. This is the single most important safety rail.
+			if (this.updater.isBusy()) {
+				this.sendJson(res, 409, {
+					error: 'Update in progress',
+					updateInProgress: true,
+					message: 'An update is being applied. Wait for it to finish before restarting.',
+				});
+				return;
+			}
+
 			// Check for active turns across all sessions
 			const activeSessions = this.pool.getActiveTurnSessions();
 
@@ -1328,6 +1340,14 @@ export class PortalServer {
 		}
 
 		if (url.pathname === '/api/restart-cli' && method === 'POST') {
+			if (this.updater.isBusy()) {
+				this.sendJson(res, 409, {
+					error: 'Update in progress',
+					updateInProgress: true,
+					message: 'An update is being applied. Wait for it to finish before restarting the Copilot server.',
+				});
+				return;
+			}
 			if (!this.pool.shared) {
 				this.sendJson(res, 400, { error: 'Not in connected mode — CLI is managed by SDK' });
 				return;
@@ -2223,6 +2243,12 @@ export class PortalServer {
 			else msgs.push(`Portal updated to v${status.portal!.latest}.`);
 		}
 		return msgs.join(' ') + ' Press [r] to restart.';
+	}
+
+	/** True while an update is being applied. Used by the console [r] handler to
+	 *  refuse a restart mid-update (mirrors the /api/restart server-side gate). */
+	isUpdateBusy(): boolean {
+		return this.updater.isBusy();
 	}
 
 	async start(): Promise<void> {

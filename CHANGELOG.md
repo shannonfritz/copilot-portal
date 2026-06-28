@@ -4,6 +4,15 @@ All notable changes to Copilot Portal are documented here.
 
 ## v0.8.0
 
+### 🖼️ Inline media
+- **Tool-result images render inline** — any tool that returns an image (built-in `view`, MCP `view_image`, etc.) now shows it in the conversation, both live and after refresh/resume — no special handling per tool
+- **Survives reload** — images are persisted via a content-addressed `session.binary_asset` pipeline keyed on `mimeType`, so they reappear in the right timeline position on history replay
+- **Lightbox with metadata** — click a thumbnail for a full-size view showing dimensions, type, and file size
+- **Audio-ready seam** — the binary-asset pipeline already accepts `audio/*` for future inline audio
+
+### 🔄 Update orchestration
+- **Smoother self-update flow** — update detection/apply hardened across the updater, server, and UI
+
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
 - **Runs unprivileged, fixes volumes automatically** — the entrypoint starts as root, chowns the mounted data volumes to `568:568` (TrueNAS `apps` user) on first boot, then drops to that non-root user via `gosu`; override the target with `PUID`/`PGID`
@@ -84,7 +93,7 @@ All notable changes to Copilot Portal are documented here.
 - **Icon alignment** — notification banner, PWA tip, and tool-summary SVG icons switched to flex layout for proper vertical centering
 
 ### 🔗 SDK
-- **Updated Copilot CLI & SDK** — bundles `@github/copilot` 1.0.63 and `@github/copilot-sdk` 1.0.3
+- **Updated Copilot CLI & SDK** — bundles `@github/copilot` 1.0.65 and `@github/copilot-sdk` 1.0.4
 
 ## v0.7.4
 
