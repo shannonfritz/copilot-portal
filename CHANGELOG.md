@@ -12,6 +12,7 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🔄 Update orchestration
 - **Smoother self-update flow** — update detection/apply hardened across the updater, server, and UI
+- **Container build fix** — Docker image build updated for `@github/copilot` 1.0.65's per-platform binary layout
 
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
@@ -21,7 +22,7 @@ All notable changes to Copilot Portal are documented here.
 - **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
 - **Self-healing volumes** — freshly-mounted TrueNAS ixVolumes and host bind-mounts (which arrive empty and root-owned) are chowned automatically on boot, so a Custom App "just works" with no manual `chown`; a clear, actionable error appears only if the container is *forced* to run as a non-root user (which prevents the self-heal)
 - **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
-- **Slimmer image** — strips ~270 MB of foreign-platform native binaries vendored inside the Copilot CLI (`prebuilds/*` + `mxc-bin/arm64`), keeping only the `linux-x64` builds the container actually loads; a build-time guard fails loudly if the kept binary ever goes missing
+- **Slimmer image** — `@github/copilot` ships its native runtime as per-platform optional dependencies, so the container installs only the `linux-x64` binary it actually loads (no foreign-platform binaries bundled)
 - **Persistent home + user-tool PATH** — the container's whole `~` persists on a single `copilot-home` volume (survives image updates and supports `chmod +x`), and `~/.local/bin` is on `PATH` so tools the agent installs with `pip install --user` or `uv tool install` are runnable by name and stick around
 - **Agent knows the container's constraints** — the entrypoint installs a Portal-managed `~/.copilot/instructions/copilot-portal-container.instructions.md` so the agent is told it's non-root with no `sudo`/`apt`, that system Python is PEP 668 externally-managed (use `uv`, a venv, or `pip install --user`, not `--break-system-packages`), where to put downloaded static binaries (`~/.local/bin`), what persists across updates, and that `/work` may block `chmod +x` — without touching the user's own `copilot-instructions.md`
 - **Agent tooling bundled** — `python3` (+`venv`/`pip`) and `uv`/`uvx`, plus `git`, `gh`, `wget`, `zip`/`unzip`, `xz-utils`, `patch`, `make`, `jq` (and `openssh-client`, `less`) are baked into the image so the agent can run Python and Python-based MCP servers, clone/commit/diff, use the GitHub CLI, and handle archives (including `.xz`/`.tar.xz`) out of the box; tools are added at image-build time since the non-root runtime user can't `apt install` at runtime. Use `uv`, a venv, or `pip install --user` for Python packages (system Python is PEP 668 externally-managed)
