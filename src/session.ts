@@ -108,6 +108,7 @@ export interface PortalEvent {
 	shielded?: boolean;
 	session?: unknown;
 	images?: string[]; // data: URIs for image attachments (history replay)
+	imageTool?: { toolName: string; display: string; completed: boolean }; // for history_image: the tool that produced it
 }
 
 /** Subset of the SDK's ToolExecutionCompleteResult we read for inline media. */
@@ -363,12 +364,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const roundMsgs: string[] = [];
 		const roundTimestamps: (number | undefined)[] = [];
 		const roundFollowingTools: (string | null)[] = [];
-		const roundPerMsgTools: Array<Array<{ toolName: string; display: string; completed: boolean }>>[] = []; // per-message tools
+		const roundPerMsgTools: Array<Array<{ toolName: string; display: string; completed: boolean; toolCallId?: string }>> = []; // per-message tools
 		const askUserToolIds = new Set<string>();
 		const askUserChoices = new Map<string, string[]>();
 		const askUserQuestions = new Map<string, string>();
 		let pendingAskUserAnswers: Array<{ question: string; content: string; choices?: string[]; timestamp?: number }> = [];
-		let currentMsgTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
+		let currentMsgTools: Array<{ toolName: string; display: string; completed: boolean; toolCallId?: string }> = [];
 		// Pre-scan: map content-addressed assetId -> data: URI for renderable images. The
 		// bytes live in `session.binary_asset` events (persisted to events.jsonl); each
 		// referencing tool.execution_complete points at them via binaryResultsForLlm[].assetId.
@@ -388,14 +389,24 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// messages at round flush (positioned after the assistant turn that produced them).
 		// Carry the tool-completion timestamp so the FE (which sorts messages by timestamp)
 		// places them at the right point in the timeline instead of defaulting to now().
-		const roundImages: Array<{ src: string; ts?: number }> = [];
+		const roundImages: Array<{ src: string; ts?: number; tool?: { toolName: string; display: string; completed: boolean } }> = [];
+		// toolCallIds whose result produced a renderable image, plus each tool's summary.
+		// The image is emitted as its own bubble carrying its producing tool as a caption,
+		// so that tool is excluded from the round's collapsed "N tools ran" summary.
+		const imageToolIds = new Set<string>();
+		const toolMeta = new Map<string, { toolName: string; display: string; completed: boolean }>();
 
 		const flushRound = (allIntermediate = false) => {
 			// Collect all tools in this round so the final message gets the summary
 			const allRoundTools: Array<{ toolName: string; display: string; completed: boolean }> = [];
 			for (let i = 0; i < roundMsgs.length; i++) {
 				const msgToolsRaw = roundPerMsgTools[i] ?? [];
-				const msgTools = msgToolsRaw.filter(t => t.toolName !== 'ask_user');
+				// Drop ask_user (not a user-facing "tool") and image-producing tools (those
+				// are shown as a caption on their own image bubble, not in the pill). Strip
+				// the internal toolCallId so the emitted summary matches the wire shape.
+				const msgTools = msgToolsRaw
+					.filter(t => t.toolName !== 'ask_user' && !(t.toolCallId && imageToolIds.has(t.toolCallId)))
+					.map(({ toolName, display, completed }) => ({ toolName, display, completed }));
 				allRoundTools.push(...msgTools);
 			}
 
@@ -432,7 +443,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// Emit any tool-produced images for this round as standalone image messages,
 			// positioned after the assistant turn that called the tool (mirrors live behavior).
 			for (const img of roundImages) {
-				result.push({ type: 'history_image', images: [img.src], timestamp: img.ts });
+				result.push({ type: 'history_image', images: [img.src], timestamp: img.ts, imageTool: img.tool });
 			}
 			roundImages.length = 0;
 			roundMsgs.length = 0;
@@ -489,7 +500,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 						askUserQuestions.set(toolCallId, a.question ?? '');
 					} catch { /* ignore */ }
 				}
-				if (toolName !== 'report_intent') currentMsgTools.push(SessionHandle.parseToolEvent(raw.data));
+				if (toolName !== 'report_intent') {
+					const tcId = (raw.data as { toolCallId?: string })?.toolCallId;
+					const item = SessionHandle.parseToolEvent(raw.data);
+					currentMsgTools.push({ ...item, toolCallId: tcId });
+					if (tcId) toolMeta.set(tcId, item);
+				}
 			} else if (e.type === 'tool.execution_complete') {
 				const d = raw.data as { toolCallId?: string; result?: { content?: string; binaryResultsForLlm?: Array<{ assetId?: string }> } };
 				if (d.toolCallId && askUserToolIds.has(d.toolCallId)) {
@@ -506,7 +522,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				if (Array.isArray(br)) {
 					for (const b of br) {
 						const src = b?.assetId ? assetMap.get(b.assetId) : undefined;
-						if (src && roundImages.length < SessionHandle.MAX_TOOL_IMAGES) roundImages.push({ src, ts });
+						if (src && roundImages.length < SessionHandle.MAX_TOOL_IMAGES) {
+							// Pair the image with the tool that produced it and mark that tool
+							// as image-producing so flushRound omits it from the round's pill.
+							if (d.toolCallId) imageToolIds.add(d.toolCallId);
+							const tool = d.toolCallId ? toolMeta.get(d.toolCallId) : undefined;
+							roundImages.push({ src, ts, tool });
+						}
 					}
 				}
 			}

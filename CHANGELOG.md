@@ -6,6 +6,7 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🖼️ Inline media
 - **Tool-result images render inline** — any tool that returns an image (built-in `view`, MCP `view_image`, etc.) now shows it in the conversation, both live and after refresh/resume — no special handling per tool
+- **Images are tied to the tool that made them** — each image renders in its own bubble with a provenance caption (e.g. `view — render.png`), and that tool is no longer double-listed in the collapsed "N tools ran" pill; five image tools now show as five captioned images instead of an empty "5 tools ran" above a stack of orphaned thumbnails
 - **Survives reload** — images are persisted via a content-addressed `session.binary_asset` pipeline keyed on `mimeType`, so they reappear in the right timeline position on history replay
 - **Lightbox with metadata** — click a thumbnail for a full-size view showing dimensions, type, and file size
 - **Audio-ready seam** — the binary-asset pipeline already accepts `audio/*` for future inline audio

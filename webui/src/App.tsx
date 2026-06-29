@@ -205,6 +205,7 @@ interface Message {
 	askUserChoices?: string[];
 	questionChoices?: string[];
 	images?: string[]; // data: URIs for attached images
+	imageTool?: ToolSummaryItem; // for image-only bubbles: the tool that produced the image (provenance caption)
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -1698,6 +1699,10 @@ export default function App() {
 	}, []);
 	const [toolEvents, setToolEventsState] = useState<ToolEvent[]>([]);
 	const toolEventsRef = useRef<ToolEvent[]>([]);
+	// toolCallIds whose result produced an inline image — those tools are shown as a
+	// provenance caption on their own image bubble, so they're excluded from the parent
+	// message's collapsed "N tools ran" pill to avoid listing the same tool twice.
+	const imageToolIdsRef = useRef<Set<string>>(new Set());
 	const intentionMapRef = useRef<Map<string, string>>(new Map());
 	const setToolEvents = useCallback((arg: ToolEvent[] | ((prev: ToolEvent[]) => ToolEvent[])) => {
 		// Update the ref synchronously so idle handler can read latest value before React flushes
@@ -2273,6 +2278,7 @@ export default function App() {
 					intermediate?: boolean;
 					role?: string;
 					images?: string[];
+					imageTool?: ToolSummaryItem;
 				};
 
 				if (event.type === 'pong') {
@@ -2309,6 +2315,7 @@ export default function App() {
 					// disconnect — and completed while disconnected — would leave a "Running"
 					// tool card spinning forever above the history until a full page reload.
 					setToolEvents([]);
+					imageToolIdsRef.current = new Set(); // rebuilt from history_image events on replay
 					// Reset the dequeue gate on every (re)connect. A genuinely active turn
 					// re-sets this to true via the replayed `thinking` event after history_end;
 					// leaving it stranded true would block a queued message from ever being
@@ -2563,6 +2570,7 @@ export default function App() {
 									content: '',
 									timestamp: event.timestamp ?? Date.now(),
 									images: event.images,
+									imageTool: event.imageTool,
 								});
 							}
 						} else if (event.type === 'idle') {
@@ -2743,8 +2751,19 @@ export default function App() {
 					// the live event only and are not in events.jsonl, so we add them here.
 					if (event.images?.length) {
 						const imgs = event.images;
-						const imgKey = `img-${event.toolCallId ?? Date.now()}`;
-						setMessages(prev => prev.some(m => m.id === imgKey) ? prev : [...prev, { id: imgKey, role: 'assistant', content: '', timestamp: Date.now(), images: imgs }]);
+						const tcId = event.toolCallId;
+						const imgKey = `img-${tcId ?? Date.now()}`;
+						// Pair the image with the tool that produced it: pull its summary from
+						// the just-completed tool event and render it as a caption on the image
+						// bubble. Record the toolCallId so the parent's "N tools ran" pill skips it.
+						let imageTool: ToolSummaryItem | undefined;
+						if (tcId) {
+							imageToolIdsRef.current.add(tcId);
+							const te = toolEventsRef.current.find(t => t.toolCallId === tcId);
+							const built = te ? buildToolSummary([te]) : [];
+							if (built.length) imageTool = { ...built[0], completed: true };
+						}
+						setMessages(prev => prev.some(m => m.id === imgKey) ? prev : [...prev, { id: imgKey, role: 'assistant', content: '', timestamp: Date.now(), images: imgs, imageTool }]);
 					}
 					const completedId = event.toolCallId;
 					// Decide whether this completion finishes a message's tool group, then
@@ -2772,6 +2791,7 @@ export default function App() {
 									if (m.id !== msgId || !m.toolCallIds) return m;
 									const currentTools = toolEventsRef.current;
 									const msgTools = toolCallIds
+										.filter(tcId => !imageToolIdsRef.current.has(tcId)) // image tools show on their own bubble
 										.map(tcId => currentTools.find(t => t.toolCallId === tcId))
 										.filter((t): t is ToolEvent => !!t);
 									const summary = buildToolSummary(msgTools);
@@ -2794,8 +2814,11 @@ export default function App() {
 						setToolEvents((prev) => [...prev, { id: `to-${Date.now()}`, type: 'tool_output', toolCallId: event.toolCallId, content: event.content, timestamp: Date.now() }]);
 					}
 				} else if (event.type === 'idle') {
-					// Any remaining tool events not yet collapsed — exclude failed ones (they stay visible)
-					const remainingTools = buildToolSummary(toolEventsRef.current.filter(te => !(te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done')));
+					// Any remaining tool events not yet collapsed — exclude failed ones (they stay
+					// visible) and image-producing tools (shown as a caption on their image bubble).
+					const remainingTools = buildToolSummary(toolEventsRef.current.filter(te =>
+						!imageToolIdsRef.current.has(te.toolCallId ?? '') &&
+						!(te.type === 'tool_complete' && te.content !== 'success' && te.content !== 'done')));
 					// Commit any buffered message as the final reply
 					if (pendingMsgRef.current) {
 						const pendingBytes = new TextEncoder().encode(pendingMsgRef.current.content).length;
@@ -5494,10 +5517,19 @@ export default function App() {
 									</details>
 								)}
 								{msg.images && msg.images.length > 0 && (
-									<div className="flex gap-2 mb-2 flex-wrap">
-										{msg.images.map((src, i) => (
-											<img key={i} src={src} alt="Image" className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} onClick={() => { setLightboxDims(null); setLightboxImage(src); }} />
-										))}
+									<div className="mb-2">
+										{msg.imageTool && (
+											<div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', marginBottom: '4px' }}>
+												<span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 11, height: 11 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+												<span style={{ fontWeight: 600, flexShrink: 0 }}>{msg.imageTool.toolName}</span>
+												{msg.imageTool.display && <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{msg.imageTool.display}</span>}
+											</div>
+										)}
+										<div className="flex gap-2 flex-wrap">
+											{msg.images.map((src, i) => (
+												<img key={i} src={src} alt="Image" className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity" style={{ maxHeight: 150, maxWidth: '100%', objectFit: 'contain' }} onClick={() => { setLightboxDims(null); setLightboxImage(src); }} />
+											))}
+										</div>
 									</div>
 								)}
 								{msg.role === 'assistant'
