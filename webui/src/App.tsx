@@ -2279,6 +2279,7 @@ export default function App() {
 					role?: string;
 					images?: string[];
 					imageTool?: ToolSummaryItem;
+					turnActive?: boolean;
 				};
 
 				if (event.type === 'pong') {
@@ -2337,6 +2338,22 @@ export default function App() {
 					setLoadingHistory(null);
 					if (event.sessionId && event.sessionId !== activeSessionIdRef.current) {
 						historyBufferRef.current = []; return;
+					}
+					// Authoritatively force the thinking dot OFF when the server reports no
+					// portal turn is running. The dot is otherwise inferred from a replayed
+					// `thinking` + a future `idle`; if a completion `idle` lands during the
+					// history-replay window it's routed to the history `idle` branch (which
+					// doesn't clear the dot), stranding the spinner until a manual Stop. The
+					// server stamps the truth (handle.portalTurnActive) here. We only act on
+					// the OFF case: when a turn IS active, getActiveTurnEvents emits a live
+					// `thinking` right after this event which arms the dot AND runs the
+					// queued-message dequeue fallback — so we must not pre-set turnActiveRef
+					// here, or an image-only queued message (no preceding user `sync`) would
+					// be stranded.
+					if (event.turnActive === false) {
+						turnActiveRef.current = false;
+						setIsThinking(false);
+						setThinkingText('');
 					}
 					// Flush any remaining assistant content
 					if (streamingRef.current) {

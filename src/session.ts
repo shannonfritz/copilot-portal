@@ -109,6 +109,7 @@ export interface PortalEvent {
 	session?: unknown;
 	images?: string[]; // data: URIs for image attachments (history replay)
 	imageTool?: { toolName: string; display: string; completed: boolean }; // for history_image: the tool that produced it
+	turnActive?: boolean; // on history_end: authoritative "is a portal turn running right now" so the client can sync its thinking state instead of inferring it from a replayed thinking/idle pair
 }
 
 /** Subset of the SDK's ToolExecutionCompleteResult we read for inline media. */
@@ -286,6 +287,15 @@ export class SessionHandle {
 
 	get listenerCount(): number { return this.listeners.size; }
 	get turnActive(): boolean { return this.isTurnActive; }
+
+	/**
+	 * True when a PORTAL-initiated turn is running right now — i.e. exactly when
+	 * getActiveTurnEvents() re-arms the client's thinking dot. The client syncs
+	 * its thinking state to this at history_end so a completion `idle` swallowed
+	 * by the history-replay window can't strand the spinner. A CLI turn keeps
+	 * this false (its events don't drive the portal thinking dot).
+	 */
+	get portalTurnActive(): boolean { return this.isTurnActive && this.isPortalTurn; }
 
 	/** Events to send to a newly joining client to catch up on an in-progress PORTAL turn. */
 	getActiveTurnEvents(): PortalEvent[] {

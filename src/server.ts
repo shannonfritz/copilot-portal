@@ -320,7 +320,7 @@ export class PortalServer {
 					ws.send(JSON.stringify(e));
 				}
 				if (cancelled) return;
-				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId }));
+				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
 				const activeTurnEvents = handle.getActiveTurnEvents();
 				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (isTurnActive=' + handle.turnActive + ')');
@@ -375,7 +375,7 @@ export class PortalServer {
 							ws.send(JSON.stringify(ev));
 						}
 						if (cancelled) return;
-						ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId }));
+						ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: newHandle.portalTurnActive }));
 						const activeTurnEvents = newHandle.getActiveTurnEvents();
 						for (const ev of activeTurnEvents) ws.send(JSON.stringify(ev));
 						for (const ev of newHandle.getPendingApprovalEvents()) ws.send(JSON.stringify(ev));

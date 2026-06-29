@@ -155,13 +155,20 @@ export class UpdateChecker {
 				try {
 					const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
 					const installed = pkg.version ?? 'unknown';
-					const release = await fetchLatestRelease(this.repoOwner, this.repoName, this.log);
+					// If we're running a pre-release (e.g. -rc.N), track the pre-release
+					// channel so we see newer rc's AND the eventual final; a stable build
+					// only tracks stable releases.
+					const installedIsPre = installed.includes('-');
+					const release = await fetchLatestRelease(this.repoOwner, this.repoName, installedIsPre, this.log);
 					if (release) {
 						const latestVer = release.tag.replace(/^v/, '');
 						const hasUpdate = isNewer(latestVer, installed);
 						this.portal = { installed, latest: latestVer, hasUpdate, downloadUrl: release.zipUrl };
 						if (hasUpdate) {
 							this.log(`[Update] Portal update available: v${installed} → v${latestVer}`);
+						} else if (installedIsPre && release.latestStableTag && isNewer(installed, release.latestStableTag)) {
+							const stable = release.latestStableTag.replace(/^v/, '');
+							this.log(`[Update] Portal v${installed} is a pre-release ahead of the latest stable (v${stable})`);
 						} else {
 							this.log(`[Update] Portal v${installed} is up to date (latest: v${latestVer})`);
 						}
@@ -304,17 +311,57 @@ function fetchLatestVersion(name: string, log?: (msg: string) => void): Promise<
 	});
 }
 
-/** Simple semver comparison: is `a` newer than `b`? (handles x.y.z format) */
-function isNewer(a: string, b: string): boolean {
-	const pa = a.replace(/^v/, '').split('.').map(Number);
-	const pb = b.replace(/^v/, '').split('.').map(Number);
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const va = pa[i] ?? 0;
-		const vb = pb[i] ?? 0;
-		if (va > vb) return true;
-		if (va < vb) return false;
+/** Parse a semver string into its numeric core and pre-release identifiers. */
+function parseSemver(v: string): { core: number[]; pre: (string | number)[] } {
+	const clean = v.replace(/^v/, '').trim();
+	const dash = clean.indexOf('-');
+	const coreStr = dash === -1 ? clean : clean.slice(0, dash);
+	const preStr = dash === -1 ? '' : clean.slice(dash + 1);
+	const core = coreStr.split('.').map(n => parseInt(n, 10) || 0);
+	while (core.length < 3) core.push(0);
+	const pre = preStr
+		? preStr.split('.').map(id => (/^\d+$/.test(id) ? parseInt(id, 10) : id))
+		: [];
+	return { core, pre };
+}
+
+/**
+ * Compare two pre-release identifier lists per semver §11. Returns 1 if `a`
+ * has higher precedence, -1 if lower, 0 if equal. A version with NO pre-release
+ * (e.g. `0.8.0`) outranks one that has one (e.g. `0.8.0-rc.16`).
+ */
+function comparePrerelease(a: (string | number)[], b: (string | number)[]): number {
+	if (a.length === 0 && b.length === 0) return 0;
+	if (a.length === 0) return 1;  // a is a final release, higher precedence
+	if (b.length === 0) return -1; // b is a final release, higher precedence
+	const len = Math.min(a.length, b.length);
+	for (let i = 0; i < len; i++) {
+		const ai = a[i];
+		const bi = b[i];
+		if (ai === bi) continue;
+		const aNum = typeof ai === 'number';
+		const bNum = typeof bi === 'number';
+		if (aNum && bNum) return (ai as number) > (bi as number) ? 1 : -1;
+		if (aNum) return -1; // numeric identifiers rank below alphanumeric
+		if (bNum) return 1;
+		return (ai as string) > (bi as string) ? 1 : -1;
 	}
-	return false;
+	if (a.length === b.length) return 0;
+	return a.length > b.length ? 1 : -1; // more fields = higher precedence
+}
+
+/**
+ * Semver comparison: is `a` newer than `b`? Handles `x.y.z` cores plus
+ * `-prerelease` tags, so `0.8.0` > `0.8.0-rc.16` > `0.8.0-rc.2` > `0.7.5`.
+ */
+function isNewer(a: string, b: string): boolean {
+	const pa = parseSemver(a);
+	const pb = parseSemver(b);
+	for (let i = 0; i < 3; i++) {
+		if (pa.core[i] > pb.core[i]) return true;
+		if (pa.core[i] < pb.core[i]) return false;
+	}
+	return comparePrerelease(pa.pre, pb.pre) > 0;
 }
 
 /** Run a shell command and return stdout. Rejects on non-zero exit. */
@@ -344,10 +391,28 @@ function getGitHubToken(): string | null {
 	} catch { return null; }
 }
 
-/** Fetch the latest release from GitHub Releases API (tries unauthenticated first, falls back to auth for private repos) */
-function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => void): Promise<{ tag: string; zipUrl: string } | null> {
-	const doFetch = (token?: string): Promise<{ tag: string; zipUrl: string } | null> => new Promise((resolve) => {
-		const url = `/repos/${owner}/${repo}/releases/latest`;
+type PortalRelease = { tag: string; zipUrl: string; prerelease: boolean; latestStableTag: string | null };
+
+/**
+ * Fetch the portal release to compare against. When `includePrereleases` is
+ * false (running a stable build) this hits `/releases/latest`, which GitHub
+ * defines as the newest NON-prerelease. When true (running a pre-release like
+ * an `-rc`) it lists releases and returns the newest overall by semver — so an
+ * rc tracks newer rc's AND the eventual final, while never getting stranded.
+ * Either way `latestStableTag` carries the newest non-prerelease for logging.
+ * Tries unauthenticated first, falls back to auth for private repos.
+ */
+function fetchLatestRelease(owner: string, repo: string, includePrereleases: boolean, log?: (msg: string) => void): Promise<PortalRelease | null> {
+	const zipUrlOf = (rel: { assets?: { name: string; url?: string; browser_download_url?: string }[] }, token?: string): string | null => {
+		// For private repos, use API URL (requires auth + Accept: application/octet-stream)
+		// For public repos, browser_download_url works without auth
+		const asset = (rel.assets ?? []).find(a => a.name.endsWith('.zip'));
+		return (token ? asset?.url : asset?.browser_download_url) ?? null;
+	};
+	const doFetch = (token?: string): Promise<PortalRelease | null> => new Promise((resolve) => {
+		const url = includePrereleases
+			? `/repos/${owner}/${repo}/releases?per_page=30`
+			: `/repos/${owner}/${repo}/releases/latest`;
 		const headers: Record<string, string> = { 'User-Agent': 'copilot-portal', Accept: 'application/vnd.github+json' };
 		if (token) headers['Authorization'] = `Bearer ${token}`;
 		const req = https.get({
@@ -366,13 +431,26 @@ function fetchLatestRelease(owner: string, repo: string, log?: (msg: string) => 
 			res.on('end', () => {
 				try {
 					const data = JSON.parse(body);
-					const tag = data.tag_name ?? '';
-					// Find the first .zip asset
-					const asset = (data.assets ?? []).find((a: { name: string }) => a.name.endsWith('.zip'));
-					// For private repos, use API URL (requires auth + Accept: application/octet-stream)
-					// For public repos, browser_download_url works without auth
-					const zipUrl = (token ? asset?.url : asset?.browser_download_url) ?? null;
-					resolve(tag && zipUrl ? { tag, zipUrl } : null);
+					if (Array.isArray(data)) {
+						// Pre-release channel: pick the newest release overall (incl.
+						// pre-releases) that ships a zip, and track the newest stable.
+						let chosen: PortalRelease | null = null;
+						let latestStableTag: string | null = null;
+						for (const rel of data) {
+							if (rel.draft) continue;
+							const tag: string = rel.tag_name ?? '';
+							if (!tag) continue;
+							if (!rel.prerelease && (!latestStableTag || isNewer(tag, latestStableTag))) latestStableTag = tag;
+							const zipUrl = zipUrlOf(rel, token);
+							if (!zipUrl) continue;
+							if (!chosen || isNewer(tag, chosen.tag)) chosen = { tag, zipUrl, prerelease: !!rel.prerelease, latestStableTag: null };
+						}
+						resolve(chosen ? { ...chosen, latestStableTag } : null);
+					} else {
+						const tag: string = data.tag_name ?? '';
+						const zipUrl = zipUrlOf(data, token);
+						resolve(tag && zipUrl ? { tag, zipUrl, prerelease: !!data.prerelease, latestStableTag: tag } : null);
+					}
 				} catch { resolve(null); }
 			});
 		});

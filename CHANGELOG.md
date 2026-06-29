@@ -13,7 +13,12 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🔄 Update orchestration
 - **Smoother self-update flow** — update detection/apply hardened across the updater, server, and UI
+- **Semver-aware update checks** — the version comparator now follows semver precedence: a final `0.8.0` correctly outranks `0.8.0-rc.N` (so rc users are offered the stable release), and pre-release identifiers sort numerically (`rc.2` before `rc.10`)
+- **Pre-release update channel** — pre-release builds track the pre-release channel (newer rc's *and* the eventual final), so an rc is never stranded; stable builds continue to track stable only. Running an rc ahead of the latest stable now logs a friendly "pre-release ahead of the latest stable" note
 - **Container build fix** — Docker image build updated for `@github/copilot` 1.0.65's per-platform binary layout
+
+### 🔧 Stability
+- **Reconnect no longer strands the "thinking" dot** — refreshing the browser mid-turn could leave the spinner spinning if a turn-completion event arrived during history replay; the server now stamps the authoritative turn state on `history_end` so the dot is force-cleared when no turn is actually running
 
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
