@@ -106,7 +106,7 @@ function readStoredToken(): string | null {
 //  'rejected'    — server is reachable and definitively rejects it (wrong token, or
 //                  the server has no token configured at all).
 //  'unreachable' — couldn't reach the server (down/restarting) → inconclusive.
-async function probeStoredToken(): Promise<'ok' | 'rejected' | 'unreachable'> {
+async function probeStoredToken(): Promise<'ok' | 'rejected' | 'tokenless' | 'unreachable'> {
 	const t = readStoredToken();
 	if (!t) return 'rejected';
 	try {
@@ -115,12 +115,15 @@ async function probeStoredToken(): Promise<'ok' | 'rejected' | 'unreachable'> {
 	} catch {
 		return 'unreachable';
 	}
-	// A 401 could mean the token is wrong OR the server is still booting with no token
-	// configured. The unauthenticated status endpoint is reachable either way; if we
-	// can't even reach it, treat the whole thing as a transient blip.
+	// A 401 could mean the token is wrong OR the server is still booting (mid-update
+	// restart). The status endpoint disambiguates: configured:true → server has a token
+	// and rejects ours (genuinely bad). configured:false → server has no token; the
+	// caller decides if that's a transient boot blip or a genuinely tokenless server.
 	try {
 		const s = await fetch('/api/portal-token/status', { cache: 'no-store' });
-		return s.ok ? 'rejected' : 'unreachable';
+		if (!s.ok) return 'unreachable';
+		const body = await s.json().catch(() => ({} as { configured?: boolean }));
+		return body?.configured ? 'rejected' : 'tokenless';
 	} catch {
 		return 'unreachable';
 	}
@@ -138,14 +141,19 @@ async function confirmTokenInvalid(): Promise<boolean> {
 	if (tokenCheckInFlight) return tokenCheckInFlight;
 	tokenCheckInFlight = (async () => {
 		try {
-			let rejected = 0;
+			let bad = 0; // 'rejected' (wrong token) or 'tokenless' (server has none) — both mean our token is useless
 			for (let i = 0; i < 2; i++) {
 				const verdict = await probeStoredToken();
 				if (verdict === 'ok') return false; // token works → the 401 was transient
-				if (verdict === 'rejected') rejected++;
+				if (verdict === 'rejected' || verdict === 'tokenless') bad++;
 				if (i === 0) await new Promise(r => setTimeout(r, 1200));
 			}
-			if (rejected >= 2) { invalidatePortalToken(); return true; } // genuinely bad
+			// Two confirmations ~1.2s apart: either the server rejects our token, or it
+			// genuinely has none (lost volume / cleared token.txt). The server loads its
+			// token synchronously at startup, so a persistent tokenless reply is real, not
+			// a boot blip — drop to the claim/enter screen. A lone tokenless reply (the
+			// mid-update restart window) is tolerated by the two-check requirement.
+			if (bad >= 2) { invalidatePortalToken(); return true; }
 			return false; // unreachable / momentary blip → keep the token and reconnect
 		} finally {
 			tokenCheckInFlight = null;
