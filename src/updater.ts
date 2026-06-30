@@ -53,7 +53,6 @@ export class UpdateChecker {
 	private log: (msg: string) => void;
 	/** Versions at process start — if on-disk versions differ after an apply, restart is needed */
 	private startupVersions: Record<string, string> = {};
-	private hasLoggedVersions = false;
 	private repoOwner: string;
 	private repoName: string;
 
@@ -182,12 +181,12 @@ export class UpdateChecker {
 				this.log(`[Update] No repository configured — skipping portal update check`);
 			}
 
-			// Log installed versions on first check (startup)
-			if (!this.hasLoggedVersions) {
-				this.hasLoggedVersions = true;
-				for (const p of results) {
-					this.log(`[Version] ${p.name} ${p.installed} (package)`);
-				}
+			// Report installed CLI/SDK versions on every check so a manual [u]pdate
+			// check answers "up to date — at what version?" (4h cadence = negligible
+			// noise). The startup [Versions] line is a one-shot boot snapshot and the
+			// only readout in container mode; these complement it per-check.
+			for (const p of results) {
+				this.log(`[Version] ${p.name} ${p.installed} (package)`);
 			}
 
 			const updatable = results.filter(p => p.hasUpdate);

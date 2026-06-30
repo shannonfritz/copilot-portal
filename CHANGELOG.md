@@ -23,6 +23,18 @@ All notable changes to Copilot Portal are documented here.
 - **Foreground-return resync** — returning to a backgrounded tab now requests a lightweight resync (history + active turn + pending state) over the existing socket as defense-in-depth, with a hardened ping so a dead socket reconnects cleanly
 - **`ask_user` prompts render special characters correctly** — interactive questions/choices showed literal JSON escapes (e.g. `Profile \u2192 Security` instead of `Profile → Security`); escapes are now decoded once at ingestion, fixing the live prompt, rebroadcast, and replayed history (handles arrows, em-dashes, and emoji)
 
+### 🔭 Diagnostics & versions
+- **Startup version inventory** — every boot now logs a single `[Versions]` line with the live, runtime-actual versions of Portal, the Copilot CLI, the SDK, Node, and the agent tools (`pwsh`, `uv`, `python`) — so the zip channel shows whatever it self-updated to and the container shows exactly its pins; it's the only version readout a container gets (the in-app updater is disabled there). The collector returns a structured object for reuse by a future Settings panel
+- **Container images carry version labels** — the image is stamped with `com.copilot-portal.*` OCI labels (portal/cli/sdk/node/pwsh/uv), resolved from the lockfile at build time, so `docker inspect` answers "what's baked in?" without running the container
+- **Update checks always say *which* version** — a manual `[u]`pdate check now prints the installed `[Version] <pkg> <ver> (package)` line on every check (not just the first), so "All packages up to date" is qualified by the actual versions rather than left implicit
+- **`report_intent` is now logged** — the agent's intent line (the purple-circle summary above a running tool) is logged as `[Intent] report_intent: "…"` with a `(repeat)` tag, making it easy to confirm cadence and spot a genuinely stale vs. simply un-re-reported intent
+- **Quieter console** — the high-frequency `tool.execution_partial_result` and `session.background_tasks_changed` events are dropped from the generic `[Event]` log (the former is already bracketed by tool start/complete lines, the latter has no handler); meaningful `[Event]` lines are kept for turn-sequence triage
+
+### 🆙 Toolchain & dependencies
+- **Node 24** — the container image and CI now build on Node 24 (current Active LTS); the `engines` floor stays `>=22.5.0` so the zip still runs on host Node 22+
+- **Copilot CLI 1.0.66** — bundled CLI bumped from 1.0.65 to 1.0.66 (all per-platform binaries refreshed in the lockfile)
+- **Zip dependency floors corrected** — the distributable `package.dist.json` now inherits its runtime dependency set wholesale from the dev `package.json` at package time (single source of truth), fixing a stale `@github/copilot-sdk ^0.3.0` floor and a missing CLI entry so a fresh zip install resolves the right versions
+
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)
 - **Runs unprivileged, fixes volumes automatically** — the entrypoint starts as root, chowns the mounted data volumes to `568:568` (TrueNAS `apps` user) on first boot, then drops to that non-root user via `gosu`; override the target with `PUID`/`PGID`

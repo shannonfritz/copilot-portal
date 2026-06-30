@@ -13,6 +13,7 @@ import { NotAuthenticatedError } from './session.js';
 import { isSafeSessionId } from './session.js';
 import { RulesStore } from './rules.js';
 import { UpdateChecker } from './updater.js';
+import { collectVersionInventory, formatVersionInventory } from './versions.js';
 import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2293,6 +2294,7 @@ export class PortalServer {
 			this.httpServer.listen(this.port, '0.0.0.0', () => {
 				this.initDebugFiles();
 				this.log(`[Build] v${__VERSION__} build ${__BUILD__}`);
+				try { this.log(formatVersionInventory(collectVersionInventory())); } catch { /* never block startup on version probe */ }
 				this.log(`Server started on port ${this.port}`);
 				if (this.token) {
 					// In a container getURL() resolves the container's internal Docker

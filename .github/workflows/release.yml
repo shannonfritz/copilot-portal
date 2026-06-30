@@ -48,11 +48,12 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "Tag=$TAG  Version=$VERSION  Base=$BASE  Prerelease=$PRERELEASE"
 
-      # 3. Node toolchain (matches package.json engines: >=22.5.0).
-      - name: Set up Node 22
+      # 3. Node toolchain. We ship/build on Node 24 (current Active LTS); the
+      #    engines floor stays >=22.5.0 so the zip still runs on host Node 22+.
+      - name: Set up Node 24
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
         with:
-          node-version: "22"
+          node-version: "24"
 
       # 4. Install deps. Root install runs postinstall (patch.mjs, which fixes the
       #    @github/copilot-sdk ESM import). The web UI has its own lockfile.
@@ -120,7 +121,18 @@ jobs:
           flavor: |
             latest=auto
 
-      # 11. Build the amd64 image from the Dockerfile and push it to GHCR.
+      # 11. Resolve the bundled CLI/SDK versions from the lockfile so they can be
+      #     stamped into the image as OCI-ish labels (queryable via docker inspect).
+      #     These reflect exactly what `npm ci` installed into the image.
+      - name: Resolve bundled CLI/SDK versions
+        id: deps
+        run: |
+          CLI=$(node -p "require('./package-lock.json').packages['node_modules/@github/copilot'].version")
+          SDK=$(node -p "require('./package-lock.json').packages['node_modules/@github/copilot-sdk'].version")
+          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
+          echo "sdk=$SDK" >> "$GITHUB_OUTPUT"
+
+      # 12. Build the amd64 image from the Dockerfile and push it to GHCR.
       #     gha cache speeds up repeated rc iterations.
       - name: Build & push image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7
@@ -130,6 +142,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PORTAL_VERSION=${{ steps.ver.outputs.version }}
+            CLI_VERSION=${{ steps.deps.outputs.cli }}
+            SDK_VERSION=${{ steps.deps.outputs.sdk }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

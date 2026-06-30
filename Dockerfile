@@ -10,7 +10,7 @@
 # pre-authenticated ~/.copilot directory as a volume (see docs/DOCKER.md).
 
 # ---- Stage 1: build (esbuild for the server + Vite for the web UI) ----
-FROM node:22-bookworm AS builder
+FROM node:24-bookworm AS builder
 WORKDIR /app
 
 # Install root deps first for better layer caching.
@@ -33,7 +33,7 @@ RUN npm run build
 # prebuilds/mxc-bin trim step was removed (the package no longer vendors them).
 
 # ---- Stage 2: runtime ----
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 
 # Non-root runtime user. Defaults to 568:568 — TrueNAS SCALE's "apps" user — so
@@ -136,6 +136,22 @@ ENV COPILOT_CONTAINER=1 \
     HOME=/home/copilot \
     PORTAL_WORKSPACE_DIR=/work \
     PATH="/home/copilot/.local/bin:/app/node_modules/.bin:${PATH}"
+
+# Build-time version stamps, queryable via `docker inspect` without running the
+# container. These are the PINNED build-time values; the runtime-actual versions
+# are also emitted to the console at startup ([Versions] …). The standard
+# org.opencontainers.image.* labels (version/revision/source) are applied by CI's
+# docker/metadata-action. PORTAL/CLI/SDK are passed by CI as build args (resolved
+# from the repo + lockfile); pwsh/uv reuse the install ARGs above; node is the base.
+ARG PORTAL_VERSION=unknown
+ARG CLI_VERSION=unknown
+ARG SDK_VERSION=unknown
+LABEL com.copilot-portal.portal-version="${PORTAL_VERSION}" \
+      com.copilot-portal.cli-version="${CLI_VERSION}" \
+      com.copilot-portal.sdk-version="${SDK_VERSION}" \
+      com.copilot-portal.node="24-bookworm-slim" \
+      com.copilot-portal.pwsh="${PWSH_VERSION}" \
+      com.copilot-portal.uv="${UV_VERSION}"
 
 EXPOSE 3847
 

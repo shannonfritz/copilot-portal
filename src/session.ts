@@ -207,6 +207,7 @@ export class SessionHandle {
 	private assetCache = new Map<string, { src: string; mimeType: string; byteLength: number }>();
 	lastKnownSummary: string | undefined = undefined; // tracked by getModTimeFn to detect /rename
 	knownCwd: string | undefined = undefined; // cwd known at create/resume time, before SDK metadata catches up
+	private lastIntent = ''; // last report_intent text seen, to log report cadence + detect repeats
 
 	// Accumulated session usage stats — broadcast on each assistant.usage event
 	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
@@ -1158,6 +1159,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onAssistantIntent(data: unknown): void {
 		const intent = (data as { intent?: string }).intent ?? '';
+		// Log every report_intent the SDK delivers so we can see the actual cadence: a
+		// "stale" intent line in the UI usually means the agent simply hasn't re-reported
+		// (the client holds the last value), NOT that the portal is re-broadcasting it.
+		const repeat = intent === this.lastIntent ? ' (repeat)' : '';
+		this.log(`[Intent] report_intent${repeat}: ${JSON.stringify(intent)}`);
+		this.lastIntent = intent;
 		if (intent) this.broadcast({ type: 'intent', content: intent });
 	}
 
@@ -1822,6 +1829,18 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	// --- Event dispatch ---
 
+	/** Event types suppressed from the generic [Event] log (handlers still run). High-frequency,
+	 *  low-signal chatter that other log lines already bracket. See attachListeners for rationale. */
+	private static readonly QUIET_EVENT_TYPES = new Set<string>([
+		'assistant.message_delta',
+		'assistant.streaming_delta',
+		'assistant.reasoning_delta',
+		'assistant.usage',
+		'pending_messages.modified',
+		'tool.execution_partial_result',
+		'session.background_tasks_changed',
+	]);
+
 	/** Maps SDK event types to handler methods. */
 	private readonly eventHandlers: Record<string, (data: unknown, gen: number) => void> = {
 		'assistant.turn_start':             (d, gen) => this.onAssistantTurnStart(d, gen),
@@ -1870,10 +1889,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.toolsInFlight = 0;
 		this.session.on((event) => {
 			if (this.sessionGeneration !== gen) return;
-			// Suppress noisy delta/streaming events from log
-			const quiet = event.type === 'assistant.message_delta' || event.type === 'assistant.streaming_delta'
-				|| event.type === 'assistant.reasoning_delta' || event.type === 'assistant.usage'
-				|| event.type === 'pending_messages.modified';
+			// Suppress high-frequency / low-signal events from the generic [Event] log.
+			// These still run their handlers (if any) — we only skip the catch-all log line:
+			//  - *_delta / usage / pending_messages.modified: streaming chatter, bracketed by
+			//    turn_start/turn_end and committed via assistant.message.
+			//  - tool.execution_partial_result: per-chunk streaming output, bracketed by the
+			//    tool's execution_start/execution_complete log lines.
+			//  - session.background_tasks_changed: the CLI's internal async-task tracker; has
+			//    NO handler and fires constantly — pure noise for triage.
+			const quiet = SessionHandle.QUIET_EVENT_TYPES.has(event.type);
 			if (!quiet) {
 				let extra = '';
 				if (event.type === 'session.mcp_server_status_changed' && event.data) {

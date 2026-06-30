@@ -36,13 +36,28 @@ if (noBump) {
 	writeFileSync('BUILD', `${build}\n`);
 }
 
-// 2. Read version from package.json and sync to package.dist.json
-const { version: pkgVersion } = JSON.parse(readFileSync('package.json', 'utf8'));
+// 2. Read version + runtime deps from package.json and sync to package.dist.json.
+//    package.json's `dependencies` are exactly the runtime closure (devDeps are kept
+//    separate), and the zip needs that same closure at `npm install` time — so the dist
+//    manifest INHERITS dependencies wholesale from package.json. This makes package.json
+//    the single source of truth for runtime versions and prevents the dist manifest from
+//    silently rotting (it previously hand-carried a stale `@github/copilot-sdk ^0.3.0`).
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+const pkgVersion = pkg.version;
 const distPkg = JSON.parse(readFileSync('package.dist.json', 'utf8'));
+let distChanged = false;
 if (distPkg.version !== pkgVersion) {
 	distPkg.version = pkgVersion;
-	writeFileSync('package.dist.json', JSON.stringify(distPkg, null, '\t') + '\n');
+	distChanged = true;
 	console.log(`  ⚠ Synced package.dist.json version to ${pkgVersion}`);
+}
+if (JSON.stringify(distPkg.dependencies) !== JSON.stringify(pkg.dependencies)) {
+	distPkg.dependencies = pkg.dependencies;
+	distChanged = true;
+	console.log(`  ⚠ Synced package.dist.json dependencies from package.json`);
+}
+if (distChanged) {
+	writeFileSync('package.dist.json', JSON.stringify(distPkg, null, '\t') + '\n');
 }
 console.log(`\n  Version: ${pkgVersion}  Build: ${build}\n`);
 

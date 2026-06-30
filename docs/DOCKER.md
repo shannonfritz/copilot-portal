@@ -12,7 +12,7 @@
 A single container that, on start, launches `copilot --server` on an internal
 port and the portal web server on **3847**. It includes:
 
-- **Node 22** (base image)
+- **Node 24** (base image)
 - **PowerShell 7** (`pwsh`) — the Copilot CLI uses it to run shell-command tools
 - **An agent toolset**, baked in so Copilot can actually do work in the box (the
   non-root user can't `apt install` at runtime): **Python 3** (+`venv`/`pip`) and
