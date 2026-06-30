@@ -405,7 +405,7 @@ export class PortalServer {
 				const str = data.toString();
 				// Application-level heartbeat — browser WS API doesn't expose protocol pings
 				if (str === '{"type":"ping"}') { ws.send('{"type":"pong"}'); return; }
-				this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws);
+				this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws, historyLimit);
 			});
 
 			// Session is now wired up: stop buffering, swap to the real handler, and
@@ -416,7 +416,7 @@ export class PortalServer {
 			if (earlyQueue.length) {
 				this.log(`[${clientId}] Flushing ${earlyQueue.length} buffered message(s) sent during connect`);
 				for (const str of earlyQueue) {
-					this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws);
+					this.handleMessage(str, clientId, handleRef, sessionId!, listener, ws, historyLimit);
 				}
 				earlyQueue.length = 0;
 			}
@@ -437,6 +437,7 @@ export class PortalServer {
 		sessionId: string,
 		listener: (e: PortalEvent) => void,
 		ws: WebSocket,
+		historyLimit?: number,
 	) {
 		try {
 			const handle = handleRef.current;
@@ -501,6 +502,33 @@ export class PortalServer {
 				this.log(`[${clientId}] approveAll: ${msg.approveAll}`);
 			} else if (msg.type === 'input_response' && msg.requestId != null) {
 				handle.resolveUserInput(msg.requestId, msg.answer ?? '', msg.wasFreeform ?? true);
+			} else if (msg.type === 'resync') {
+				// Lightweight catch-up replay on the EXISTING socket. A client returning
+				// from the background (e.g. a phone waking from sleep) can hold a socket
+				// that stayed OPEN-but-suspended and missed the live events for turns run
+				// elsewhere — so no fresh connection (and thus no history replay) fired,
+				// leaving it stale until a manual reselect/refresh. Replaying history here
+				// lets the client's history_end reconnect-dedup adopt any new turns. Mirrors
+				// the connect-time replay: history_start → events → history_end{turnActive}
+				// → active-turn + pending-request catch-up. Cheap no-op when nothing changed.
+				handle.getHistory(historyLimit ?? 50).then((events) => {
+					if (ws.readyState !== WebSocket.OPEN) return;
+					ws.send(JSON.stringify({ type: 'history_start', sessionId }));
+					for (const e of events) {
+						if (ws.readyState !== WebSocket.OPEN) return;
+						ws.send(JSON.stringify(e));
+					}
+					if (ws.readyState !== WebSocket.OPEN) return;
+					ws.send(JSON.stringify({ type: 'history_end', sessionId, turnActive: handle.portalTurnActive }));
+					for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
+					for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
+					for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
+					for (const e of handle.getCliPendingEvents()) ws.send(JSON.stringify(e));
+					// Repair cheap session state that may have changed from another client
+					// while this socket was suspended (parity with the connect-time replay).
+					ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));
+					ws.send(JSON.stringify({ type: 'approve_all_changed', approveAll: handle.getApproveAll() }));
+				}).catch((e) => this.log(`[${clientId}] resync error: ${e}`));
 			} else {
 				this.log(`[${clientId}] Unknown message: ${msg.type}`);
 			}

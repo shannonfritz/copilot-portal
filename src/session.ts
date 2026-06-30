@@ -74,6 +74,20 @@ const SDK_DENY = ((SDK_APPROVE as { kind: string }).kind === 'approve-once'
 export type { SessionMetadata };
 export type { ApprovalRule };
 
+// Defensively decode stray JSON unicode escape sequences (e.g. "\u2192" → "→") that can
+// survive in ask_user question/choice text when an upstream layer double-encodes the tool
+// arguments. A font issue would render tofu, never the literal 6-char escape — so seeing
+// "\u2192" means the string genuinely contains those ASCII chars. Decoding here (at the
+// single ingestion seam) fixes the live prompt, the rebroadcast, the choice echoed back as
+// the answer, and the replayed history in one place. No-op when no escape is present.
+function decodeUnicodeEscapes(s: string): string {
+	if (typeof s !== 'string' || s.indexOf('\\u') === -1) return s;
+	return s.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+function decodeUnicodeEscapesArr(arr: string[] | undefined): string[] | undefined {
+	return arr?.map(decodeUnicodeEscapes);
+}
+
 export interface PortalInfo {
 	version: string;
 	login: string;
@@ -506,8 +520,8 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					try {
 						const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
 						const a = args as { question?: string; choices?: string[] };
-						askUserChoices.set(toolCallId, a.choices ?? []);
-						askUserQuestions.set(toolCallId, a.question ?? '');
+						askUserChoices.set(toolCallId, decodeUnicodeEscapesArr(a.choices) ?? []);
+						askUserQuestions.set(toolCallId, decodeUnicodeEscapes(a.question ?? ''));
 					} catch { /* ignore */ }
 				}
 				if (toolName !== 'report_intent') {
@@ -1062,7 +1076,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const event: PortalEvent = {
 			type: 'input_request',
 			requestId,
-			inputRequest: { requestId, question: req.question, choices: req.choices, allowFreeform: req.allowFreeform },
+			inputRequest: { requestId, question: decodeUnicodeEscapes(req.question), choices: decodeUnicodeEscapesArr(req.choices), allowFreeform: req.allowFreeform },
 		};
 		this.broadcast(event);
 		return new Promise((resolve, reject) => {
@@ -1589,7 +1603,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const event: PortalEvent = {
 			type: 'input_request',
 			requestId: d.requestId,
-			inputRequest: { requestId: d.requestId, question: d.question ?? 'User input needed', choices: d.choices, allowFreeform: d.allowFreeform },
+			inputRequest: { requestId: d.requestId, question: decodeUnicodeEscapes(d.question ?? 'User input needed'), choices: decodeUnicodeEscapesArr(d.choices), allowFreeform: d.allowFreeform },
 		};
 		this.pendingInputs.set(d.requestId, { event, viaRpc: true, sdkRequestId: d.requestId });
 		this.broadcast(event);

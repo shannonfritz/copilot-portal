@@ -19,6 +19,9 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🔧 Stability
 - **Reconnect no longer strands the "thinking" dot** — refreshing the browser mid-turn could leave the spinner spinning if a turn-completion event arrived during history replay; the server now stamps the authoritative turn state on `history_end` so the dot is force-cleared when no turn is actually running
+- **Reconnect now shows turns that completed while you were away** — locking your phone while turns ran on another device left the reconnected client showing a stale view until a manual refresh/reselect; in long sessions the capped history replay was newer but *shorter* than the local view and got wrongly rejected. The client now adopts a replay whenever its tail differs (newer content), preserving any locally-queued messages
+- **Foreground-return resync** — returning to a backgrounded tab now requests a lightweight resync (history + active turn + pending state) over the existing socket as defense-in-depth, with a hardened ping so a dead socket reconnects cleanly
+- **`ask_user` prompts render special characters correctly** — interactive questions/choices showed literal JSON escapes (e.g. `Profile \u2192 Security` instead of `Profile → Security`); escapes are now decoded once at ingestion, fixing the live prompt, rebroadcast, and replayed history (handles arrows, em-dashes, and emoji)
 
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)

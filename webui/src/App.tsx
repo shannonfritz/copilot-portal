@@ -1884,6 +1884,9 @@ export default function App() {
 	const inHistoryRef = useRef(false);
 	const historyBufferRef = useRef<Message[]>([]);
 	const lastConnectTime = useRef(0);
+	// When the tab last became hidden — used to decide whether a return-to-foreground
+	// warrants a history resync (a long background can miss turns run elsewhere).
+	const hiddenAtRef = useRef(0);
 	const fastFailCount = useRef(0);
 
 	// Fetch portal info (version, user, models) once on mount
@@ -2366,22 +2369,32 @@ export default function App() {
 						});
 						streamingRef.current = '';
 					}
-					// On reconnect to the same session, check if the server's history differs
-					// from what we already have, and if so adopt it. We compare a content
-					// signature (role + content length per message) rather than just message
-					// COUNTS: a turn that completed while we were disconnected can leave us
-					// holding an empty tool-dispatching assistant bubble that the replayed
-					// history folds into the (now non-empty) final assistant message — same
-					// count, totally different content. A count-only check missed that and
-					// left the final answer invisible until a manual refresh/reselect.
+					// On reconnect to the same session, adopt the server's authoritative replay
+					// when it differs from what we hold. The reconnect replay is capped at the
+					// history limit (default 50 messages), so in a long session our LOCAL view
+					// can be longer than the replay: we loaded the last N at connect, then live
+					// events appended more, pushing us past the limit. A naive
+					// `buffer.length >= local.length` guard then REJECTS a newer-but-shorter
+					// replay, leaving the final answer invisible until a manual refresh/reselect
+					// (the exact reported phone-lock bug). We instead adopt when EITHER the
+					// replay is at least as long as our (non-queued) local view, OR the replay's
+					// last message differs from ours — i.e. newer content arrived at the tail.
+					// A pure older/truncated prefix (same tail, shorter) is NOT adopted, so we
+					// never wipe a longer local view for nothing. Locally-queued (unsent)
+					// messages are preserved across adoption — they aren't in server history.
 					const isReconnect = messagesRef.current.length > 0 && activeSessionIdRef.current === (event.sessionId ?? activeSessionIdRef.current);
 					if (isReconnect) {
+						const local = messagesRef.current;
+						const buf = historyBufferRef.current;
+						const queued = local.filter(m => m.queued);
+						const localNonQueued = queued.length ? local.filter(m => !m.queued) : local;
 						const sig = (arr: Message[]) => arr.map(m => `${m.role}:${(m.content ?? '').length}`).join('|');
-						const changed = sig(messagesRef.current) !== sig(historyBufferRef.current);
-						// Only replace when history is at least as long as what we have, so a
-						// truncated/short replay can't wipe a longer local view to avoid flicker.
-						if (changed && historyBufferRef.current.length >= messagesRef.current.length) {
-							setMessages(historyBufferRef.current);
+						const changed = sig(localNonQueued) !== sig(buf);
+						const lastLocal = localNonQueued[localNonQueued.length - 1];
+						const lastBuf = buf[buf.length - 1];
+						const tailNewer = !!lastBuf && (!lastLocal || lastLocal.role !== lastBuf.role || (lastLocal.content ?? '') !== (lastBuf.content ?? ''));
+						if (changed && (buf.length >= localNonQueued.length || tailNewer)) {
+							setMessages(queued.length ? [...buf, ...queued] : buf);
 						}
 						historyBufferRef.current = [];
 						return;
@@ -3177,7 +3190,17 @@ export default function App() {
 			if (!ws) return;
 			if (ws.readyState === WebSocket.OPEN) {
 				// Connection looks alive — send a ping to verify. If no pong within 5s, onclose fires.
-				ws.send('{"type":"ping"}');
+				// Also, if we're returning from a non-trivial background period, proactively ask the
+				// server to replay history on this socket: a suspended-but-OPEN socket can miss live
+				// events for turns run elsewhere, so no reconnect (hence no replay) would otherwise
+				// fire, leaving us stale until a manual reselect/refresh. The history_end dedup adopts
+				// only changed/longer history, so this is a cheap no-op when nothing changed.
+				const wasHiddenMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0;
+				hiddenAtRef.current = 0;
+				try {
+					ws.send('{"type":"ping"}');
+					if (wasHiddenMs > 3000) ws.send('{"type":"resync"}');
+				} catch { /* dead socket — fall through to the close timeout below → reconnect+replay */ }
 				if (heartbeatRef.current) {
 					heartbeatRef.current.timeout = setTimeout(() => ws.close(), 5000);
 				}
@@ -3188,7 +3211,10 @@ export default function App() {
 			if (ws.readyState === WebSocket.CONNECTING) return;
 			connect();
 		};
-		const onVisibility = () => { if (document.visibilityState === 'visible') checkConnection(); };
+		const onVisibility = () => {
+			if (document.visibilityState === 'hidden') { hiddenAtRef.current = Date.now(); return; }
+			checkConnection();
+		};
 		document.addEventListener('visibilitychange', onVisibility);
 		window.addEventListener('focus', checkConnection);
 		window.addEventListener('pageshow', checkConnection);
