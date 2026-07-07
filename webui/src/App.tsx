@@ -1871,6 +1871,8 @@ export default function App() {
 	const reasoningRef = useRef('');
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
+	const carriedFinalRef = useRef<Message | null>(null); // pendingMsgRef captured across a mid-turn history_start so a resync can't drop an already-emitted final message
+	const flushedInputReqRef = useRef<string | null>(null); // requestId whose pre-prompt stream we've already flushed (probes re-broadcast the same input_request)
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const inputContainerRef = useRef<HTMLDivElement>(null);
 	const isStoppingRef = useRef(false);
@@ -2310,6 +2312,14 @@ export default function App() {
 					streamingRef.current = '';
 					reasoningRef.current = '';
 					lastStreamedRef.current = '';
+					// A completed FINAL assistant message may be sitting in pendingMsgRef,
+					// buffered while it waits for `idle` to attach a trailing tool summary. A
+					// mid-turn resync/reconnect fires history_start on the SAME App instance,
+					// so blindly nulling it here would silently DISCARD an already-emitted
+					// message if the freshly-read server history hasn't persisted it yet
+					// (the "message appeared then vanished until reload" bug). Carry it over so
+					// history_end can re-attach it when the replay comes back short.
+					carriedFinalRef.current = pendingMsgRef.current;
 					pendingMsgRef.current = null;
 					isStoppingRef.current = false;
 					// Clear live tool cards from a previous connection. Completed tools are
@@ -2386,6 +2396,15 @@ export default function App() {
 					if (isReconnect) {
 						const local = messagesRef.current;
 						const buf = historyBufferRef.current;
+						// Re-attach a final message that was buffered (pendingMsgRef) when this
+						// replay began but isn't in the freshly-read history yet (persistence
+						// lag mid-turn). Without this, a resync between "message committed" and
+						// "history caught up" drops the message until a full reload.
+						const carried = carriedFinalRef.current;
+						carriedFinalRef.current = null;
+						if (carried?.content && !buf.some(m => m.role === 'assistant' && m.content === carried.content)) {
+							buf.push(carried);
+						}
 						const queued = local.filter(m => m.queued);
 						const localNonQueued = queued.length ? local.filter(m => !m.queued) : local;
 						const sig = (arr: Message[]) => arr.map(m => `${m.role}:${(m.content ?? '').length}`).join('|');
@@ -2393,7 +2412,14 @@ export default function App() {
 						const lastLocal = localNonQueued[localNonQueued.length - 1];
 						const lastBuf = buf[buf.length - 1];
 						const tailNewer = !!lastBuf && (!lastLocal || lastLocal.role !== lastBuf.role || (lastLocal.content ?? '') !== (lastBuf.content ?? ''));
-						if (changed && (buf.length >= localNonQueued.length || tailNewer)) {
+						// Mid-turn (server reports the portal turn is still active) our LIVE local
+						// tail is authoritative — a shorter history snapshot is a lagging read,
+						// NOT a truncated-but-newer view. Adopting it on tailNewer alone would
+						// wipe a just-emitted message until a full reload. The tailNewer path is
+						// only for the IDLE phone-lock case, where a newer answer completed
+						// elsewhere while we were backgrounded and the capped replay is shorter.
+						const activeTurn = event.turnActive === true;
+						if (changed && (buf.length >= localNonQueued.length || (tailNewer && !activeTurn))) {
 							setMessages(queued.length ? [...buf, ...queued] : buf);
 						}
 						historyBufferRef.current = [];
@@ -2682,6 +2708,12 @@ export default function App() {
 								const idx = prev.findIndex(m => m.role === 'user' && m.content === content);
 								if (idx !== -1) {
 									const existing = prev[idx];
+									// Only a still-QUEUED bubble should be repositioned to its ACK point
+									// (it was pinned to the bottom while unsent). An already-committed
+									// (non-queued) bubble is at its correct SDK-ordered slot — a mid-turn
+									// resync that replays the active user message must NOT drag it to
+									// "now", which would jump it down next to the final message. No-op.
+									if (!existing.queued) return prev;
 									const updated = [...prev];
 									updated[idx] = { ...existing, queued: undefined, timestamp: ackTs };
 									return updated;
@@ -3073,6 +3105,39 @@ export default function App() {
 					}
 					if (event.requestId) answeredInputsRef.current.delete(event.requestId);
 				} else if (event.type === 'input_request' && event.inputRequest) {
+					// Only act on a NEW request (probes re-broadcast the same one)
+					if (flushedInputReqRef.current !== event.inputRequest.requestId) {
+						flushedInputReqRef.current = event.inputRequest.requestId;
+						// An ask_user can fire mid-stream: user_input.requested arrives BEFORE
+						// message_end, so streamingRef still holds uncommitted deltas. Commit them
+						// as an Intermediate Message now (matching what a reload/history rebuild
+						// produces) so the user's answer lands BELOW this text and the continued
+						// stream starts a fresh box — instead of the answer rendering above a
+						// still-live Streaming Message with post-answer deltas appended in-place.
+						if (pendingMsgRef.current) {
+							const msg = pendingMsgRef.current;
+							pendingMsgRef.current = null;
+							setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
+						}
+						const pending = streamingRef.current.trim();
+						if (pending) {
+							const msg: Message = {
+								id: `msg-${Date.now()}`,
+								role: 'assistant',
+								content: pending,
+								reasoning: reasoningRef.current || undefined,
+								// NOT intermediate: text that precedes an ask_user is user-facing
+								// (a question preamble), so it gets a full Assistant bubble — matching
+								// the history rebuild, which forces followedByAskUser → intermediate:false.
+								intermediate: false,
+								timestamp: Date.now(),
+							};
+							setMessages(prev => prev.length > 0 && prev[prev.length - 1].content === msg.content && Date.now() - prev[prev.length - 1].timestamp < 2000 ? prev : [...prev, msg]);
+							streamingRef.current = '';
+							reasoningRef.current = '';
+							setStreamingContent('');
+						}
+					}
 					// Only reset if this is a new request (probe re-broadcasts the same one)
 					setPendingInput(prev => prev?.requestId === event.inputRequest.requestId ? prev : event.inputRequest);
 				} else if (event.type === 'rules_list') {

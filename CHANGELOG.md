@@ -22,6 +22,9 @@ All notable changes to Copilot Portal are documented here.
 - **Reconnect now shows turns that completed while you were away** — locking your phone while turns ran on another device left the reconnected client showing a stale view until a manual refresh/reselect; in long sessions the capped history replay was newer but *shorter* than the local view and got wrongly rejected. The client now adopts a replay whenever its tail differs (newer content), preserving any locally-queued messages
 - **Foreground-return resync** — returning to a backgrounded tab now requests a lightweight resync (history + active turn + pending state) over the existing socket as defense-in-depth, with a hardened ping so a dead socket reconnects cleanly
 - **`ask_user` prompts render special characters correctly** — interactive questions/choices showed literal JSON escapes (e.g. `Profile \u2192 Security` instead of `Profile → Security`); escapes are now decoded once at ingestion, fixing the live prompt, rebroadcast, and replayed history (handles arrows, em-dashes, and emoji)
+- **`ask_user` mid-stream prompts render in order** — when the agent asked a question mid-stream (the input request arrives before the streaming message finishes), your answer appeared *above* a still-live streaming box and the agent's later text appended in place; the client now flushes the in-progress streaming message into a settled assistant message before mounting the picker, so the preamble, question, and answer render in the correct order — matching how the same turn looks after a reload
+- **User message no longer jumps position** — a committed user bubble could momentarily reposition when its timestamp was restamped mid-turn; a `sync` for an already-committed user message is now a no-op, so the bubble stays put
+- **Mid-turn resync no longer drops the final reply** — a focus/visibility resync while a turn was still active could drop an already-emitted final assistant message until the next reload; the client now carries the final message across the resync and re-attaches it, with an active-turn guard that disables the history-shrink path while a turn is running
 
 ### 🔭 Diagnostics & versions
 - **Startup version inventory** — every boot now logs a single `[Versions]` line with the live, runtime-actual versions of Portal, the Copilot CLI, the SDK, Node, and the agent tools (`pwsh`, `uv`, `python`) — so the zip channel shows whatever it self-updated to and the container shows exactly its pins; it's the only version readout a container gets (the in-app updater is disabled there). The collector returns a structured object for reuse by a future Settings panel
@@ -32,7 +35,7 @@ All notable changes to Copilot Portal are documented here.
 
 ### 🆙 Toolchain & dependencies
 - **Node 24** — the container image and CI now build on Node 24 (current Active LTS); the `engines` floor stays `>=22.5.0` so the zip still runs on host Node 22+
-- **Copilot CLI 1.0.66** — bundled CLI bumped from 1.0.65 to 1.0.66 (all per-platform binaries refreshed in the lockfile)
+- **Copilot CLI 1.0.69** — bundled CLI bumped to 1.0.69 (latest stable; all per-platform binaries refreshed in the lockfile)
 - **Zip dependency floors corrected** — the distributable `package.dist.json` now inherits its runtime dependency set wholesale from the dev `package.json` at package time (single source of truth), fixing a stale `@github/copilot-sdk ^0.3.0` floor and a missing CLI entry so a fresh zip install resolves the right versions
 
 ### 🐳 Docker Container (experimental)

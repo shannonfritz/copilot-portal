@@ -183,6 +183,7 @@ export class SessionHandle {
 	private activeDeltaBuffer = '';
 	private activeReasoningBuffer = '';
 	private activeUserMessage = ''; // current in-flight user message (CLI or portal)
+	private activeUserMessageTs = 0; // commit timestamp of the in-flight user message, so a mid-turn resync replays its bubble at the ORIGINAL position (not "now")
 	private cliApprovalSummary: string | null = null;// set when CLI turn is waiting for tool approval
 	private cliInputPending: string | null = null; // set when CLI turn is waiting for user input
 	private mcpToolCounts: Record<string, number> = {}; // cached tool counts per MCP server
@@ -316,7 +317,7 @@ export class SessionHandle {
 	getActiveTurnEvents(): PortalEvent[] {
 		if (!this.isTurnActive || !this.isPortalTurn) return [];
 		const events: PortalEvent[] = [];
-		if (this.activeUserMessage) events.push({ type: 'sync', role: 'user', content: this.activeUserMessage });
+		if (this.activeUserMessage) events.push({ type: 'sync', role: 'user', content: this.activeUserMessage, timestamp: this.activeUserMessageTs || undefined });
 		events.push({ type: 'thinking', content: '' });
 		if (this.activeReasoningBuffer) events.push({ type: 'reasoning_delta', content: this.activeReasoningBuffer });
 		if (this.activeDeltaBuffer) events.push({ type: 'delta', content: this.activeDeltaBuffer });
@@ -748,6 +749,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.isPortalTurn = true;
 		this.wasPortalTurn = true;
 		this.activeUserMessage = prompt;
+		this.activeUserMessageTs = Date.now();
 		const attachCount = attachments?.length ?? 0;
 		this.log(`[${this.sessionId.slice(0, 8)}] Sending prompt (${prompt.length} chars${attachCount ? `, ${attachCount} attachment(s)` : ''}), ~${this.tokensSinceCompaction} tokens since last compaction`);
 
@@ -1153,7 +1155,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// carry its own timestamp; fall back to now (the moment of commit on our side).
 			const sdkTs = (data as { timestamp?: number; createdAt?: number })?.timestamp
 				?? (data as { createdAt?: number })?.createdAt;
-			this.broadcast({ type: 'sync', role: 'user', content, timestamp: typeof sdkTs === 'number' ? sdkTs : Date.now() });
+			const commitTs = typeof sdkTs === 'number' ? sdkTs : Date.now();
+			this.activeUserMessageTs = commitTs;
+			this.broadcast({ type: 'sync', role: 'user', content, timestamp: commitTs });
 		}
 	}
 
