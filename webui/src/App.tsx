@@ -3782,13 +3782,25 @@ export default function App() {
 		});
 	};
 
+	// Send/Stop cluster layout model (unified across normal turns + ask_user):
+	//  - idle (no stop available): Send fills the 44px slot.
+	//  - stop available + empty composer: the compact diagonal overlap, Stop prominent.
+	//  - stop available + composer filled: the two actions split into a vertical stack
+	//    (Stop on top, Send below) so each is a clear, separated thumb target. This is
+	//    the only genuinely hazardous state — both Stop (kills turn+queue) and Send
+	//    (queues a follow-up) are live at once — so it's the only one we un-overlap.
+	const answerFreeform = !!pendingInput && (pendingInput.allowFreeform !== false || !pendingInput.choices?.length);
+	const composerFilled = input.trim().length > 0 || pendingImages.length > 0;
+	const stopAvailable = isAgentActive || answerFreeform;
+	const stackButtons = stopAvailable && composerFilled;
+
 	// Auto-resize textarea to fit content (up to maxHeight)
 	useEffect(() => {
 		const ta = textareaRef.current;
 		if (!ta) return;
 		ta.style.height = 'auto';
 		ta.style.height = `${ta.scrollHeight}px`;
-	}, [input]);
+	}, [input, stackButtons]);
 
 	// Focus the composer when an ask_user prompt opens with a freeform answer.
 	useEffect(() => {
@@ -4052,7 +4064,6 @@ export default function App() {
 	// Ask-mode (ask_user) derived flags — used to retune the composer + Send/Stop cluster.
 	// freeformMode: the main composer doubles as the answer box (typed answers allowed).
 	// pureChoiceMode: only predefined choices, no composer — choices send immediately.
-	const answerFreeform = !!pendingInput && (pendingInput.allowFreeform !== false || !pendingInput.choices?.length);
 	const pureChoiceMode = !!pendingInput && !answerFreeform;
 
 	return (
@@ -5895,7 +5906,7 @@ export default function App() {
 						if (e.dataTransfer?.files.length) addImageFiles(e.dataTransfer.files);
 					}}
 				>
-					<div ref={inputContainerRef} className="relative flex gap-1">
+					<div ref={inputContainerRef} className="relative flex items-end gap-1">
 						<div className="flex-1 relative">
 							{/* Prompts overlay — floats above input */}
 							{showPromptsTray && sessionPrompts.length > 0 && (
@@ -5965,7 +5976,7 @@ export default function App() {
 									id="message-input"
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
-									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto' }}
+									style={{ color: 'var(--text)', minHeight: stackButtons ? 96 : 44, maxHeight: 200, overflow: 'auto', transition: 'min-height 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}
 									placeholder={answerFreeform ? 'Type your answer…' : draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
@@ -6015,43 +6026,69 @@ export default function App() {
 							</div>
 						</div>
 						</div>
-						<div className="shrink-0 grid" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: '1fr 1fr', alignSelf: 'flex-end', marginBottom: 4, justifyItems: 'center', columnGap: 6 }}>
+						<div className="shrink-0 flex items-end" style={{ alignSelf: 'flex-end', marginBottom: 4, gap: 6 }}>
 							<input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) { addImageFiles(e.target.files); e.target.value = ''; } }} />
-							{!answerFreeform && (
-							<button
-								className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
-								style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', gridColumn: 1, gridRow: 1 }}
-								type="button"
-								title="Attach image"
-								onClick={() => fileInputRef.current?.click()}
-							>
-								<svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-									<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-								</svg>
-							</button>
-							)}
+							<div className="flex flex-col items-center justify-end" style={{ gap: 4, alignSelf: 'flex-end' }}>
+								{!answerFreeform && (
+								<button
+									className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
+									style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
+									type="button"
+									title="Attach image"
+									onClick={() => fileInputRef.current?.click()}
+								>
+									<svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+										<rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+									</svg>
+								</button>
+								)}
+								{!input && messages.filter(m => m.role === 'user').length > 0 ? (
+									<button
+										type="button"
+										title="Recall last message"
+										onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
+										className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)' }}
+									>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+											<polyline points="9 10 4 15 9 20"/>
+											<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
+										</svg>
+									</button>
+								) : input ? (
+									<button
+										type="button"
+										title="Clear"
+										onClick={() => { setInput(''); textareaRef.current?.focus(); }}
+										className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)' }}
+									>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
+											<path d="M18 6L6 18M6 6l12 12"/>
+										</svg>
+									</button>
+								) : <div className="size-5" />}
+							</div>
 							<div style={{
-								gridColumn: 2, gridRow: '1 / 3',
 								position: 'relative',
-								width: 44, height: 44,
-								alignSelf: 'center',
+								width: 44, height: stackButtons ? 96 : 44,
+								alignSelf: 'flex-end',
+								transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
 							}}>
-								{/* Send — prominence flips: small during a normal turn, large while answering an ask_user */}
+								{/* Send — anchored at the baseline; small overlap during an idle turn, full-size otherwise */}
 								<button
 									className="flex items-center justify-center rounded-full border-none"
 									style={{
 										position: 'absolute',
-										zIndex: answerFreeform ? 2 : 1,
+										zIndex: 1,
 										transition: 'top 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-										width: answerFreeform ? 30 : (isAgentActive ? 23 : 44),
-										height: answerFreeform ? 30 : (isAgentActive ? 23 : 44),
-										top: answerFreeform ? 14 : (isAgentActive ? 21 : 0),
+										width: stackButtons ? 44 : (stopAvailable ? 23 : 44),
+										height: stackButtons ? 44 : (stopAvailable ? 23 : 44),
+										top: stackButtons ? 52 : (stopAvailable ? 21 : 0),
 										left: 0,
 										background: input.trim() && connectionState === 'connected' ? 'var(--primary)' : 'var(--border)',
 										color: 'white',
-										// When Send is the prominent button overlapping Stop (ask mode), a ring in the
-										// panel color carves a clean curved gap instead of a flat pixelated seam.
-										boxShadow: answerFreeform ? '0 0 0 2px var(--surface)' : 'none',
+										boxShadow: 'none',
 										cursor: input.trim() && (connectionState === 'connected' || draftSession) ? 'pointer' : 'default',
 									}}
 									disabled={(!input.trim() && pendingImages.length === 0) || (!draftSession && connectionState !== 'connected')}
@@ -6059,27 +6096,27 @@ export default function App() {
 									title={answerFreeform ? 'Send answer' : 'Send'}
 								>
 									<svg fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
-										style={{ width: answerFreeform ? 15 : (isAgentActive ? 11 : 20), height: answerFreeform ? 15 : (isAgentActive ? 11 : 20), transform: 'translate(-0.5px, 0.5px)', transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+										style={{ width: stackButtons ? 20 : (stopAvailable ? 11 : 20), height: stackButtons ? 20 : (stopAvailable ? 11 : 20), transform: 'translate(-0.5px, 0.5px)', transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
 										<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
 									</svg>
 								</button>
-								{/* Stop — large during a normal turn, small while answering an ask_user */}
+								{/* Stop — prominent overlap when composer empty; rises to a full-size button above Send when composing */}
 								<button
 									className="flex items-center justify-center rounded-full border-none"
 									style={{
 										position: 'absolute',
-										zIndex: answerFreeform ? 1 : 2,
+										zIndex: 2,
 										top: 0,
-										right: 0,
-										width: answerFreeform ? 23 : 30,
-										height: answerFreeform ? 23 : 30,
+										left: stackButtons ? 0 : 14,
+										width: stackButtons ? 44 : 30,
+										height: stackButtons ? 44 : 30,
 										background: 'var(--error)',
 										color: 'white',
-										cursor: (isAgentActive || answerFreeform) ? 'pointer' : 'default',
-										transition: 'opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-										opacity: (isAgentActive || answerFreeform) ? (isStopping ? 0.6 : 1) : 0,
-										transform: (isAgentActive || answerFreeform) ? 'scale(1)' : 'scale(0.3)',
-										pointerEvents: (isAgentActive || answerFreeform) ? 'auto' : 'none',
+										cursor: stopAvailable ? 'pointer' : 'default',
+										transition: 'opacity 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms, top 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+										opacity: stopAvailable ? (isStopping ? 0.6 : 1) : 0,
+										transform: stopAvailable ? 'scale(1)' : 'scale(0.3)',
+										pointerEvents: stopAvailable ? 'auto' : 'none',
 										animation: isStopping ? 'blink 1s infinite' : 'none',
 									}}
 									onClick={(e) => { e.preventDefault(); stopAgent(); }}
@@ -6087,37 +6124,11 @@ export default function App() {
 									type="button"
 									title={isStopping ? 'Stopping…' : 'Stop'}
 								>
-									<svg style={{ width: answerFreeform ? 11 : 14, height: answerFreeform ? 11 : 14 }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+									<svg style={{ width: stackButtons ? 16 : 14, height: stackButtons ? 16 : 14, transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 										<rect x="5" y="5" width="14" height="14" rx="2"/>
 									</svg>
 								</button>
 							</div>
-							{!input && messages.filter(m => m.role === 'user').length > 0 ? (
-								<button
-									type="button"
-									title="Recall last message"
-									onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
-									className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
-									style={{ color: 'var(--text-muted)', gridColumn: 1, gridRow: 2 }}
-								>
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
-										<polyline points="9 10 4 15 9 20"/>
-										<path d="M20 4v7a4 4 0 0 1-4 4H4"/>
-									</svg>
-								</button>
-							) : input ? (
-								<button
-									type="button"
-									title="Clear"
-									onClick={() => { setInput(''); textareaRef.current?.focus(); }}
-									className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
-									style={{ color: 'var(--text-muted)', gridColumn: 1, gridRow: 2 }}
-								>
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
-										<path d="M18 6L6 18M6 6l12 12"/>
-									</svg>
-								</button>
-							) : <div className="size-5" style={{ gridColumn: 1, gridRow: 2 }} />}
 						</div>
 					</div>
 				</form>
