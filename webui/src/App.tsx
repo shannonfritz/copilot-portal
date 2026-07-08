@@ -3468,6 +3468,9 @@ export default function App() {
 				const ids = data.activeSessions?.join(', ') ?? 'unknown';
 				if (confirm(`Active turns in progress (${ids}). Force restart anyway?`)) {
 					restartServer(true);
+				} else {
+					// User backed out — clear any "Restarting…" bar a caller set optimistically.
+					setNotification(null);
 				}
 				return;
 			}
@@ -3794,12 +3797,20 @@ export default function App() {
 	const stopAvailable = isAgentActive || answerFreeform;
 	const stackButtons = stopAvailable && composerFilled;
 
-	// Auto-resize textarea to fit content (up to maxHeight)
+	// Auto-resize textarea to fit content (up to maxHeight). When the Send/Stop
+	// buttons stack, the composer opens up to ~96px — we raise the textarea's floor
+	// to match so there's no dead space above the cursor. At the resting single-line
+	// size we clear the explicit height entirely and let min-height:44 govern, so a
+	// freshly-loaded (untouched) box and a typed box render at exactly the same height
+	// — pinning an explicit "44px" can differ from the natural min-height render by a
+	// sub-pixel and made the box look slightly shorter after the first keystroke.
 	useEffect(() => {
 		const ta = textareaRef.current;
 		if (!ta) return;
 		ta.style.height = 'auto';
-		ta.style.height = `${ta.scrollHeight}px`;
+		const floor = stackButtons ? 96 : 44;
+		const needed = Math.max(ta.scrollHeight, floor);
+		ta.style.height = needed > 44 ? `${needed}px` : '';
 	}, [input, stackButtons]);
 
 	// Focus the composer when an ask_user prompt opens with a freeform answer.
@@ -5976,7 +5987,7 @@ export default function App() {
 									id="message-input"
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
-									style={{ color: 'var(--text)', minHeight: stackButtons ? 96 : 44, maxHeight: 200, overflow: 'auto', transition: 'min-height 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}
+									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto', transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}
 									placeholder={answerFreeform ? 'Type your answer…' : draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
@@ -6031,7 +6042,7 @@ export default function App() {
 							<div className="flex flex-col items-center justify-end" style={{ gap: 4, alignSelf: 'flex-end' }}>
 								{!answerFreeform && (
 								<button
-									className="flex size-7 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
+									className="flex size-6 items-center justify-center rounded-full border-none opacity-40 hover:opacity-80"
 									style={{ background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
 									type="button"
 									title="Attach image"
@@ -6047,8 +6058,8 @@ export default function App() {
 										type="button"
 										title="Recall last message"
 										onClick={() => { const msgs = messages.filter(m => m.role === 'user'); if (msgs.length) setInput(msgs[msgs.length - 1].content); }}
-										className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
-										style={{ color: 'var(--text-muted)' }}
+										className="flex size-6 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)', transform: 'translateY(3px)' }}
 									>
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
 											<polyline points="9 10 4 15 9 20"/>
@@ -6060,14 +6071,14 @@ export default function App() {
 										type="button"
 										title="Clear"
 										onClick={() => { setInput(''); textareaRef.current?.focus(); }}
-										className="flex size-7 items-center justify-center rounded opacity-40 hover:opacity-80"
-										style={{ color: 'var(--text-muted)' }}
+										className="flex size-6 items-center justify-center rounded opacity-40 hover:opacity-80"
+										style={{ color: 'var(--text-muted)', transform: 'translateY(3px)' }}
 									>
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4">
 											<path d="M18 6L6 18M6 6l12 12"/>
 										</svg>
 									</button>
-								) : <div className="size-5" />}
+								) : <div className="size-6" />}
 							</div>
 							<div style={{
 								position: 'relative',
