@@ -38,6 +38,24 @@ if [ "$(id -u)" = "0" ]; then
     chown "${PUID}:${PGID}" /work 2>/dev/null \
       || echo "  NOTE: /work is owned by another user; set its host owner/ACL to ${PUID} if the agent needs to write there"
   fi
+  # Optionally join a host "read-write" group so the agent can write files that are
+  # group-owned by that gid on a shared /work (e.g. an SMB dataset where humans and
+  # the agent collaborate on each other's files). gosu builds the supplementary
+  # group list from /etc/group ONLY, so the group must exist in-container and list
+  # `copilot` as a member BEFORE we drop privileges — a runtime env var alone won't
+  # do it. Set WORK_RW_GID to your share's read-write gid (e.g. your copilot-rw gid).
+  # Handles a pre-existing gid (reuse its name) as well as creating a new one.
+  if [ -n "${WORK_RW_GID:-}" ]; then
+    rw_grp="$(getent group "$WORK_RW_GID" | cut -d: -f1)"
+    if [ -z "$rw_grp" ]; then
+      groupadd -o -g "$WORK_RW_GID" work-rw 2>/dev/null && rw_grp=work-rw
+    fi
+    if [ -n "$rw_grp" ] && usermod -aG "$rw_grp" copilot 2>/dev/null; then
+      echo "  runtime user joined group '$rw_grp' (gid ${WORK_RW_GID}) for /work RW access"
+    else
+      echo "  WARNING: could not add runtime user to WORK_RW_GID=${WORK_RW_GID}"
+    fi
+  fi
   exec gosu "${PUID}:${PGID}" "$0" "$@"
 fi
 

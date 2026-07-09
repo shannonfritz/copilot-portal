@@ -40,6 +40,7 @@ All notable changes to Copilot Portal are documented here.
 ### 🆙 Toolchain & dependencies
 - **Node 24** — the container image and CI now build on Node 24 (current Active LTS); the `engines` floor stays `>=22.5.0` so the zip still runs on host Node 22+
 - **Copilot CLI 1.0.69** — bundled CLI bumped to 1.0.69 (latest stable; all per-platform binaries refreshed in the lockfile)
+- **Copilot SDK 1.0.6** — `@github/copilot-sdk` bumped to 1.0.6
 - **Zip dependency floors corrected** — the distributable `package.dist.json` now inherits its runtime dependency set wholesale from the dev `package.json` at package time (single source of truth), fixing a stale `@github/copilot-sdk ^0.3.0` floor and a missing CLI entry so a fresh zip install resolves the right versions
 
 ### 🐳 Docker Container (experimental)
@@ -49,6 +50,8 @@ All notable changes to Copilot Portal are documented here.
 - **Graceful shutdown** — `tini` as PID 1 forwards signals and reaps the CLI subprocess
 - **Persistent `/work`** — per-session workspaces live on a bind-mounted host dir with a group-writable `UMASK` so a `/work` dataset is easy to share over SMB
 - **Self-healing volumes** — freshly-mounted TrueNAS ixVolumes and host bind-mounts (which arrive empty and root-owned) are chowned automatically on boot, so a Custom App "just works" with no manual `chown`; a clear, actionable error appears only if the container is *forced* to run as a non-root user (which prevents the self-heal)
+- **Agent can write group-owned files on ZFS/NFSv4 shares** — the runtime user is now an explicit supplementary member of its own group, so `group@`/named-group write ACLs are honored on ZFS-on-Linux (TrueNAS SMB datasets); previously `gosu`'s privilege drop left an empty supplementary group list and the agent got `EACCES` writing group-owned files under `/work` even with the group-write bit set
+- **`WORK_RW_GID` for a shared `/work`** — set this env var to your SMB read-write group's gid and the entrypoint adds the runtime user to that group before dropping privileges, so the agent and your human SMB users can edit each other's files; the `docs/DOCKER.md` `/work`-sharing guide is rewritten around this with a TrueNAS-native inheriting-NFSv4-ACL recipe (the old `chmod 2775`/`UMASK` setgid trick is documented as POSIX-only, since mode bits/umask are cosmetic on NFSv4 datasets), plus a Custom-User caveat and a faithful permission-check troubleshooting note
 - **Self-updater disabled in containers** — updates come from pulling a new image, not mutating a running container
 - **Slimmer image** — `@github/copilot` ships its native runtime as per-platform optional dependencies, so the container installs only the `linux-x64` binary it actually loads (no foreign-platform binaries bundled)
 - **Persistent home + user-tool PATH** — the container's whole `~` persists on a single `copilot-home` volume (survives image updates and supports `chmod +x`), and `~/.local/bin` is on `PATH` so tools the agent installs with `pip install --user` or `uv tool install` are runnable by name and stick around

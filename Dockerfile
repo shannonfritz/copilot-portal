@@ -94,8 +94,19 @@ RUN apt-get update \
 # image dir it covers, so the default volumes are writable without any chown dance.
 # `~/.local/bin` is pre-created (and on PATH below) so `pip install --user` and
 # `uv tool install` land somewhere runnable that also persists via the home volume.
+# `usermod -aG copilot copilot` makes the runtime user an explicit SUPPLEMENTARY
+# member of its own group. This looks redundant (568 is already the primary gid),
+# but it is NOT — do not "simplify" it away. `gosu` builds the process's
+# supplementary group list from /etc/group memberships only, and on ZFS/NFSv4-ACL
+# filesystems (TrueNAS SMB datasets) a `group@`/named-`group:` write ACE is honored
+# only when the owning gid is in the process's SUPPLEMENTARY set — the primary gid
+# alone is not evaluated. Without this line, `useradd -g` leaves `copilot:x:568:`
+# with an empty member list, so after the gosu drop the agent has an empty
+# supplementary list and cannot write group-owned files on a bind-mounted /work.
+# Referenced by name so it survives the entrypoint's runtime `groupmod -o -g` renumber.
 RUN groupadd -g "${PGID}" copilot \
  && useradd -u "${PUID}" -g "${PGID}" -m -d /home/copilot -s /usr/sbin/nologin copilot \
+ && usermod -aG copilot copilot \
  && mkdir -p /home/copilot/.copilot /home/copilot/.local/bin /app/data /work \
  && chown -R copilot:copilot /home/copilot /app /work
 

@@ -20,8 +20,10 @@ port and the portal web server on **3847**. It includes:
   **`patch`**, **`zip`/`unzip`**, **`xz`** (so `.tar.xz` works), plus `wget`,
   `less`, and `openssh-client`. `npx`/`node` come with the base image.
 - The built portal (`dist/`) and the **patched** `node_modules` (the `patch.mjs`
-  SDK fix is applied at build time). Foreign-platform CLI binaries are stripped
-  to keep the image lean — only the `linux-x64` builds the container loads remain.
+  SDK fix is applied at build time). The Copilot CLI (`@github/copilot` ≥ 1.0.65)
+  ships its native runtime as per-platform optional dependencies, so npm installs
+  only the `linux-x64` build that matches the image — there are no foreign-platform
+  binaries to strip.
 
 It also:
 
@@ -152,33 +154,102 @@ other computers can read/edit that output over the network. (Sessions, auth, and
 keys live in the Docker-managed volumes, *not* here.)
 
 The only thing to get right is **permissions**, because the container writes as
-`568:568` and your SMB users are different accounts. A clean model is a read-only
-and a read-write group:
+`568:568` and your SMB users are different accounts. The clean, collaborative model
+is: **the agent is just another member of your read-write group, and the dataset's
+ACL — not file ownership — decides who can read/write.** That way any file, whether
+the agent created it or a human dropped it over SMB, is editable by all writers and
+readable by all readers, regardless of who owns it.
 
-1. **Create a host directory / dataset** and point both compose and SMB at it,
-   e.g. `/mnt/SSDs/copilot-work` (set `PORTAL_WORK_HOST_DIR` in `.env`).
-2. **Create two groups** — e.g. `copilot-ro` (read-only) and `copilot-rw`
-   (read-write) — and add your users to them.
-3. **Own + setgid the directory** so the container can write and new files inherit
-   the share group:
+The setup differs a little between a plain POSIX host (ext4/xfs) and a
+ZFS/NFSv4-ACL dataset (the TrueNAS SCALE default). Pick the one that matches your
+host.
+
+### TrueNAS SCALE / any ZFS NFSv4-ACL dataset (recommended)
+
+TrueNAS SMB datasets default to `acltype=nfsv4, aclmode=restricted,
+aclinherit=passthrough`. On these, **POSIX mode bits, `chmod` setgid, and `umask`
+are largely cosmetic** — real access *and inheritance* come from the NFSv4 ACL, not
+from `chmod`/`UMASK`. So don't rely on the setgid+umask trick here; use inheriting
+ACEs instead.
+
+1. **Create a host dataset** and point both compose and SMB at it, e.g.
+   `/mnt/SSDs/copilot-work` (set `PORTAL_WORK_HOST_DIR` in `.env`).
+2. **Create your groups** as usual — e.g. `copilot-rw` (read-write) and
+   `copilot-ro` (read-only) — and add your human users to them.
+3. **Set inheriting NFSv4 ACEs on the dataset** so *new* files/dirs (from anyone)
+   automatically grant the right access. In the TrueNAS UI: **Datasets → your
+   dataset → Edit ACL**, add the entries below with the inherit flags **"apply to
+   this dataset, child datasets, and files"**, and check **Apply permissions
+   recursively**. Or from a root shell:
    ```bash
-   chown -R 568:copilot-rw /mnt/SSDs/copilot-work
-   chmod -R 2775 /mnt/SSDs/copilot-work      # 2 = setgid: new files keep the group
+   # group RW: modify + full inheritance onto new files and dirs
+   nfs4xdr_setfacl -a 'group:copilot-rw:rwxpDdaARWcCos:fd:allow' /mnt/SSDs/copilot-work
+   # group RO: read + inheritance
+   nfs4xdr_setfacl -a 'group:copilot-ro:rxaRcs:fd:allow'         /mnt/SSDs/copilot-work
    ```
-4. **Keep `UMASK=002`** (already set in compose) so files the container creates are
-   group-writable (`664`/`775`) — without it the `copilot-rw` group could read but
-   not modify them.
-5. **Create the SMB share** on that directory; grant `copilot-rw` read/write and
+   The `fd` (file+dir inherit) flags are what make *newly created* items writable —
+   the job the old `chmod 2775`/`UMASK` recipe tried (and failed) to do on NFSv4.
+4. **Give the container access via that same `copilot-rw` group** — set the
+   **`WORK_RW_GID`** env var to the group's gid (e.g. `3003`). On boot the root
+   entrypoint creates that gid inside the container and adds the runtime user to it
+   *before* dropping privileges, so the agent writes files via the `copilot-rw`
+   ACE exactly like your human RW users do. No rebuild needed — it's just an env
+   var. (Look for `runtime user joined group … for /work RW access` in the logs.)
+5. **Create the SMB share** on the dataset; grant `copilot-rw` read/write and
    `copilot-ro` read-only.
 
+> **Why `WORK_RW_GID` is needed:** the agent runs unprivileged after a `gosu`
+> privilege drop, and `gosu` builds the process's supplementary groups from the
+> *image's* `/etc/group` only (it discards Docker `group_add`). `WORK_RW_GID` makes
+> the entrypoint add the runtime user to your RW gid before that drop, so the
+> membership actually reaches the running agent. Without it, the agent can still
+> write files owned by its own gid (568), but **not** files a human created under
+> the `copilot-rw` group.
+
+### Plain POSIX host (ext4/xfs bind mount)
+
+If `/work` is a normal Linux filesystem (not ZFS NFSv4), the classic setgid+umask
+approach works:
+
+1. Create the dataset/dir and your `copilot-rw`/`copilot-ro` groups (as above).
+2. **Own + setgid the directory** so new files inherit the share group:
+   ```bash
+   chown -R 568:copilot-rw /srv/copilot-work
+   chmod -R 2775 /srv/copilot-work      # 2 = setgid: new files keep the group
+   ```
+3. **Keep `UMASK=002`** (already set in compose) so files the container creates are
+   group-writable (`664`/`775`).
+4. **Set `WORK_RW_GID`** to the `copilot-rw` gid so the agent can also write files a
+   *human* created under that group (setgid controls the group; membership controls
+   whether the agent may write them).
+5. Create the SMB share; grant `copilot-rw` RW and `copilot-ro` RO.
+
 > The container makes the `/work` mount point writable on boot (it chowns the
-> top-level to `568`), so it won't crash on a fresh dataset. Steps 1–4 are what make
-> the share usable by your *other* SMB accounts (group ownership + setgid + umask) —
-> do them ideally before first use. The container leaves an existing `568:`-owned
-> dataset alone, so it won't clobber your group setup.
+> top-level to `568`), so it won't crash on a fresh dataset. It leaves an existing
+> `568:`-owned dataset otherwise alone, so it won't clobber your group/ACL setup.
 
 Over SMB you'll see one folder per session (`<session-id>/YYMMDD-NN/…`); that's
 expected and makes browsing per-session output easy.
+
+### Verifying the agent's real permissions (troubleshooting)
+
+If writes fail, check the agent's **actual** identity — and beware a common trap:
+`docker exec -u 568 …` is **not** a faithful test, because Docker auto-adds gid 568
+to the exec'd process's supplementary groups, so a write test there can pass even
+when the agent fails. Test like the real (gosu-dropped) agent instead:
+
+```bash
+# What supplementary groups the agent actually has (empty list = the classic bug):
+grep ^Groups /proc/"$(pgrep -f 'dist/launcher.js' | head -1)"/status
+
+# Faithful write test — clears supplementary groups like the dropped agent:
+setpriv --reuid 568 --regid 568 --clear-groups \
+  sh -c 'echo hi > /work/<some-session>/probe.txt && echo OK'
+```
+
+Expect the `Groups:` line to include `568` (from the image self-membership) plus
+your `WORK_RW_GID` if set. If it's empty, you're likely running the container as a
+Custom User (non-root) — see the caveat in the TrueNAS wizard table below.
 
 ## Environment variables (config contract)
 
@@ -191,7 +262,8 @@ sets the common ones explicitly for visibility.
 | `PORTAL_TOKEN` | *(empty)* | Pins the portal **session token** (web-access key). Unset = first visit offers a one-time "Generate session token" claim. Set = predictable URL; rotate/reset by changing it + redeploying. See [Portal session token](#portal-session-token-web-access). |
 | `PORTAL_WORKSPACE_DIR` | `/work` | Root under which new sessions auto-create `YYMMDD-NN` workspace folders. |
 | `PORTAL_WORK_HOST_DIR` | `./work` | **Host** path bind-mounted to `/work`. Set to your shared dataset (e.g. `/mnt/SSDs/copilot-work`) for SMB access. |
-| `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. |
+| `UMASK` | `002` | umask for files written into `/work`. `002` = group-writable (`664`/`775`) for an SMB read-write group. **Note:** effective on plain POSIX (ext4/xfs) mounts; on ZFS/NFSv4-ACL datasets (TrueNAS default) it's largely cosmetic — use inheriting ACEs instead (see [Sharing /work over SMB](#sharing-work-over-smb)). |
+| `WORK_RW_GID` | *(empty)* | gid of your host **read-write** group for a shared `/work` (e.g. your `copilot-rw` gid). On boot the entrypoint adds the runtime user to this group *before* dropping privileges, so the agent can write files that group owns — letting the agent and your SMB users edit each other's files. Needed because `gosu` only honors the image's `/etc/group` (it discards Docker `group_add`). See [Sharing /work over SMB](#sharing-work-over-smb). |
 | `TZ` | `UTC` | Local timezone for log and workspace-folder timestamps (e.g. `America/Chicago`). |
 | `COPILOT_CONTAINER` | `1` | Container mode: disables the in-app self-updater and apply endpoints. |
 | `PORTAL_ALLOWED_HOSTS` | *(empty)* | Comma-separated extra hostnames allowed in the `Host` header (DNS-rebinding defense). IP-literal and `localhost` access always works; **only needed if you reach the portal through a custom domain or reverse proxy** (e.g. `portal.example.com,nas.local`). Unknown domain Hosts get `403`. |
@@ -217,6 +289,10 @@ services:
       PORTAL_TOKEN: "${PORTAL_TOKEN:-}"   # optional — pins the web-access token
       TZ: "${TZ:-UTC}"
       UMASK: "002"
+      # WORK_RW_GID: "3003"   # optional — gid of your SMB read-write group so the
+                              # agent can edit files your human users create on /work
+                              # (see "Sharing /work over SMB"). ZFS/NFSv4 datasets
+                              # also need inheriting ACEs; UMASK is POSIX-only.
     volumes:
       - copilot-home:/home/copilot
       - portal-data:/app/data
@@ -251,8 +327,8 @@ TrueNAS presents them:
 | **General** | **Notes:** optional free-text description. |
 | **Image Configuration** | **Repository** `ghcr.io/shannonfritz/copilot-portal` (public — no login), **Tag** `latest` (or pin e.g. `0.8.0`), **Pull Policy** `Pull the image if it is not already present on the host` (choose the "always pull" option to force-refresh `latest` on every redeploy). |
 | **Container Configuration** | Leave **Hostname** blank; **Entrypoint** and **Command** empty (the image defines them); set **Timezone** (e.g. `America/Chicago`); **Restart Policy** `Unless Stopped`; leave **Disable Built-in Healthcheck** unchecked (the image ships its own `/healthz`); leave **TTY** and **Stdin** unchecked (runs headless); no **Devices**. |
-| **Container Configuration › Environment Variables** | Click **Add**, then set Name `UMASK` and Value `002` (makes agent-created files group-writable — needed for SMB sharing). Optionally add `GITHUB_TOKEN=<token>` (primary auth) and/or `PORTAL_TOKEN=<secret>` (pin the web-access token). `COPILOT_CONTAINER=1` is already baked in. |
-| **Security Context Configuration** | Leave **Privileged** unchecked, **Capabilities** empty, and **Custom User** unchecked — the image already runs as `568:568` (TrueNAS's `apps` user). Only set a custom `uid:gid` if your `/work` dataset is owned by a different account. |
+| **Container Configuration › Environment Variables** | Click **Add**, then set Name `UMASK` and Value `002` (makes agent-created files group-writable — for POSIX mounts; on a ZFS/NFSv4 dataset use inheriting ACEs instead). For a shared SMB `/work` where humans and the agent edit each other's files, also add Name `WORK_RW_GID` and Value `<your copilot-rw gid>` (see [Sharing /work over SMB](#sharing-work-over-smb)). Optionally add `GITHUB_TOKEN=<token>` (primary auth) and/or `PORTAL_TOKEN=<secret>` (pin the web-access token). `COPILOT_CONTAINER=1` is already baked in. |
+| **Security Context Configuration** | Leave **Privileged** unchecked, **Capabilities** empty, and **Custom User** unchecked — the image already runs as `568:568` (TrueNAS's `apps` user). Only set a custom `uid:gid` if your `/work` dataset is owned by a different account. **Caveat:** setting a Custom User starts the container **non-root**, which skips the entrypoint's root self-heal *and* the `gosu` drop — so the `WORK_RW_GID` membership never gets applied. In that mode supply supplementary groups via Docker/compose `group_add: ["<gid>"]` instead. |
 | **Network Configuration** | Leave **Host Network** unchecked (use the port mapping below, not the host's network stack); leave **Networks** empty (default bridge); leave **Custom DNS** (Nameservers / Search Domains / DNS Options) all empty. |
 | **Network Configuration › Ports** | Add a port: Port Bind Mode `Publish port on the host for external access`, Host Port `3847` (pick another if taken), Container Port `3847`, Protocol `TCP`, Host IPs none. |
 | **Portal Configuration** | Click **Add** and set Name `Web UI`, Protocol `HTTP`, **Use Node IP** checked, Port `3847`, Path `/`. Gives you a clickable button on the app card. **Tip:** once you have a session token — either the one you generate from the portal UI on first visit or a pinned `PORTAL_TOKEN` — edit Path to `/?token=<that-value>` so the button opens already signed in. The token is stored in the app config, so only do this on a trusted/personal NAS. |
