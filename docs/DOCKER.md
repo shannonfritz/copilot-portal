@@ -239,17 +239,31 @@ to the exec'd process's supplementary groups, so a write test there can pass eve
 when the agent fails. Test like the real (gosu-dropped) agent instead:
 
 ```bash
-# What supplementary groups the agent actually has (empty list = the classic bug):
-grep ^Groups /proc/"$(pgrep -f 'dist/launcher.js' | head -1)"/status
+C=ix-copilot-portal-copilot-portal-1   # your container name
 
-# Faithful write test — clears supplementary groups like the dropped agent:
-setpriv --reuid 568 --regid 568 --clear-groups \
-  sh -c 'echo hi > /work/<some-session>/probe.txt && echo OK'
+# 1) memberships exist in the image's /etc/group:
+docker exec "$C" getent group copilot          # -> copilot:x:568:copilot
+docker exec "$C" getent group "$WORK_RW_GID"   # -> work-rw:x:<gid>:copilot  (if set)
+
+# 2) the gosu-DROPPED user actually receives them (this is what the uid-only
+#    `gosu "${PUID}"` form fixes; the old uid:gid form returned 568 only):
+docker exec "$C" gosu 568 id                    # -> groups=568(copilot),<rwgid>(work-rw)
+
+# 3) the LIVE agent process really has them (empty Groups = still broken):
+grep ^Groups /proc/"$(pgrep -f 'dist/launcher.js' | head -1)"/status  # -> Groups: 568 <rwgid>
+
+# 4) end-to-end: the agent's real creds can write a HUMAN-owned file on /work:
+setpriv --reuid 568 --regid 568 --groups 568,<rwgid> \
+  sh -c 'echo agent >> /work/<some-session>/probe.txt && echo WRITE_OK'
 ```
 
-Expect the `Groups:` line to include `568` (from the image self-membership) plus
-your `WORK_RW_GID` if set. If it's empty, you're likely running the container as a
-Custom User (non-root) — see the caveat in the TrueNAS wizard table below.
+Expect the `Groups:`/`groups=` output to include `568` (the image self-membership)
+plus your `WORK_RW_GID` if set. If it's **empty**, either you're on an image before
+rc.24 (the `gosu` privilege drop was discarding the memberships) or the container is
+running as a **Custom User** (non-root), which skips the entrypoint entirely — see
+the caveat in the TrueNAS wizard table below. (Note: `docker exec -u 568 …` is *not*
+a faithful test — Docker auto-adds gid 568, so it can pass even when the agent fails;
+use `gosu`/`setpriv`/`/proc` as above.)
 
 ## Environment variables (config contract)
 

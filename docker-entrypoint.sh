@@ -56,7 +56,16 @@ if [ "$(id -u)" = "0" ]; then
       echo "  WARNING: could not add runtime user to WORK_RW_GID=${WORK_RW_GID}"
     fi
   fi
-  exec gosu "${PUID}:${PGID}" "$0" "$@"
+  # Drop to the runtime user by UID ONLY (not uid:gid) — this line is load-bearing,
+  # do NOT "simplify" it back to `gosu "${PUID}:${PGID}"`. When gosu is given an
+  # explicit group it sets the supplementary list to just that one gid and SKIPS
+  # initgroups(), so the /etc/group memberships established above (copilot's self-
+  # membership + any WORK_RW_GID join) are silently discarded — leaving the agent
+  # unable to write group@/named-group-owned files on ZFS/NFSv4 shares (/work over
+  # SMB). Given only the uid, gosu runs initgroups() and picks those memberships up.
+  # The user's primary gid is already ${PGID} (the groupmod -o -g above guarantees
+  # it), so uid-only still lands on the correct gid AND gets the full supplementary set.
+  exec gosu "${PUID}" "$0" "$@"
 fi
 
 # ---- From here on we run as the unprivileged runtime user (${PUID}:${PGID}). ----
