@@ -38,12 +38,19 @@ All notable changes to Copilot Portal are documented here.
 - **`report_intent` is now logged** — the agent's intent line (the purple-circle summary above a running tool) is logged as `[Intent] report_intent: "…"` with a `(repeat)` tag, making it easy to confirm cadence and spot a genuinely stale vs. simply un-re-reported intent
 - **Quieter console** — the high-frequency `tool.execution_partial_result` and `session.background_tasks_changed` events are dropped from the generic `[Event]` log (the former is already bracketed by tool start/complete lines, the latter has no handler); meaningful `[Event]` lines are kept for turn-sequence triage
 - **Rename a session** — a pencil icon in the session list (between the shield and delete icons) turns the title into an inline edit field (Enter to save, Esc to cancel); the new name persists and *sticks* — the CLI's periodic auto-summary no longer overwrites a name you set. Disabled while a session is shielded, exactly like delete. Built on the SDK's new writable session-name API — the portal's first editable session title
+- **Prompt panel scrolls instead of pushing the composer off-screen** — a tall `ask_user` prompt or approval request (long question + many choices) is now capped at 70% of the viewport and scrolls internally (themed scrollbar), so the message composer stays visible and reachable at the bottom, including on short/mobile viewports
+- **`ask_user` text renders correctly** — the question now renders as proper markdown at normal weight (it was force-bolded, flattening real emphasis), and a double-encoding hop in connected/container mode that left literal `\n`/`\uXXXX`/`\\` escapes in the question, choices, and echoed answer is now reversed at the ingestion seam — real newlines, arrows, and Windows paths all render as intended
 
 ### 🆙 Toolchain & dependencies
 - **Node 24** — the container image and CI now build on Node 24 (current Active LTS); the `engines` floor stays `>=22.5.0` so the zip still runs on host Node 22+
 - **Copilot CLI 1.0.69** — bundled CLI bumped to 1.0.69 (latest stable; all per-platform binaries refreshed in the lockfile)
 - **Copilot SDK 1.0.6** — `@github/copilot-sdk` bumped to 1.0.6
 - **Zip dependency floors corrected** — the distributable `package.dist.json` now inherits its runtime dependency set wholesale from the dev `package.json` at package time (single source of truth), fixing a stale `@github/copilot-sdk ^0.3.0` floor and a missing CLI entry so a fresh zip install resolves the right versions
+
+### 🧹 Maintenance & hardening
+- **`ws` bumped to 8.21** — clears the one npm-audit "high" advisory (the affected memory-disclosure path was never reachable, but the bump keeps the tree clean)
+- **Rename validation tightened** — `/api/guides/rename` now validates `oldId` with the same alphanumeric/dash/underscore guard already applied to `newId`
+- **Dead code removed** — dropped the unused `/api/context-templates` endpoints (superseded by `/api/examples`), a dead local assignment, and an unused `useMemo` import; renamed a few mixed-case React setters for consistency; refreshed stale code comments
 
 ### 🐳 Docker Container (experimental)
 - **Run Portal as a container** — `Dockerfile`, `docker-compose.yml`, and entrypoint to run the portal + bundled Copilot CLI on headless hosts (TrueNAS SCALE, Synology, any Docker engine)

@@ -20,14 +20,14 @@ function getSessionEvents(session: CopilotSession, log?: (msg: string) => void):
 	return useNew ? (session as any).getEvents() : (session as any).getMessages();
 }
 
-// SDK compatibility: CopilotClient constructor changed in 1.0+
-// Old: new CopilotClient({ cliUrl: '...' })
-// New: new CopilotClient({ connection: RuntimeConnection.forUri('...') })
+// SDK connection modes:
+//   - Default: new CopilotClient() spawns/owns its own CLI (desktop zip).
+//   - Connected: new CopilotClient({ cliUrl }) attaches to an already-running CLI
+//     server (used in the container, where the CLI runs as a sibling process, and
+//     by the smoke-test harness). Verified working on the pinned SDK (1.0.6).
+//     The `as any` cast is retained because `cliUrl` isn't in the public typings.
 function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClient {
 	if (cliUrl) {
-		// Try 1.0+ API: { cliUrl } was removed, but may still work in some beta versions
-		// The safest approach: just pass { cliUrl } — it works in 0.3.x and early 1.0 betas
-		// If it stops working, we'll switch to RuntimeConnection
 		log?.(`[SDK] Creating client with cliUrl: ${cliUrl}`);
 		return new CopilotClient({ cliUrl } as any);
 	}
@@ -74,15 +74,49 @@ const SDK_DENY = ((SDK_APPROVE as { kind: string }).kind === 'approve-once'
 export type { SessionMetadata };
 export type { ApprovalRule };
 
-// Defensively decode stray JSON unicode escape sequences (e.g. "\u2192" → "→") that can
-// survive in ask_user question/choice text when an upstream layer double-encodes the tool
-// arguments. A font issue would render tofu, never the literal 6-char escape — so seeing
-// "\u2192" means the string genuinely contains those ASCII chars. Decoding here (at the
-// single ingestion seam) fixes the live prompt, the rebroadcast, the choice echoed back as
-// the answer, and the replayed history in one place. No-op when no escape is present.
+// Defensively reverse a double-encoded ask_user payload. When an upstream layer
+// JSON-encodes the tool arguments one time too many, real characters arrive as their
+// literal escape *text*: a newline shows up as "\n", a tab as "\t", an arrow as
+// "\u2192", and — importantly — a genuine path backslash as "\\". A font issue would
+// render tofu, never the literal escape, so seeing "\n"/"\u2192" means the string
+// really does contain those ASCII chars.
+//
+// We only decode when the payload is clearly still encoded: it has NO real newline/CR
+// yet DOES contain literal escape sequences. (A correctly-parsed multi-line prompt has
+// real newlines, so the gate leaves it untouched.) In that state we reverse exactly one
+// JSON string-escape layer in a single left-to-right pass. Handling "\\" in the same
+// pass means a doubled path backslash ("C:\\node") collapses back to one ("C:\node")
+// instead of its "\n" being misread as a newline.
+//
+// Fixing it at this single ingestion seam covers the live prompt, the choices, the
+// rebroadcast, the choice echoed back as the answer, and the replayed history at once.
+//
+// Edge: a single-line question that is *only* a bare Windows path with no real newline
+// (e.g. "Open C:\node?") is byte-identical to buggy prose ("line1\nline2"), so it would
+// be mis-decoded. That's unavoidable ambiguity; since ask_user questions are almost
+// always prose, we favor decoding.
 function decodeUnicodeEscapes(s: string): string {
-	if (typeof s !== 'string' || s.indexOf('\\u') === -1) return s;
-	return s.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+	if (typeof s !== 'string' || s.indexOf('\\') === -1) return s;
+	const hasRealNewline = s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1;
+	const hasEscapeText = /\\(u[0-9a-fA-F]{4}|[nrtbf"\\/])/.test(s);
+	if (hasRealNewline || !hasEscapeText) {
+		// Already-normal text — only mop up stray \uXXXX escapes just in case.
+		return s.indexOf('\\u') === -1 ? s : s.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+	}
+	return s.replace(/\\(u[0-9a-fA-F]{4}|[nrtbf"\\/])/g, (m, esc: string) => {
+		switch (esc[0]) {
+			case 'u': return String.fromCharCode(parseInt(esc.slice(1), 16));
+			case 'n': return '\n';
+			case 'r': return '\r';
+			case 't': return '\t';
+			case 'b': return '\b';
+			case 'f': return '\f';
+			case '"': return '"';
+			case '\\': return '\\';
+			case '/': return '/';
+			default: return m;
+		}
+	});
 }
 function decodeUnicodeEscapesArr(arr: string[] | undefined): string[] | undefined {
 	return arr?.map(decodeUnicodeEscapes);

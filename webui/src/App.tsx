@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -602,7 +602,10 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 		}).catch(() => { setLoading(false); setError('Failed to browse'); });
 	}, [onChange]);
 
-	// Fetch on mount
+	// Fetch once on mount only. Empty deps are intentional: the parent-provided
+	// `value`/`fetchFolders` change on every keystroke, but re-running this effect
+	// on those changes would refetch the folder list mid-edit. Subsequent fetches
+	// are driven explicitly by navigation handlers, not by this effect.
 	useEffect(() => { fetchFolders(value || ''); }, []);
 
 	const segments = browsePath.split(/[\\/]/).filter(Boolean);
@@ -1819,9 +1822,9 @@ export default function App() {
 	const [rules, setRules] = useState<ApprovalRule[]>([]);
 	const [approveAll, setApproveAll] = useState(false);
 	const [showRules, setShowRules] = useState(false);
-	const [showGuides, setshowGuides] = useState(false);
-	const [confirmDeleteGuide, setconfirmDeleteGuide] = useState<string | null>(null);
-	const [viewingGuide, setviewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; guideFilePath?: string; promptsFilePath?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
+	const [showGuides, setShowGuides] = useState(false);
+	const [confirmDeleteGuide, setConfirmDeleteGuide] = useState<string | null>(null);
+	const [viewingGuide, setViewingGuide] = useState<{ id: string; guideContent?: string; promptsContent?: string; guideFilePath?: string; promptsFilePath?: string; filePath?: string; activeTab?: 'guide' | 'prompts' } | null>(null);
 	const [editingGuide, setEditingGuide] = useState<{ id: string; content: string; isPrompts?: boolean } | null>(null);
 	const [editingName, setEditingName] = useState<string | null>(null);
 	const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
@@ -4150,7 +4153,7 @@ export default function App() {
 				<div
 					className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-14 pb-4"
 					style={{ background: 'var(--overlay)' }}
-					onClick={() => guardDiscard(() => { setshowGuides(false); setviewingGuide(null); setconfirmDeleteGuide(null); setEditingGuide(null); setEditingName(null); setShowNewGuide(false); setPendingDiscard(null); })}
+					onClick={() => guardDiscard(() => { setShowGuides(false); setViewingGuide(null); setConfirmDeleteGuide(null); setEditingGuide(null); setEditingName(null); setShowNewGuide(false); setPendingDiscard(null); })}
 				>
 					<div
 						className={`w-full rounded-2xl p-4 transition-all duration-200 ${viewingGuide || showNewGuide ? 'max-w-2xl' : 'max-w-md'}`}
@@ -4454,8 +4457,8 @@ export default function App() {
 										{!editingGuide && (
 											<button className="rounded px-2 py-1 text-xs font-medium" style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }} onClick={async () => {
 												const vi = viewingGuide;
-												setviewingGuide(null);
-												setshowGuides(false);
+												setViewingGuide(null);
+												setShowGuides(false);
 												// Apply guide if it exists
 												if (vi.guideContent) {
 													try {
@@ -4516,7 +4519,7 @@ export default function App() {
 													} else if (tab === 'prompts' && editingGuide.isPrompts) {
 														updated.promptsContent = editingGuide.content;
 													}
-													setviewingGuide(updated);
+													setViewingGuide(updated);
 													setEditingGuide(null);
 													setEditingName(null);
 													apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
@@ -4525,7 +4528,7 @@ export default function App() {
 												}
 											}} type="button">Save</button>
 										)}
-										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => guardDiscard(() => { setLastViewedGuide(viewingGuide.id); setviewingGuide(null); setEditingGuide(null); setEditingName(null); setPendingDiscard(null); })} type="button">Back</button>
+										<button className="rounded px-2 py-1 text-xs" style={{ border: '1px solid var(--border)' }} onClick={() => guardDiscard(() => { setLastViewedGuide(viewingGuide.id); setViewingGuide(null); setEditingGuide(null); setEditingName(null); setPendingDiscard(null); })} type="button">Back</button>
 									</div>
 								</div>
 								{(() => {
@@ -4563,13 +4566,13 @@ export default function App() {
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: (viewingGuide.activeTab ?? 'guide') === 'guide' ? 'var(--text)' : 'var(--text-muted)', borderBottom: (viewingGuide.activeTab ?? 'guide') === 'guide' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.guideContent ? 1 : 0.4 }}
-										onClick={() => guardDiscard(() => { setviewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); setPendingDiscard(null); })}
+										onClick={() => guardDiscard(() => { setViewingGuide({ ...viewingGuide, activeTab: 'guide' }); setEditingGuide(null); setPendingDiscard(null); })}
 									>Guide</button>
 									<button
 										type="button"
 										className="px-3 py-1.5 text-xs font-medium"
 										style={{ color: viewingGuide.activeTab === 'prompts' ? 'var(--text)' : 'var(--text-muted)', borderBottom: viewingGuide.activeTab === 'prompts' ? '2px solid var(--primary)' : '2px solid transparent', marginBottom: -1, opacity: viewingGuide.promptsContent ? 1 : 0.4 }}
-										onClick={() => guardDiscard(() => { setviewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); setPendingDiscard(null); })}
+										onClick={() => guardDiscard(() => { setViewingGuide({ ...viewingGuide, activeTab: 'prompts' }); setEditingGuide(null); setPendingDiscard(null); })}
 									>Prompts</button>
 								</div>
 								<div className="chat-scroll rounded-lg p-3" style={{ height: editingGuide ? 'calc(100vh - 20rem)' : undefined, maxHeight: 'calc(100vh - 20rem)', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', display: editingGuide ? 'flex' : undefined }}>
@@ -4610,7 +4613,7 @@ export default function App() {
 													inst.hasPrompts ? apiFetch(`/api/guides/${encodeURIComponent(inst.id)}/prompts`).then(r => r.json()) : Promise.resolve(null),
 												]);
 												const promptsContent = pRaw?.prompts?.map((p: { label: string; text: string }) => `## ${p.label}\n${p.text}`).join('\n\n') ?? '';
-												setviewingGuide({
+												setViewingGuide({
 													id: inst.id,
 													guideContent: gRes?.content ?? '',
 													promptsContent,
@@ -4633,9 +4636,9 @@ export default function App() {
 													e.stopPropagation();
 													await apiFetch(`/api/guides/${encodeURIComponent(inst.id)}`, { method: 'DELETE' });
 													setGuides(prev => prev.filter(i => i.id !== inst.id));
-													setconfirmDeleteGuide(null);
+													setConfirmDeleteGuide(null);
 												}} type="button">Delete</button>
-												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(null); }} type="button">Cancel</button>
+												<button className="rounded px-2 py-0.5 text-xs" style={{ border: '1px solid var(--border)' }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteGuide(null); }} type="button">Cancel</button>
 											</span>
 										) : (
 											<span className="flex gap-0.5 shrink-0" style={{ minHeight: '1.75rem' }} onClick={e => e.stopPropagation()}>
@@ -4651,7 +4654,7 @@ export default function App() {
 														<path d="M8 9h8M8 13h5" />
 													</svg>
 												</span>
-												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setconfirmDeleteGuide(inst.id); }} type="button" title="Delete">
+												<button className="rounded p-1.5" style={{ opacity: 0.7 }} onClick={(e) => { e.stopPropagation(); setConfirmDeleteGuide(inst.id); }} type="button" title="Delete">
 													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 														<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
 													</svg>
@@ -5302,7 +5305,7 @@ export default function App() {
 							onClick={() => {
 								if (draftSession) return;
 								const opening = !showGuides;
-								setshowGuides(opening);
+								setShowGuides(opening);
 								if (opening) apiFetch('/api/guides').then(r => r.json()).then(setGuides).catch(() => {});
 							}}
 							type="button"
@@ -5861,7 +5864,7 @@ export default function App() {
 
 				{/* Pinned interaction zone — approval & input cards sit above the input bar */}
 				{(pendingApproval || pendingInput || cliApprovalInfo || cliInputInfo) && (
-					<div className="border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+					<div className="chat-scroll border-t px-4 pt-3 pb-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)', maxHeight: '70vh', overflowY: 'auto' }}>
 
 						{cliApprovalInfo && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--text-muted)', background: 'var(--muted-tint)' }}>
@@ -5912,7 +5915,7 @@ export default function App() {
 						)}
 						{pendingInput && (
 							<div className="mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--primary)', background: 'var(--primary-tint)' }}>
-								<div className="mb-2 text-sm font-semibold"><AssistantMarkdown content={pendingInput.question} /></div>
+								<div className="mb-2 text-sm"><AssistantMarkdown content={pendingInput.question} /></div>
 								{pendingInput.choices && pendingInput.choices.length > 0 && (
 									<div className="flex flex-col gap-1.5">
 										{pendingInput.choices.map((choice, i) => (

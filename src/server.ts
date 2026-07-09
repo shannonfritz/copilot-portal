@@ -81,7 +81,8 @@ export class PortalServer {
 		this.token = this.initToken();
 		const workspaceRoot = WORKSPACE_ROOT;
 		try { fs.mkdirSync(workspaceRoot, { recursive: true }); } catch {}
-		// Seed guide examples on first run
+		// Ensure data/guides and data/prompts exist (empty — the example
+		// Guides/Prompts are a read-only catalog served from examples/, not seeded here).
 		this.ensureDataDirs();
 		this.pool = new SessionPool((msg) => this.log(msg), new RulesStore(this.dataDir), workspaceRoot, opts?.cliUrl);
 		this.updater = new UpdateChecker((msg) => this.log(msg));
@@ -1226,7 +1227,7 @@ export class PortalServer {
 					const newId = handle.sessionId;
 					// Broadcast so other clients' pickers update
 					const sessions = await this.pool.listSessions().catch(() => []);
-					const shields = this.loadShields();
+					this.loadShields();
 					const newSession = sessions.find(s => s.sessionId === newId);
 					if (newSession) {
 						this.broadcastAll({ type: 'session_created', session: { ...newSession, shielded: this.shields[newId] ?? false } });
@@ -1677,6 +1678,7 @@ export class PortalServer {
 				const body = await this.readBody(req);
 				const { oldId, newId } = JSON.parse(body) as { oldId?: string; newId?: string };
 				if (!oldId || !newId) { this.sendJson(res, 400, { error: 'oldId and newId required' }); return; }
+				if (!/^[a-zA-Z0-9_-]+$/.test(oldId)) { this.sendJson(res, 400, { error: 'oldId must be alphanumeric with dashes/underscores only' }); return; }
 				if (!/^[a-zA-Z0-9_-]+$/.test(newId)) { this.sendJson(res, 400, { error: 'newId must be alphanumeric with dashes/underscores only' }); return; }
 				const renamed: string[] = [];
 				for (const sub of ['guides', 'prompts']) {
@@ -1763,41 +1765,6 @@ export class PortalServer {
 				this.sessionPrompts[sid] = prompts;
 				this.saveSessionPrompts();
 				this.sendJson(res, 200, { ok: true });
-			} catch (e) {
-				this.sendJson(res, 500, { error: String(e) });
-			}
-			return;
-		}
-
-		// List context templates
-		if (url.pathname === '/api/context-templates' && method === 'GET') {
-			try {
-				const templatesDir = path.join(__dirname, '..', 'context-templates');
-				if (!fs.existsSync(templatesDir)) { this.sendJson(res, 200, []); return; }
-				const files = fs.readdirSync(templatesDir).filter(f => f.endsWith('.md'));
-				const templates = files.map(f => ({
-					id: f.replace(/\.md$/, ''),
-					name: f.replace(/\.md$/, '').replace(/[-_]/g, ' '),
-					file: f,
-				}));
-				this.sendJson(res, 200, templates);
-			} catch (e) {
-				this.sendJson(res, 500, { error: String(e) });
-			}
-			return;
-		}
-
-		// Read a specific context template
-		const templateMatch = url.pathname.match(/^\/api\/context-templates\/(.+)$/);
-		if (templateMatch && method === 'GET') {
-			try {
-				const templatesDir = path.resolve(path.join(__dirname, '..', 'context-templates'));
-				const templateFile = path.join(templatesDir, decodeURIComponent(templateMatch[1]) + '.md');
-				const resolved = path.resolve(templateFile);
-				if (!resolved.startsWith(templatesDir + path.sep)) { this.sendJson(res, 403, { error: 'Forbidden' }); return; }
-				if (!fs.existsSync(resolved)) { this.sendJson(res, 404, { error: 'Template not found' }); return; }
-				const content = fs.readFileSync(resolved, 'utf8');
-				this.sendJson(res, 200, { content });
 			} catch (e) {
 				this.sendJson(res, 500, { error: String(e) });
 			}
