@@ -608,10 +608,16 @@ function FolderBrowser({ value, onChange }: { value: string; onChange: (path: st
 	const segments = browsePath.split(/[\\/]/).filter(Boolean);
 	// Detect OS path separator from the server-resolved path
 	const sep = browsePath.includes('\\') ? '\\' : '/';
+	// A POSIX absolute path (e.g. /work) must keep its leading slash in each
+	// breadcrumb, otherwise clicking a crumb sends a relative path the server
+	// resolves against its own cwd → "Path does not exist".
+	const isPosixAbsolute = sep === '/' && browsePath.startsWith('/');
 	const breadcrumbs: { label: string; path: string }[] = [];
 	for (let i = 0; i < segments.length; i++) {
-		const p = segments.slice(0, i + 1).join(sep);
-		breadcrumbs.push({ label: segments[i], path: i === 0 && sep === '\\' ? p + sep : p });
+		let p = segments.slice(0, i + 1).join(sep);
+		if (sep === '\\' && i === 0) p = p + sep; // Windows drive root (C: → C:\)
+		else if (isPosixAbsolute) p = '/' + p; // restore POSIX leading slash
+		breadcrumbs.push({ label: segments[i], path: p });
 	}
 
 	return (
@@ -1799,6 +1805,8 @@ export default function App() {
 
 	const [sessions, setSessions] = useState<SessionInfo[]>([]);
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const [renameValue, setRenameValue] = useState('');
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(
 		new URLSearchParams(window.location.search).get('session')
 	);
@@ -3554,6 +3562,24 @@ export default function App() {
 		}
 	}, [activeSessionId, enterNoSession]);
 
+	const renameSession = useCallback(async (sessionId: string, name: string) => {
+		const trimmed = name.trim().slice(0, 100);
+		setRenamingId(null);
+		if (!trimmed) return;
+		// Optimistic update; the session_renamed broadcast will confirm it.
+		setSessions(prev => prev.map(s => s.sessionId === sessionId ? { ...s, summary: trimmed } : s));
+		try {
+			const res = await apiFetch(`/api/sessions/${sessionId}/name`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: trimmed }),
+			});
+			if (!res.ok) setError('Could not rename session');
+		} catch {
+			setError('Could not rename session');
+		}
+	}, []);
+
 	const respondApproval = useCallback((approved: boolean) => {
 		if (!pendingApproval) return;
 		wsRef.current?.send(JSON.stringify({ type: 'approval_response', requestId: pendingApproval.requestId, approved }));
@@ -5105,6 +5131,7 @@ export default function App() {
 							{sessions.map((s) => {
 								const isActive = s.sessionId === activeSessionId;
 								const isConfirming = confirmDeleteId === s.sessionId;
+								const isRenaming = renamingId === s.sessionId;
 								return (
 									<div
 										key={s.sessionId}
@@ -5114,23 +5141,56 @@ export default function App() {
 											border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
 										}}
 									>
-										{/* Clickable session info */}
-										<button
-											className="min-w-0 flex-1 p-3 text-left"
-											onClick={() => switchSession(s.sessionId)}
-											type="button"
-										>
-											<div className="truncate text-sm font-medium">
-												{s.summary ?? s.sessionId.slice(0, 8) + '…'}
+										{/* Clickable session info — or rename input */}
+										{isRenaming ? (
+											<div className="min-w-0 flex-1 p-3">
+												<input
+													className="w-full rounded bg-transparent text-sm font-medium outline-none"
+													style={{ border: '1px solid var(--primary)', color: 'var(--text)', padding: '2px 6px' }}
+													value={renameValue}
+													maxLength={100}
+													autoFocus
+													onChange={(e) => setRenameValue(e.target.value)}
+													onKeyDown={(e) => {
+														if (e.key === 'Enter') { e.preventDefault(); renameSession(s.sessionId, renameValue); }
+														else if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null); }
+													}}
+													onClick={(e) => e.stopPropagation()}
+												/>
 											</div>
-											<div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-												{s.modifiedTime ? timeAgo(s.modifiedTime) : ''}
-												{' · '}<button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline border-none bg-transparent p-0 text-xs" style={{ color: 'inherit' }}>{s.sessionId.slice(0, 8)}</button>
-											</div>
-										</button>
+										) : (
+											<button
+												className="min-w-0 flex-1 p-3 text-left"
+												onClick={() => switchSession(s.sessionId)}
+												type="button"
+											>
+												<div className="truncate text-sm font-medium">
+													{s.summary ?? s.sessionId.slice(0, 8) + '…'}
+												</div>
+												<div className="mt-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+													{s.modifiedTime ? timeAgo(s.modifiedTime) : ''}
+													{' · '}<button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (navigator.clipboard) { navigator.clipboard.writeText(s.sessionId); } else { const ta = document.createElement('textarea'); ta.value = s.sessionId; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); } }} title="Copy full session ID" className="font-mono cursor-pointer hover:underline border-none bg-transparent p-0 text-xs" style={{ color: 'inherit' }}>{s.sessionId.slice(0, 8)}</button>
+												</div>
+											</button>
+										)}
 
 										{/* Action buttons */}
-										{isConfirming ? (
+										{isRenaming ? (
+											<div className="flex shrink-0 items-center gap-1 pr-2">
+												<button
+													onClick={(e) => { e.stopPropagation(); renameSession(s.sessionId, renameValue); }}
+													className="rounded px-2 py-1 text-xs font-medium"
+													style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+													type="button"
+												>Save</button>
+												<button
+													onClick={(e) => { e.stopPropagation(); setRenamingId(null); }}
+													className="rounded px-2 py-1 text-xs"
+													style={{ background: 'var(--border)' }}
+													type="button"
+												>Cancel</button>
+											</div>
+										) : isConfirming ? (
 											<div className="flex shrink-0 items-center gap-1 pr-2">
 												<span className="text-xs" style={{ color: isActive ? 'var(--error)' : 'var(--text-muted)' }}>{isActive ? 'End + Delete?' : 'Delete?'}</span>
 												<button
@@ -5157,6 +5217,20 @@ export default function App() {
 												>
 													<svg className="size-4" viewBox="0 0 24 24" fill={s.shielded ? 'var(--shield)' : 'none'} stroke={s.shielded ? 'var(--shield)' : 'currentColor'} strokeWidth="2">
 														<path d="M12 2L4 5v6c0 5.25 3.75 10.15 8 11 4.25-.85 8-5.75 8-11V5L12 2z" />
+													</svg>
+												</button>
+												{/* Rename — disabled only if shielded (same pattern as delete) */}
+												<button
+													onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); setRenameValue(s.summary ?? ''); setRenamingId(s.sessionId); }}
+													className="rounded p-1.5"
+													style={{ opacity: s.shielded ? 0.25 : 0.7, cursor: s.shielded ? 'not-allowed' : 'pointer' }}
+													title={s.shielded ? 'Remove shield to rename' : 'Rename session'}
+													disabled={s.shielded}
+													type="button"
+												>
+													<svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<path d="M12 20h9" />
+														<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
 													</svg>
 												</button>
 												{/* Delete — disabled only if shielded */}

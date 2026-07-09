@@ -113,7 +113,7 @@ re-pins on every boot) — change `PORTAL_TOKEN` in `.env` and run
 | Volume | Container path | Holds |
 | --- | --- | --- |
 | `copilot-home` | `/home/copilot` | **The whole home dir** — GitHub auth, sessions, skills, agents, MCP config (`~/.copilot`) **and** anything the agent installs (`~/.local/bin`, venvs, caches). The important one. |
-| `portal-data` | `/app/data` | Portal session token, pasted GitHub PAT, tunnel config, debug logs |
+| `portal-data` | `/app/data` | Portal-managed state — your **Guides & Prompts** (created, edited, or imported), Themes, session shields, session-agent assignments, the portal session token, pasted GitHub PAT, tunnel config, and debug logs. (The read-only *example* Guides/Prompts catalog ships in the image, not here.) |
 | `work` *(bind mount)* | `/work` | Per-session workspaces Copilot reads/edits — bind-mounted to a host dir so it's easy to share on your LAN |
 
 > **Why the whole home dir?** A single `copilot-home` volume (rather than just

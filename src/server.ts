@@ -1187,6 +1187,26 @@ export class PortalServer {
 			return;
 		}
 
+		const nameMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/name$/);
+		if (nameMatch && method === 'POST') {
+			const sessionId = nameMatch[1];
+			try {
+				const body = await this.readBody(req);
+				const { name } = JSON.parse(body) as { name: string };
+				const trimmed = (name ?? '').trim();
+				if (!trimmed) { this.sendJson(res, 400, { error: 'name required' }); return; }
+				if (trimmed.length > 100) { this.sendJson(res, 400, { error: 'name must be 100 characters or fewer' }); return; }
+				// setName fires onTitleChanged → broadcasts session_renamed to all clients.
+				await this.pool.setName(sessionId, trimmed);
+				this.sendJson(res, 200, { ok: true, summary: trimmed });
+				this.log(`[API] Session ${sessionId.slice(0, 8)} renamed → ${trimmed}`);
+			} catch (e) {
+				this.sendJson(res, 500, { error: String(e) });
+			}
+			return;
+		}
+
+
 		if (url.pathname === '/api/sessions' && method === 'POST') {
 			const body = await this.readBody(req);
 			const { sessionId, workingDirectory } = JSON.parse(body || '{}') as { sessionId?: string; workingDirectory?: string };

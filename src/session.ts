@@ -835,6 +835,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.currentModel = model;
 	}
 
+	/** Set an explicit, user-chosen session name (sticky — the CLI's auto-summary won't overwrite it). */
+	async setName(name: string): Promise<void> {
+		await this.session.rpc.name.set({ name });
+		// Fire the title-changed callback so the pool broadcasts session_renamed.
+		// The callback sets lastKnownSummary and calls onTitleChanged.
+		void this.titleChangedCallback?.(name);
+	}
+
 	async disconnect(): Promise<void> {
 		await this.session.disconnect().catch(() => {});
 	}
@@ -2172,6 +2180,13 @@ export class SessionPool {
 		});
 		handle.replaceSession(newSession);
 		this.log(`[Pool] CWD changed for ${sessionId.slice(0, 8)}`);
+	}
+
+	/** Set an explicit, user-chosen name on a session (connects it if not already in the pool). */
+	async setName(sessionId: string, name: string): Promise<void> {
+		const handle = await this.connect(sessionId);
+		this.log(`[Pool] Renaming ${sessionId.slice(0, 8)} → ${name}`);
+		await handle.setName(name);
 	}
 
 	async getLastSessionId(): Promise<string | null> {

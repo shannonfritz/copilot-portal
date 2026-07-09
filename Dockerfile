@@ -116,6 +116,11 @@ COPY --from=builder --chown=copilot:copilot /app/node_modules ./node_modules
 COPY --from=builder --chown=copilot:copilot /app/package.json ./package.json
 COPY --from=builder --chown=copilot:copilot /app/BUILD ./BUILD
 COPY --from=builder --chown=copilot:copilot /app/bin ./bin
+# Read-only example Guides/Prompts catalog served by /api/examples (the "Start
+# from" templates). Lives at /app/examples (= __dirname/../examples). Without
+# this the multi-stage final image would drop it and the picker shows only
+# Blank + Import. The desktop zip ships it via package.mjs's file list.
+COPY --from=builder --chown=copilot:copilot /app/examples ./examples
 
 # Entrypoint (strip any CRLs so it runs on Linux regardless of host checkout).
 # Use an absolute chmod mode (0755) — `chmod +x` is masked by the build host's
