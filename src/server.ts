@@ -14,6 +14,7 @@ import { isSafeSessionId } from './session.js';
 import { RulesStore } from './rules.js';
 import { UpdateChecker } from './updater.js';
 import { collectVersionInventory, formatVersionInventory } from './versions.js';
+import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
 import type { PortalEvent, PortalInfo } from './session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1425,10 +1426,11 @@ export class PortalServer {
 						const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 						if (which.status === 0) {
 							const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
-							exec(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
+							// Raise CLI heap on relaunch too, or the OOM recurs on the next big resume (cli-env.ts).
+							exec(`pwsh -NoProfile -Command "$env:NODE_OPTIONS='${cliNodeOptions()}'; Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
 						}
 					} else {
-						exec('copilot --server --port 3848 &');
+						exec('copilot --server --port 3848 &', { env: cliSpawnEnv() });
 					}
 					// Wait for CLI to start
 					for (let i = 0; i < 30; i++) {

@@ -6,6 +6,7 @@ import * as net from 'node:net';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
 
 // Prefix timestamps on [CLI subprocess] lines written directly to stderr by the SDK
 const origStderrWrite = process.stderr.write.bind(process.stderr);
@@ -337,10 +338,11 @@ if (process.stdin.isTTY) {
 							const which = spawnSync('where.exe', ['copilot.exe'], { stdio: 'pipe', windowsHide: true });
 							if (which.status === 0) {
 								const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
-								exec(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
+								// Raise CLI heap on the headless relaunch too (cli-env.ts).
+								exec(`pwsh -NoProfile -Command "$env:NODE_OPTIONS='${cliNodeOptions()}'; Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','3848' -WindowStyle Hidden"`, { windowsHide: true });
 							}
 						} else {
-							exec('copilot --server --port 3848 &');
+							exec('copilot --server --port 3848 &', { env: cliSpawnEnv() });
 						}
 					});
 					sock.setTimeout(1000, () => { sock.destroy(); });

@@ -38,6 +38,18 @@ export interface UpdateStatus {
 /** Packages to monitor for updates */
 const TRACKED_PACKAGES = ['@github/copilot-sdk'] as const;
 
+/**
+ * The PUBLIC npm registry — the authoritative source of "latest" for the
+ * @github toolchain packages. We query and install from this explicitly rather
+ * than npm's configured registry: this machine's npm is routed through a
+ * corporate mirror (`packagefeedproxy.microsoft.io`) that can LAG the public
+ * registry (it lacked 1.0.70 while npmjs had it) or point its `latest` dist-tag
+ * at a prerelease. The contract is simple: whatever npmjs marks `latest` IS the
+ * latest release, and we install that exact version from the same registry so
+ * the check and the install can never disagree (the ETARGET class of failure).
+ */
+const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org';
+
 /** How often to auto-check (ms) — 4 hours */
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
@@ -212,14 +224,61 @@ export class UpdateChecker {
 		try {
 			this.log(`[Update] Applying updates...`);
 
-			// Update packages. Use `npm install pkg@latest` instead of `npm update`
-			// because npm update respects the semver range in package.json (e.g. ^0.1.32
-			// won't update to 0.2.0). Install @latest forces the newest version.
-			const updatable = this.packages.filter(p => p.hasUpdate).map(p => `${p.name}@latest`);
-			if (updatable.length > 0) {
-				await runCommand(`npm install --no-fund --no-audit ${updatable.join(' ')}`, PROJECT_ROOT);
+			// Re-check right before installing. The cached `hasUpdate` flags can be stale:
+			// the user may have waited days since the last check (a newer version may be
+			// out now), or — as happened with @github/copilot 1.0.70 — a version can be
+			// UNPUBLISHED from npm AFTER we detected it, rolling the `latest` dist-tag
+			// backward. Acting on the stale flag runs `npm install @latest` against a
+			// target that no longer satisfies our pin → a scary ETARGET. A fresh check
+			// re-resolves against npm's CURRENT `latest`, so we install what's actually
+			// installable now (grabbing an even-newer drop), or cleanly no-op if the
+			// offered update evaporated.
+			await this.check();
+
+			// Install the EXACT version the public registry marks as `latest`,
+			// pinned — not the moving `@latest` tag — and from that same public
+			// registry. Pinning + a fixed registry means we install precisely
+			// what the pre-flight check just resolved as installable, so the
+			// check and install can't disagree (the ETARGET class of failure).
+			// An explicit version also bypasses the package.json semver range.
+			const targets = this.packages
+				.filter(p => p.hasUpdate && p.latest && p.latest !== 'unknown')
+				.map(p => ({ name: p.name, version: p.latest }));
+			if (targets.length > 0) {
+				const specs = targets.map(t => `${t.name}@${t.version}`).join(' ');
+				await runCommand(`npm install --no-fund --no-audit --registry=${PUBLIC_NPM_REGISTRY} ${specs}`, PROJECT_ROOT);
 				this.log(`[Update] npm install complete`);
 				process.title = 'Copilot Portal';
+
+				// Post-install verify + self-heal. npm treats its hidden lockfile
+				// (node_modules/.package-lock.json) as the source of truth for "what's
+				// installed". If the tree is DESYNCED — logical state (package.json +
+				// lockfiles) already at the target version but the physical files left
+				// behind, e.g. a prior `npm install` against a registry that lacked the
+				// target advanced the lockfile while disk stayed put — then
+				// `npm install pkg@X` is a SILENT NO-OP ("up to date", disk unchanged).
+				// The install above would then "succeed" without actually upgrading.
+				// Guard against that: re-read each package's on-disk version; for any
+				// that don't match the target, force a clean re-extract by deleting the
+				// package dir and reinstalling from the (target-pinned) lockfile.
+				const mismatched = targets.filter(t => getInstalledVersion(t.name) !== t.version);
+				if (mismatched.length > 0) {
+					for (const t of mismatched) {
+						this.log(`[Update] ${t.name} on disk is ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version} — forcing clean re-extract`);
+						fs.rmSync(path.join(PROJECT_ROOT, 'node_modules', ...t.name.split('/')), { recursive: true, force: true });
+					}
+					await runCommand(`npm install --no-fund --no-audit --registry=${PUBLIC_NPM_REGISTRY}`, PROJECT_ROOT);
+					this.log(`[Update] Re-extract complete`);
+					process.title = 'Copilot Portal';
+					const stillWrong = mismatched.filter(t => getInstalledVersion(t.name) !== t.version);
+					if (stillWrong.length > 0) {
+						const detail = stillWrong.map(t => `${t.name} (on disk ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version})`).join(', ');
+						throw new Error(`Update did not take effect on disk after re-extract: ${detail}`);
+					}
+					for (const t of mismatched) this.log(`[Update] ${t.name} re-extracted to ${t.version}`);
+				}
+			} else {
+				this.log(`[Update] Nothing to install — packages already at the latest release.`);
 			}
 
 			// 2. Rebuild the server and UI (skip if no build script — e.g. release packages ship pre-built)
@@ -237,8 +296,19 @@ export class UpdateChecker {
 
 			this.log(`[Update] Update applied successfully. Restart required to use new versions.`);
 		} catch (e) {
-			this.error = String(e);
-			this.log(`[Update] Apply failed: ${this.error}`);
+			const raw = String(e);
+			if (/ETARGET|E404|No matching version|could not be found/i.test(raw)) {
+				// A version we offered was pulled from npm in the small window between our
+				// pre-flight re-check and the install (a yanked release). The installed
+				// version is untouched; the next check re-resolves against npm's current
+				// `latest`. Surface a calm, human message instead of the npm stack wall.
+				this.error = 'Update target is no longer available on npm (it may have been unpublished). Your installed version is unchanged — this usually clears on the next check.';
+				this.log(`[Update] Apply skipped: ${this.error}`);
+				this.log(`[Update] (npm detail: ${raw.split('\n').find(l => /npm error/i.test(l))?.trim() ?? raw.split('\n')[0]})`);
+			} else {
+				this.error = raw;
+				this.log(`[Update] Apply failed: ${this.error}`);
+			}
 		} finally {
 			this.applying = false;
 		}
@@ -290,24 +360,30 @@ function getInstalledVersion(name: string): string | null {
 	}
 }
 
-/** Fetch the latest published version from the npm registry */
+/**
+ * Resolve what a package's PUBLIC npm `latest` dist-tag points at.
+ *
+ * The contract (per the user): whatever the public registry marks as `latest`
+ * IS the latest release — we take it verbatim and do NO semver filtering. The
+ * version number's prerelease semantics are irrelevant; if npmjs published it as
+ * `latest`, that's the released build we compare against. We query npmjs.org
+ * explicitly (not npm's configured registry) so a lagging corporate mirror can't
+ * hide the real latest, and `apply()` installs from the same registry so the
+ * check and install can never disagree.
+ *
+ * (Copilot Portal itself is NOT resolved here — it has its own latest/rc release
+ * channels via GitHub Releases; see fetchLatestRelease.)
+ */
 function fetchLatestVersion(name: string, log?: (msg: string) => void): Promise<string | null> {
-	return new Promise((resolve) => {
-		const url = `https://registry.npmjs.org/${name}/latest`;
-		const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: 10_000 }, (res) => {
-			if (res.statusCode !== 200) { log?.(`[Update] Registry returned ${res.statusCode} for ${name}`); resolve(null); res.resume(); return; }
-			let body = '';
-			res.on('data', (chunk: Buffer) => { body += chunk; });
-			res.on('end', () => {
-				try {
-					const data = JSON.parse(body);
-					resolve(data.version ?? null);
-				} catch { resolve(null); }
-			});
+	return runCommand(`npm view ${name} dist-tags.latest --registry=${PUBLIC_NPM_REGISTRY}`, PROJECT_ROOT)
+		.then((out) => {
+			const v = out.trim();
+			return v || null;
+		})
+		.catch((e) => {
+			log?.(`[Update] Could not resolve latest for ${name}: ${(e as Error).message.split('\n')[0]}`);
+			return null;
 		});
-		req.on('error', (e) => { log?.(`[Update] Network error fetching ${name}: ${(e as Error).message}`); resolve(null); });
-		req.on('timeout', () => { log?.(`[Update] Timeout fetching ${name}`); req.destroy(); resolve(null); });
-	});
 }
 
 /** Parse a semver string into its numeric core and pre-release identifiers. */

@@ -1,4 +1,5 @@
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
+import { cliNodeOptions } from './cli-env.js';
 import type { CopilotSession } from '@github/copilot-sdk';
 import type {
 	SessionMetadata,
@@ -31,6 +32,13 @@ function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClie
 		log?.(`[SDK] Creating client with cliUrl: ${cliUrl}`);
 		return new CopilotClient({ cliUrl } as any);
 	}
+	// Standalone: the SDK spawns and OWNS the CLI subprocess, inheriting our env.
+	// Raise its V8 heap via NODE_OPTIONS so resuming a very large session doesn't
+	// OOM-crash the CLI (see cli-env.ts). The launcher/relaunch spawn points set
+	// this on their own child env; here the SDK does the spawning, so we set it on
+	// process.env for the child to inherit. Idempotent (won't stack flags), and it
+	// does not change THIS (already-running) process's heap — only children's.
+	process.env.NODE_OPTIONS = cliNodeOptions();
 	return new CopilotClient();
 }
 import * as fs from 'node:fs';
@@ -1271,6 +1279,16 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			toolCallIds: toolCallIds.length > 0 ? toolCallIds : undefined,
 		});
 		this.deltasSent = false;
+		// Clear the reconnect-replay buffers now that this message is committed. message_end
+		// is a hard boundary — the client clears its own streamingRef here too. If we DON'T
+		// clear these, and the turn then pauses (e.g. on an ask_user tool call) without a
+		// turn_end/idle to reset them, a client reconnecting during the pause would have
+		// getActiveTurnEvents() re-emit this already-committed text as a live `delta`. The
+		// next assistant message's deltas would then concatenate onto that stale buffer,
+		// merging two messages into one bubble and misplacing the ask_user Q&A between them
+		// (visible only live; a reload rebuilt from committed history looked correct).
+		this.activeDeltaBuffer = '';
+		this.activeReasoningBuffer = '';
 	}
 
 	private onToolExecutionStart(data: unknown): void {
@@ -1881,6 +1899,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'assistant.message_delta',
 		'assistant.streaming_delta',
 		'assistant.reasoning_delta',
+		'assistant.tool_call_delta',
 		'assistant.usage',
 		'pending_messages.modified',
 		'tool.execution_partial_result',
@@ -1938,7 +1957,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			// Suppress high-frequency / low-signal events from the generic [Event] log.
 			// These still run their handlers (if any) — we only skip the catch-all log line:
 			//  - *_delta / usage / pending_messages.modified: streaming chatter, bracketed by
-			//    turn_start/turn_end and committed via assistant.message.
+			//    turn_start/turn_end and committed via assistant.message. assistant.tool_call_delta
+			//    streams a tool call's arguments token-by-token (no handler; the finished call is
+			//    reconstructed from tool.execution_start/complete), so it's the same low-signal class.
 			//  - tool.execution_partial_result: per-chunk streaming output, bracketed by the
 			//    tool's execution_start/execution_complete log lines.
 			//  - session.background_tasks_changed: the CLI's internal async-task tracker; has

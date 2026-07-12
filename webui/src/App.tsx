@@ -1853,6 +1853,15 @@ export default function App() {
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [loadingHistory, setLoadingHistory] = useState<{ sizeMB: string; startTime: number } | null>(null);
 	const [loadingSecs, setLoadingSecs] = useState(0);
+	// Resume-stall escape hatch: when a session in the URL won't open (e.g. the CLI
+	// subprocess OOM-crashed, or a resume hangs), the app shell otherwise sits empty
+	// forever (the "black screen of despair" on mobile-over-tunnel). We detect the
+	// stall and surface a non-destructive panel with a way out.
+	const [resumeStalled, setResumeStalled] = useState(false);
+	const [resumeAttempt, setResumeAttempt] = useState(0);
+	const [historyReady, setHistoryReady] = useState(false);
+	const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const stallAnchorRef = useRef<string | null>(null);
 	const [historyTruncated, setHistoryTruncated] = useState<{ total: number; shown: number } | null>(null);
 	const [cliApprovalInfo, setCliApprovalInfo] = useState<string | null>(null);
 	const [cliInputInfo, setCliInputInfo] = useState<string | null>(null);
@@ -2319,6 +2328,7 @@ export default function App() {
 					inHistoryRef.current = true;
 					historyBufferRef.current = [];
 					setHistoryTruncated(null);
+					setHistoryReady(false);
 					// Clear any in-progress streaming from a previous connection
 					streamingRef.current = '';
 					reasoningRef.current = '';
@@ -2360,6 +2370,7 @@ export default function App() {
 				if (event.type === 'history_end') {
 					inHistoryRef.current = false;
 					setLoadingHistory(null);
+					setHistoryReady(true);
 					if (event.sessionId && event.sessionId !== activeSessionIdRef.current) {
 						historyBufferRef.current = []; return;
 					}
@@ -3253,6 +3264,47 @@ export default function App() {
 		return () => clearInterval(t);
 	}, [loadingHistory]);
 
+	// Resume-stall detector — arms a single deadline while a URL session refuses to
+	// become usable. "Usable" = history finished loading (even an empty session),
+	// any message rendered, a draft is open, or we're in no-session mode. The deadline
+	// is anchored to the session id (+ retry attempt) so it survives reconnect flaps
+	// (the 2s onclose→connect loop) instead of resetting each cycle. When it fires we
+	// flip resumeStalled → the escape-hatch overlay renders. Fully non-destructive:
+	// nothing is torn down, a genuinely-slow large load keeps loading underneath.
+	const STALL_MS = 20000;
+	useEffect(() => {
+		const sid = new URLSearchParams(window.location.search).get('session');
+		const usable = historyReady || messages.length > 0 || !!draftSession || noSession;
+		if (!sid || usable) {
+			if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
+			stallAnchorRef.current = null;
+			if (resumeStalled) setResumeStalled(false);
+			return;
+		}
+		const anchor = `${sid}:${resumeAttempt}`;
+		if (stallAnchorRef.current !== anchor) {
+			stallAnchorRef.current = anchor;
+			if (resumeStalled) setResumeStalled(false);
+			if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+			stallTimerRef.current = setTimeout(() => setResumeStalled(true), STALL_MS);
+		}
+		return () => {};
+	}, [historyReady, messages.length, draftSession, noSession, resumeAttempt, resumeStalled]);
+
+	// Retry the stalled resume: re-arm the stall deadline and force a fresh connect
+	// to the same session (covers both a hung connect and a stuck reconnect loop).
+	const retryResume = useCallback(() => {
+		setResumeStalled(false);
+		setHistoryReady(false);
+		setResumeAttempt(n => n + 1);
+		const ws = wsRef.current;
+		if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; try { ws.close(); } catch { /* ignore */ } }
+		wsRef.current = null;
+		if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+		setConnectionState('connecting');
+		connect();
+	}, [connect]);
+
 	// Reconnect when page becomes visible/focused after being backgrounded.
 	// Also sends a heartbeat ping to detect stale connections that still report OPEN.
 	useEffect(() => {
@@ -4108,6 +4160,53 @@ export default function App() {
 
 	return (
 		<div className="flex flex-col" style={{ height: '100%' }}>
+			{/* Resume-stall escape hatch — the session in the URL won't open (CLI crash,
+			    hung resume, or a genuinely huge history still loading). Rather than leave
+			    the shell empty forever (the mobile "black screen"), offer a way out. */}
+			{resumeStalled && (
+				<div
+					className="fixed inset-0 z-[70] flex items-center justify-center px-6"
+					style={{ background: 'var(--overlay)' }}
+				>
+					<div
+						className="w-full max-w-sm rounded-2xl p-6 text-center"
+						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+					>
+						<PortalLogo className="mx-auto mb-4" />
+						<h2 className="mb-2 text-base font-semibold">Still trying to open this session…</h2>
+						<p className="mb-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+							This is taking longer than usual. A very large session can just be slow to
+							load, or the session may have stopped responding.
+						</p>
+						<p className="mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
+							{loadingHistory
+								? `Loading history… ${loadingSecs}s (${loadingHistory.sizeMB} MB)`
+								: connectionState === 'connecting'
+									? `Connecting… ${connectingSecs}s`
+									: 'Waiting for the session to respond…'}
+						</p>
+						<div className="flex flex-col gap-2">
+							<button
+								type="button"
+								className="w-full rounded-lg px-4 py-2.5 text-sm font-medium"
+								style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+								onClick={() => { setResumeStalled(false); enterNoSession(); }}
+							>
+								Back to sessions
+							</button>
+							<button
+								type="button"
+								className="w-full rounded-lg px-4 py-2.5 text-sm font-medium"
+								style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+								onClick={retryResume}
+							>
+								Retry
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{/* QR Code Modal */}
 			{showQR && (
 				<div

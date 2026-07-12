@@ -18,6 +18,7 @@ import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
 
 function log(msg: string): void {
 	const now = new Date();
@@ -109,7 +110,10 @@ function launchCli(port: number): boolean {
 			return false;
 		}
 		const copilotPath = which.stdout.toString().trim().split(/\r?\n/)[0];
-		exec(`pwsh -NoProfile -Command "Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true },
+		// Raise the CLI's V8 heap so large-session resume doesn't OOM (see cli-env.ts).
+		// $env:NODE_OPTIONS is set inside the pwsh command so Start-Process's child
+		// inherits it (Start-Process doesn't take our exec env reliably otherwise).
+		exec(`pwsh -NoProfile -Command "$env:NODE_OPTIONS='${cliNodeOptions()}'; Start-Process -FilePath '${copilotPath}' -ArgumentList '--server','--port','${port}' -WindowStyle Hidden"`, { windowsHide: true },
 			(err) => {
 				if (err) {
 					console.error(`[Launcher] Failed to launch CLI: ${err.message}`);
@@ -120,6 +124,7 @@ function launchCli(port: number): boolean {
 		const child = spawn('copilot', ['--server', '--port', String(port)], {
 			stdio: 'ignore',
 			detached: true,
+			env: cliSpawnEnv(),
 		});
 		child.on('error', (err) => {
 			console.error(`[Launcher] Failed to spawn copilot: ${err.message}`);
