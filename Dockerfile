@@ -63,8 +63,8 @@ ARG PGID=568
 #    static binary to /usr/local/bin; manages venvs/tools into ~ (persistent) and works fine non-root.
 #  - lsof: used by "Restart Copilot" to free port 3848 before relaunching the CLI.
 #  - tzdata: lets the TZ env set the container's local time (log + folder timestamps).
-ARG PWSH_VERSION=7.4.6
-ARG UV_VERSION=0.11.24
+ARG PWSH_VERSION=7.6.3
+ARG UV_VERSION=0.11.28
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl wget git openssh-client less zip unzip xz-utils patch make jq gosu \

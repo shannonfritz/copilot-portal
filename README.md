@@ -180,7 +180,7 @@ npm run package      # create release zip
 
 ### Versioning
 
-- **Version** (`v0.6.0`) — semver in `package.json`, bumped for releases
+- **Version** (`v0.8.0`) — semver in `package.json`, bumped for releases
 - **Build** (`260414-01`) — `YYMMDD-NN` in `BUILD`, auto-incremented by `npm run package`
 
 ### Project Structure

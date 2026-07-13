@@ -4172,7 +4172,7 @@ export default function App() {
 						className="w-full max-w-sm rounded-2xl p-6 text-center"
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
 					>
-						<PortalLogo className="mx-auto mb-4" />
+						<PortalLogo className="mx-auto mb-4 block size-14" />
 						<h2 className="mb-2 text-base font-semibold">Still trying to open this session…</h2>
 						<p className="mb-1 text-sm" style={{ color: 'var(--text-muted)' }}>
 							This is taking longer than usual. A very large session can just be slow to

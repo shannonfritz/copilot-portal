@@ -42,14 +42,17 @@ All notable changes to Copilot Portal are documented here.
 - **Update checks always say *which* version** — a manual `[u]`pdate check now prints the installed `[Version] <pkg> <ver> (package)` line on every check (not just the first), so "All packages up to date" is qualified by the actual versions rather than left implicit
 - **`report_intent` is now logged** — the agent's intent line (the purple-circle summary above a running tool) is logged as `[Intent] report_intent: "…"` with a `(repeat)` tag, making it easy to confirm cadence and spot a genuinely stale vs. simply un-re-reported intent
 - **Quieter console** — the high-frequency `tool.execution_partial_result`, `session.background_tasks_changed`, and `assistant.tool_call_delta` events are dropped from the generic `[Event]` log (the former is already bracketed by tool start/complete lines, the latter has no handler); meaningful `[Event]` lines are kept for turn-sequence triage
+- **Tunnel health-check logs are timestamped** — the periodic tunnel health-check and auto-restart lines were the one runtime log path still printing without the `[hh:mm:ss AM]` prefix every other server line carries; they now match, so a tunnel restart can be correlated with the events around it
+- **Recovery overlay logo sized correctly** — the "Still trying to open this session…" overlay rendered its portal logo at the browser's default SVG size (oversized and clipped on the right on narrow screens); it's now given an explicit, centered size that fits the card
 - **Rename a session** — a pencil icon in the session list (between the shield and delete icons) turns the title into an inline edit field (Enter to save, Esc to cancel); the new name persists and *sticks* — the CLI's periodic auto-summary no longer overwrites a name you set. Disabled while a session is shielded, exactly like delete. Built on the SDK's new writable session-name API — the portal's first editable session title
 - **Prompt panel scrolls instead of pushing the composer off-screen** — a tall `ask_user` prompt or approval request (long question + many choices) is now capped at 70% of the viewport and scrolls internally (themed scrollbar), so the message composer stays visible and reachable at the bottom, including on short/mobile viewports
 - **`ask_user` text renders correctly** — the question now renders as proper markdown at normal weight (it was force-bolded, flattening real emphasis), and a double-encoding hop in connected/container mode that left literal `\n`/`\uXXXX`/`\\` escapes in the question, choices, and echoed answer is now reversed at the ingestion seam — real newlines, arrows, and Windows paths all render as intended
 
 ### 🆙 Toolchain & dependencies
 - **Node 24** — the container image and CI now build on Node 24 (current Active LTS); the `engines` floor stays `>=22.5.0` so the zip still runs on host Node 22+
-- **Copilot CLI 1.0.69** — bundled CLI bumped to 1.0.69 (latest stable; all per-platform binaries refreshed in the lockfile)
+- **Copilot CLI 1.0.70** — bundled CLI bumped to 1.0.70 (latest stable; all per-platform binaries refreshed in the lockfile)
 - **Copilot SDK 1.0.6** — `@github/copilot-sdk` bumped to 1.0.6
+- **Container agent tools refreshed** — the image now bakes **PowerShell 7.6.3** (was 7.4.6) and **uv 0.11.28** (was 0.11.24), keeping the baked-in agent toolchain current with upstream stable releases
 - **Zip dependency floors corrected** — the distributable `package.dist.json` now inherits its runtime dependency set wholesale from the dev `package.json` at package time (single source of truth), fixing a stale `@github/copilot-sdk ^0.3.0` floor and a missing CLI entry so a fresh zip install resolves the right versions
 
 ### 🧹 Maintenance & hardening

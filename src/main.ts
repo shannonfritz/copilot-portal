@@ -192,6 +192,14 @@ try {
 const dataDir = DATA_DIR ?? 'data';
 const tunnel = new TunnelManager(dataDir, PORT);
 
+// Timestamped console logger for runtime/background events (tunnel health checks,
+// auto-restarts) so their lines match the `[hh:mm:ss AM]` prefix that PortalServer.log
+// stamps on `[Update]`/`[History]`/etc. Startup TUI banner lines stay unstamped on purpose.
+const stampedLog = (msg: string) => {
+	const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+	console.log(`[${ts}] ${msg}`);
+};
+
 // Print QR code for easy phone access (desktop only — see CONTAINER_MODE note).
 if (!NO_QR && !CONTAINER_MODE) {
 	console.log('\nScan to open on your phone:');
@@ -387,8 +395,8 @@ if (process.stdin.isTTY) {
 			// Start periodic health checks
 			tunnel.startHealthCheck(
 				() => server.getToken(),
-				(newUrl) => console.log(`  Tunnel restarted: ${newUrl}?token=${server.getToken()}`),
-				console.log,
+				(newUrl) => stampedLog(`[Tunnel] Restarted → ${newUrl}?token=${server.getToken()}`),
+				stampedLog,
 			);
 		} catch (e) {
 			console.log(`  Failed to start tunnel: ${e}\n`);
