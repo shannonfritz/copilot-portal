@@ -8,7 +8,7 @@
 
     Designed to be run straight from the web:
 
-        powershell -ExecutionPolicy Bypass -c "irm https://aka.ms/copilot-portal | iex"
+        powershell -ex bypass "iex (irm https://aka.ms/copilotportal-install)"
 
     It presents a small WPF window (single-file, no external assemblies beyond
     the in-box .NET Framework WPF/WinForms) that lets you pick an install folder
