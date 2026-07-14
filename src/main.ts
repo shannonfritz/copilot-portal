@@ -209,12 +209,23 @@ if (!NO_QR && !CONTAINER_MODE) {
 	}
 }
 
-if (LAUNCH) {
-	const url = server.getLocalURL();
+// Open the portal in the default browser. Reused by the boot-time auto-launch
+// and the [l] key command.
+const openInBrowser = (url: string) => {
 	const cmd = process.platform === 'win32' ? `start "" "${url}"`
 		: process.platform === 'darwin' ? `open "${url}"`
 		: `xdg-open "${url}"`;
 	exec(cmd);
+};
+
+// Auto-launch the browser on start. Governed by the persisted autoLaunch pref
+// (default ON) OR an explicit --launch flag; unified so passing --launch while
+// the pref is ON doesn't open two tabs. Skipped in container mode (headless, no
+// browser). We wait for auth to SETTLE (leave the transient 'starting' state) with
+// a hard cap so the browser lands on the app or the sign-in screen instead of a
+// warm-up spinner, and fire it non-blocking so console keys stay responsive.
+if ((LAUNCH || server.autoLaunch) && !CONTAINER_MODE) {
+	void server.whenReady(15_000).then(() => openInBrowser(server.getLocalURL()));
 }
 
 // Console key commands
@@ -477,7 +488,8 @@ if (process.stdin.isTTY) {
 		const tunnelState = tunnel.getState();
 		const tunnelLabel = tunnelState.running ? '[t] Stop Tunnel' : '[t] Tunnel';
 		const autoStart = isAutoStartEnabled();
-		console.log(`\n  Access:  [q] QR Code  [l] Launch Browser  ${tunnelLabel}  [T] Reset Access`);
+		const autoLaunch = server.autoLaunch;
+		console.log(`\n  Access:  [q] QR Code  [l] Launch Browser  [L] Auto-launch: ${autoLaunch ? 'ON' : 'OFF'}  ${tunnelLabel}  [T] Reset Access`);
 		console.log(`  Server:  [c] CLI Console  [u] Check Updates  [s] Auto-start: ${autoStart ? 'ON' : 'OFF'}  [r] Restart  [x] Exit\n`);
 	};
 	showHelp();
@@ -505,6 +517,11 @@ if (process.stdin.isTTY) {
 			return;
 		}
 		// Handle shift-sensitive keys before lowercasing
+		if (key === 'L') {
+			const enabled = server.setAutoLaunch(!server.autoLaunch);
+			console.log(`\n  Auto-launch browser on start: ${enabled ? 'ON' : 'OFF'}\n`);
+			return;
+		}
 		if (key === 'T') {
 			console.log('\n  Security reset: revoking all access...');
 			const result = tunnel.reset();
@@ -527,11 +544,7 @@ if (process.stdin.isTTY) {
 				showCliPicker();
 				break;
 			case 'l': {
-				const url = server.getLocalURL();
-				const cmd = process.platform === 'win32' ? `start "" "${url}"`
-					: process.platform === 'darwin' ? `open "${url}"`
-					: `xdg-open "${url}"`;
-				exec(cmd);
+				openInBrowser(server.getLocalURL());
 				console.log(`\n  Opened in browser\n`);
 				break;
 			}

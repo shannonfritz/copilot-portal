@@ -18,24 +18,36 @@ A mobile-friendly web portal for GitHub Copilot CLI sessions. Start the server o
 - **Remote access** — DevTunnel integration for HTTPS access from anywhere
 - **Run in a container** — optional headless/NAS deployment via a published Docker image (TrueNAS SCALE, Synology, any Docker host)
 
-## Prerequisites
+## Dependencies
 
-- [Node.js](https://nodejs.org/) v22 or later
-- [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — `winget install GitHub.CopilotCLI` (Windows) or `brew install gh-copilot` (macOS)
+Copilot Portal installs what it needs on first run. If **Node.js 22+** or **PowerShell 7** (optional — used by the Copilot CLI to run some tools) aren't already present, they're installed via `winget`, which may prompt for elevation (UAC). The **Copilot CLI** itself ships bundled as an npm dependency, so there's nothing to install separately.
 
-## Getting Started
+You do need a **GitHub account with Copilot access** — check at [github.com/settings/copilot](https://github.com/settings/copilot).
 
-1. Unzip the release to a folder (e.g. `C:\copilot-portal`).
+For an always-on headless/NAS deployment instead, jump to [Run in a container](#run-in-a-container-headless--nas).
+
+## Getting Started (Windows)
+
+Open **PowerShell** and run the one-line installer:
+
+```powershell
+powershell -ex bypass "iex (irm https://aka.ms/copilotportal-install)"
+```
+
+A small installer window downloads the latest release, ensures Node.js is present, and creates Start Menu / Desktop shortcuts. Click **Open Portal** when it finishes — your browser opens to the GitHub sign-in screen automatically.
+
+### Manual install (any platform)
+
+Prefer to do it by hand, or on macOS/Linux?
+
+1. Download and unzip the [latest release](https://github.com/shannonfritz/copilot-portal/releases/latest) to a folder (e.g. `C:\copilot-portal`).
 2. Run `start-portal.cmd` (Windows) or `sh start-portal.sh` (macOS/Linux).
-3. Press **`l`** to launch the portal in your browser.
+3. Sign in to **GitHub** from the browser when it opens.
 
 On first run, the script will:
-- Install **Node.js** and **PowerShell 7** via winget if missing (restart terminal after install)
-- Install npm dependencies
-- Sign you in to **GitHub** (opens a browser for authentication)
-- Start the Copilot CLI server in the background
-
-> **Prerequisite:** You need a GitHub account with Copilot access. Check at [github.com/settings/copilot](https://github.com/settings/copilot).
+- Install **Node.js** and (optionally) **PowerShell 7** via winget if missing — restart the terminal after a Node install
+- Install npm dependencies (including the bundled Copilot CLI)
+- Start the server and open your browser to the sign-in screen (auto-launch is on by default; toggle with **`L`**, or press **`l`** to open it anytime)
 
 <a href="img/screenshot-sessions.png"><img src="img/screenshot-sessions.png" width="800" alt="Session picker"></a>
 
@@ -72,8 +84,11 @@ While the server is running, press a key in the terminal:
 |---|---|---|---|
 | **q** | QR code & URL | **c** | CLI console |
 | **l** | Launch browser | **u** | Check updates |
-| **t** | Start/stop tunnel | **r** | Restart |
-| **T** | Security reset | **x** | Exit |
+| **L** | Auto-launch on/off | **r** | Restart |
+| **t** | Start/stop tunnel | **T** | Security reset |
+| | | **x** | Exit |
+
+**Auto-launch** (Shift+L) toggles whether the browser opens automatically when the server is ready. It's on by default; turn it off if you'd rather reuse an already-open tab (handy when restarting during development).
 
 **Tunnel** creates a DevTunnel for remote access (HTTPS from anywhere). Press **t** to start, **t** again to stop. First time, it asks about access settings. The tunnel auto-restarts after a server restart.
 

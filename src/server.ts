@@ -68,6 +68,8 @@ export class PortalServer {
 	private shields: Record<string, boolean> = {};
 	private sessionAgents: Record<string, string> = {};
 	private sessionPrompts: Record<string, Array<{ label: string; text: string }>> = {};
+	/** Persisted UI preferences (portal-data/prefs.json). Currently: autoLaunch. */
+	private prefs: { autoLaunch?: boolean } = {};
 	private updater: UpdateChecker;
 	private failedAuth = new Map<string, { count: number; resetTime: number }>();
 
@@ -559,6 +561,44 @@ export class PortalServer {
 			fs.mkdirSync(this.dataDir, { recursive: true });
 			fs.writeFileSync(path.join(this.dataDir, 'session-shields.json'), JSON.stringify(this.shields, null, 2));
 		} catch {}
+	}
+
+	private loadPrefs(): void {
+		try {
+			const f = path.join(this.dataDir, 'prefs.json');
+			if (fs.existsSync(f)) this.prefs = JSON.parse(fs.readFileSync(f, 'utf8'));
+		} catch {}
+	}
+
+	private savePrefs(): void {
+		try {
+			fs.mkdirSync(this.dataDir, { recursive: true });
+			fs.writeFileSync(path.join(this.dataDir, 'prefs.json'), JSON.stringify(this.prefs, null, 2));
+		} catch {}
+	}
+
+	/** Auto-launch the browser when the portal starts. Defaults ON (only OFF when
+	 *  explicitly disabled), so a fresh install opens the browser on first run. */
+	get autoLaunch(): boolean {
+		return this.prefs.autoLaunch !== false;
+	}
+
+	/** Persist the auto-launch preference; returns the new value. */
+	setAutoLaunch(enabled: boolean): boolean {
+		this.prefs.autoLaunch = enabled;
+		this.savePrefs();
+		return enabled;
+	}
+
+	/**
+	 * Resolve once the portal is ready to show a real destination in the browser:
+	 * auth has settled out of the transient 'starting' state (to 'ok', 'needs-auth',
+	 * or 'error'), or after `timeoutMs` as a hard cap so a hung CLI never blocks the
+	 * launch. Used to time the browser auto-launch so it lands on the app or the
+	 * sign-in screen instead of a warm-up spinner.
+	 */
+	whenReady(timeoutMs: number): Promise<void> {
+		return this.waitForAuthSettled(timeoutMs);
 	}
 
 	private loadSessionAgents(): void {
@@ -2273,6 +2313,7 @@ export class PortalServer {
 		this.loadShields();
 		this.loadSessionAgents();
 		this.loadSessionPrompts();
+		this.loadPrefs();
 
 		// Bind the HTTP/WS listener FIRST so the portal is always reachable — even
 		// when the CLI isn't authenticated. Auth + CLI connection then happen in the

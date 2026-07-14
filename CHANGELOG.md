@@ -2,6 +2,27 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.1
+
+### 📦 One-line Windows installer
+- **`irm | iex` install** — `powershell -ex bypass "iex (irm https://aka.ms/copilotportal-install)"` opens a small WPF installer that downloads the latest release, ensures Node.js is present, and creates Start Menu / Desktop shortcuts
+- **Branded icons** — shortcuts and the installer window now carry the Copilot Portal icon instead of the generic batch-file icon (`tools\gen-icons.ps1` regenerates them from the source PNG)
+
+### 🚀 Browser auto-launch
+- **Opens on start** — the portal now opens your browser automatically once the server is ready, landing on the app or the GitHub sign-in screen rather than a warm-up spinner
+- **`[L]` toggle** — turn auto-launch on/off from the console; the preference persists across restarts in `data/prefs.json`
+
+### 🔧 First-run bootstrap (`start-portal.cmd`)
+- **Dependency refresh on update** — reinstalls npm packages when the installed app version changes, so an in-place update never runs new code against stale dependencies
+- **Registry fallback** — quietly retries against public npmjs when a corporate mirror lags the newest `@github/copilot`, instead of dumping an alarming error
+- **Removed stale console sign-in** — GitHub authentication now happens entirely in the web UI
+
+### 🖥️ Stability
+- **OOM hardening** — the CLI heap limit is passed explicitly to SDK-spawned CLI processes, so long-lived shared sessions honor the larger heap ceiling
+
+### 📝 Docs
+- **README install rewrite** — leads with the one-line Windows installer plus a manual/any-platform path; container (headless/NAS) instructions unchanged
+
 ## v0.8.0
 
 ### 🖼️ Inline media
