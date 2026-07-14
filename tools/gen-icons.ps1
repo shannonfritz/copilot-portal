@@ -110,7 +110,10 @@ if (-not [System.Text.RegularExpressions.Regex]::IsMatch($raw, $pattern)) {
 $replacement = "`$IconB64 = @'`r`n$wrapped`r`n'@"
 $new = [System.Text.RegularExpressions.Regex]::Replace($raw, $pattern, { param($m) $replacement })
 if ($new -ne $raw) {
-    $enc = New-Object System.Text.UTF8Encoding($true)
+    # Write UTF-8 WITHOUT BOM: the installer is ASCII-only and is served via
+    # `irm | iex`, where a leading BOM becomes a literal U+FEFF char that breaks
+    # parsing of the top-of-file comment block. No BOM keeps it curl-pipe-safe.
+    $enc = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Installer, $new, $enc)
     Write-Host ("Embedded {0}-byte icon ({1} base64 chars) into {2}" -f $slim.Length, $b64.Length, $Installer)
 } else {

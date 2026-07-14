@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     One-line graphical installer for Copilot Portal.
 
