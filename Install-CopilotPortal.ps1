@@ -708,9 +708,16 @@ $btnInstall.Add_Click({
     $script:ps = [powershell]::Create()
     $script:ps.Runspace = $script:rs
     # Wrap the engine so any throw is captured into $sync and Done is always set.
+    # NOTE: we pass the engine as TEXT and rebuild it with [scriptblock]::Create
+    # INSIDE this runspace. A scriptblock keeps affinity to the session state where
+    # it was created; when the installer is run via `irm | iex`, $Engine's origin
+    # session can't resolve core cmdlets (Test-Path, Join-Path, ...) from this
+    # background runspace, so it fails with "term not recognized". Recreating it
+    # here binds it to this runspace's default session state, which has them.
     [void]$script:ps.AddScript({
-        param($Engine, $sync, $InstallPath, $Repo, $NodeMin, $MakeStartMenu, $MakeDesktop)
+        param($EngineText, $sync, $InstallPath, $Repo, $NodeMin, $MakeStartMenu, $MakeDesktop)
         try {
+            $Engine = [scriptblock]::Create($EngineText)
             & $Engine $sync $InstallPath $Repo $NodeMin $MakeStartMenu $MakeDesktop
         } catch {
             $sync.Error = $_.ToString()
@@ -719,7 +726,7 @@ $btnInstall.Add_Click({
             $sync.Done = $true
         }
     })
-    [void]$script:ps.AddArgument($Engine)
+    [void]$script:ps.AddArgument($Engine.ToString())
     [void]$script:ps.AddArgument($sync)
     [void]$script:ps.AddArgument($target)
     [void]$script:ps.AddArgument($Repo)
