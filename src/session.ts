@@ -1,5 +1,5 @@
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
-import { cliNodeOptions } from './cli-env.js';
+import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
 import type { CopilotSession } from '@github/copilot-sdk';
 import type {
 	SessionMetadata,
@@ -28,18 +28,27 @@ function getSessionEvents(session: CopilotSession, log?: (msg: string) => void):
 //     by the smoke-test harness). Verified working on the pinned SDK (1.0.6).
 //     The `as any` cast is retained because `cliUrl` isn't in the public typings.
 function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClient {
+	// Raise the spawned CLI's V8 heap so resuming a very large session doesn't
+	// OOM-crash it (see cli-env.ts). We do this TWO ways, belt-and-suspenders:
+	//   1. Set process.env.NODE_OPTIONS — covers any child that inherits our env.
+	//   2. Pass `env` EXPLICITLY to the SDK so the CLI it spawns (standalone
+	//      `--stdio` mode) is GUARANTEED the larger heap, independent of when the
+	//      SDK actually spawns relative to our process.env mutation.
+	// Why explicit env matters: on 2026-07-13 a standalone CLI still OOM-crashed
+	// at the ~2.2GB V8 default despite (1) — the raised heap never reached that
+	// SDK-spawned subprocess. Passing env directly removes that ambiguity. The
+	// SDK resolves its spawn env as `options.env ?? process.env`, so this wins.
+	process.env.NODE_OPTIONS = cliNodeOptions();
 	if (cliUrl) {
+		// Connected/shared: attaches to an already-running CLI server (the launcher
+		// spawned `copilot --server` with its own raised heap). No CLI is spawned
+		// here, so the heap env is irrelevant on this path.
 		log?.(`[SDK] Creating client with cliUrl: ${cliUrl}`);
 		return new CopilotClient({ cliUrl } as any);
 	}
-	// Standalone: the SDK spawns and OWNS the CLI subprocess, inheriting our env.
-	// Raise its V8 heap via NODE_OPTIONS so resuming a very large session doesn't
-	// OOM-crash the CLI (see cli-env.ts). The launcher/relaunch spawn points set
-	// this on their own child env; here the SDK does the spawning, so we set it on
-	// process.env for the child to inherit. Idempotent (won't stack flags), and it
-	// does not change THIS (already-running) process's heap — only children's.
-	process.env.NODE_OPTIONS = cliNodeOptions();
-	return new CopilotClient();
+	// Standalone: the SDK spawns and OWNS the CLI subprocess. Passing env
+	// explicitly ensures NODE_OPTIONS (with --max-old-space-size) reaches it.
+	return new CopilotClient({ env: cliSpawnEnv() } as any);
 }
 import * as fs from 'node:fs';
 import * as path from 'node:path';
