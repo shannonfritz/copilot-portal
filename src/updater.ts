@@ -39,16 +39,25 @@ export interface UpdateStatus {
 const TRACKED_PACKAGES = ['@github/copilot-sdk'] as const;
 
 /**
- * The PUBLIC npm registry — the authoritative source of "latest" for the
- * @github toolchain packages. We query and install from this explicitly rather
- * than npm's configured registry: this machine's npm is routed through a
- * corporate mirror (`packagefeedproxy.microsoft.io`) that can LAG the public
- * registry (it lacked 1.0.70 while npmjs had it) or point its `latest` dist-tag
- * at a prerelease. The contract is simple: whatever npmjs marks `latest` IS the
- * latest release, and we install that exact version from the same registry so
- * the check and the install can never disagree (the ETARGET class of failure).
+ * Public npm registry — used as a FALLBACK only.
+ *
+ * We prefer npm's CONFIGURED registry (see fetchLatestVersion) and fall back to
+ * this public host only if the configured one can't resolve. Microsoft-managed
+ * devices block the public npm hosts ("[TE] NPM URL Block" / Tech Eviction)
+ * while routing npm at an approved, reachable feed
+ * (`packagefeedproxy.microsoft.io`). Forcing this host there hung each check
+ * ~72s AND fired a Windows Security toast on every check — so it must never be
+ * the forced primary. The prerelease guard in computeHasUpdate() keeps a mirror's
+ * occasional prerelease `latest` (e.g. 1.0.7-preview.0) from being offered onto a
+ * stable install.
  */
 const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org';
+
+/** npm flags that fail fast on a blocked/unreachable registry. npm's default
+ *  fetch-timeout is ~5min and it retries, which on a blocked host stacked into a
+ *  ~72s hang per call. Cap it so a blocked registry fails in seconds. */
+const NPM_VIEW_FLAGS = '--fetch-retries=1 --fetch-timeout=15000';
+const NPM_INSTALL_FLAGS = '--no-fund --no-audit --fetch-retries=1 --fetch-timeout=60000';
 
 /** How often to auto-check (ms) — 4 hours */
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -138,23 +147,36 @@ export class UpdateChecker {
 		return this.packages.some(p => p.hasUpdate);
 	}
 
+	/** Decide whether `latest` should be offered over `installed`, with a
+	 *  prerelease guard: a prerelease `latest` (e.g. the corporate feed surfacing
+	 *  1.0.7-preview.0) is only offered when the installed build is itself a
+	 *  prerelease — so a stable install is never nudged onto a preview. */
+	private computeHasUpdate(installed: string | null, latest: string | null): boolean {
+		if (!installed || !latest || latest === installed) return false;
+		if (!isNewer(latest, installed)) return false;
+		if (isPrerelease(latest) && !isPrerelease(installed)) return false;
+		return true;
+	}
+
 	/** Manually trigger a check */
 	async check(): Promise<UpdateStatus> {
 		if (this.checking) return this.getStatus();
 		this.checking = true;
 		this.error = null;
 		try {
+			const configuredReg = getConfiguredRegistry();
+			this.log(`[Update] Checking for updates via ${configuredReg ?? 'the configured npm registry'} (public npm registry as fallback)...`);
 			const results: PackageUpdate[] = [];
 			for (const name of TRACKED_PACKAGES) {
 				const installed = getInstalledVersion(name);
 				const latest = await fetchLatestVersion(name, this.log);
-				const hasUpdate = !!(installed && latest && latest !== installed && isNewer(latest, installed));
+				const hasUpdate = this.computeHasUpdate(installed, latest);
 				results.push({ name, installed: installed ?? 'unknown', latest: latest ?? 'unknown', hasUpdate });
 			}
 			// Also check the CLI binary version (bundled as @github/copilot via copilot-sdk)
 			const cliInstalled = getInstalledVersion('@github/copilot');
 			const cliLatest = await fetchLatestVersion('@github/copilot', this.log);
-			const cliHasUpdate = !!(cliInstalled && cliLatest && cliLatest !== cliInstalled && isNewer(cliLatest, cliInstalled));
+			const cliHasUpdate = this.computeHasUpdate(cliInstalled, cliLatest);
 			results.push({ name: '@github/copilot', installed: cliInstalled ?? 'unknown', latest: cliLatest ?? 'unknown', hasUpdate: cliHasUpdate });
 
 			this.packages = results;
@@ -235,18 +257,19 @@ export class UpdateChecker {
 			// offered update evaporated.
 			await this.check();
 
-			// Install the EXACT version the public registry marks as `latest`,
-			// pinned — not the moving `@latest` tag — and from that same public
-			// registry. Pinning + a fixed registry means we install precisely
-			// what the pre-flight check just resolved as installable, so the
-			// check and install can't disagree (the ETARGET class of failure).
-			// An explicit version also bypasses the package.json semver range.
+			// Install the EXACT version we resolved as `latest`, pinned — not the
+			// moving `@latest` tag. Pinning installs precisely what the pre-flight
+			// check just resolved as installable, so the check and install can't
+			// disagree (the ETARGET class of failure). An explicit version also
+			// bypasses the package.json semver range. Registry selection mirrors the
+			// check: configured registry first, public npmjs as fallback (see
+			// runNpmInstall) — never forcing the managed-device-blocked public host.
 			const targets = this.packages
 				.filter(p => p.hasUpdate && p.latest && p.latest !== 'unknown')
 				.map(p => ({ name: p.name, version: p.latest }));
 			if (targets.length > 0) {
 				const specs = targets.map(t => `${t.name}@${t.version}`).join(' ');
-				await runCommand(`npm install --no-fund --no-audit --registry=${PUBLIC_NPM_REGISTRY} ${specs}`, PROJECT_ROOT);
+				await runNpmInstall(specs, this.log);
 				this.log(`[Update] npm install complete`);
 				process.title = 'Copilot Portal';
 
@@ -267,7 +290,7 @@ export class UpdateChecker {
 						this.log(`[Update] ${t.name} on disk is ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version} — forcing clean re-extract`);
 						fs.rmSync(path.join(PROJECT_ROOT, 'node_modules', ...t.name.split('/')), { recursive: true, force: true });
 					}
-					await runCommand(`npm install --no-fund --no-audit --registry=${PUBLIC_NPM_REGISTRY}`, PROJECT_ROOT);
+					await runNpmInstall('', this.log);
 					this.log(`[Update] Re-extract complete`);
 					process.title = 'Copilot Portal';
 					const stillWrong = mismatched.filter(t => getInstalledVersion(t.name) !== t.version);
@@ -360,30 +383,55 @@ function getInstalledVersion(name: string): string | null {
 	}
 }
 
+/** True if a semver string carries a prerelease segment (e.g. 1.0.7-preview.0). */
+function isPrerelease(v: string): boolean {
+	return v.includes('-');
+}
+
+/** Read npm's configured registry (local, no network). Best-effort. */
+function getConfiguredRegistry(): string | null {
+	try {
+		return execSync('npm config get registry', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 })
+			.toString().trim() || null;
+	} catch { return null; }
+}
+
+/** Run `npm view <name> dist-tags.latest` against a specific registry (or the
+ *  configured one when `registry` is undefined). Resolves to the version or null. */
+function npmViewLatest(name: string, registry: string | undefined): Promise<string | null> {
+	const reg = registry ? ` --registry=${registry}` : '';
+	return runCommand(`npm view ${name} dist-tags.latest ${NPM_VIEW_FLAGS}${reg}`, PROJECT_ROOT)
+		.then((out) => out.trim() || null);
+}
+
 /**
- * Resolve what a package's PUBLIC npm `latest` dist-tag points at.
+ * Resolve a package's `latest` dist-tag.
  *
- * The contract (per the user): whatever the public registry marks as `latest`
- * IS the latest release — we take it verbatim and do NO semver filtering. The
- * version number's prerelease semantics are irrelevant; if npmjs published it as
- * `latest`, that's the released build we compare against. We query npmjs.org
- * explicitly (not npm's configured registry) so a lagging corporate mirror can't
- * hide the real latest, and `apply()` installs from the same registry so the
- * check and install can never disagree.
+ * Registry strategy (managed-device aware): query npm's CONFIGURED registry
+ * first, then fall back to public npmjs only if that fails. On Microsoft-managed
+ * devices the public npm hosts are blocked ("[TE] NPM URL Block") while an
+ * approved feed (`packagefeedproxy.microsoft.io`) is configured and reachable —
+ * so forcing npmjs would hang ~72s per call AND trip a Windows Security toast on
+ * every check. Preferring the configured registry avoids the block entirely; the
+ * npmjs fallback keeps normal (non-managed) machines and mirror-outage cases
+ * working. A prerelease guard in computeHasUpdate() prevents a feed's occasional
+ * prerelease `latest` from being offered onto a stable install.
  *
  * (Copilot Portal itself is NOT resolved here — it has its own latest/rc release
  * channels via GitHub Releases; see fetchLatestRelease.)
  */
-function fetchLatestVersion(name: string, log?: (msg: string) => void): Promise<string | null> {
-	return runCommand(`npm view ${name} dist-tags.latest --registry=${PUBLIC_NPM_REGISTRY}`, PROJECT_ROOT)
-		.then((out) => {
-			const v = out.trim();
-			return v || null;
-		})
-		.catch((e) => {
-			log?.(`[Update] Could not resolve latest for ${name}: ${(e as Error).message.split('\n')[0]}`);
-			return null;
-		});
+async function fetchLatestVersion(name: string, log?: (msg: string) => void): Promise<string | null> {
+	const viaConfigured = await npmViewLatest(name, undefined)
+		.catch((e) => { log?.(`[Update] Configured registry could not resolve ${name}: ${(e as Error).message.split('\n')[0]}`); return null; });
+	if (viaConfigured) return viaConfigured;
+
+	log?.(`[Update] Falling back to the public npm registry for ${name}...`);
+	const viaPublic = await npmViewLatest(name, PUBLIC_NPM_REGISTRY)
+		.catch((e) => { log?.(`[Update] Public npm registry could not resolve ${name}: ${(e as Error).message.split('\n')[0]}`); return null; });
+	if (viaPublic) return viaPublic;
+
+	log?.(`[Update] Could not reach any npm registry for ${name}. This is expected on networks that block the public npm registry (e.g. managed devices); the update check was skipped and nothing was changed.`);
+	return null;
 }
 
 /** Parse a semver string into its numeric core and pre-release identifiers. */
@@ -439,6 +487,20 @@ function isNewer(a: string, b: string): boolean {
 	return comparePrerelease(pa.pre, pb.pre) > 0;
 }
 
+/** Install via the configured registry first, falling back to public npmjs.
+ *  Same managed-device rationale as fetchLatestVersion: never force the blocked
+ *  public host as the primary. `args` is the install target(s) (e.g. `pkg@1.2.3`)
+ *  or '' to reinstall from the lockfile. */
+async function runNpmInstall(args: string, log?: (msg: string) => void): Promise<void> {
+	const base = `npm install ${NPM_INSTALL_FLAGS}`;
+	try {
+		await runCommand(`${base} ${args}`.trim(), PROJECT_ROOT);
+	} catch (e) {
+		log?.(`[Update] Install via the configured registry failed; retrying against the public npm registry... (${(e as Error).message.split('\n')[0]})`);
+		await runCommand(`${base} --registry=${PUBLIC_NPM_REGISTRY} ${args}`.trim(), PROJECT_ROOT);
+	}
+}
+
 /** Run a shell command and return stdout. Rejects on non-zero exit. */
 function runCommand(cmd: string, cwd: string): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -454,7 +516,6 @@ function runCommand(cmd: string, cwd: string): Promise<string> {
 		});
 	});
 }
-
 /** Get a GitHub token from environment or gh CLI */
 function getGitHubToken(): string | null {
 	// Check environment first

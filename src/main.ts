@@ -221,11 +221,17 @@ const openInBrowser = (url: string) => {
 // Auto-launch the browser on start. Governed by the persisted autoLaunch pref
 // (default ON) OR an explicit --launch flag; unified so passing --launch while
 // the pref is ON doesn't open two tabs. Skipped in container mode (headless, no
-// browser). We wait for auth to SETTLE (leave the transient 'starting' state) with
-// a hard cap so the browser lands on the app or the sign-in screen instead of a
-// warm-up spinner, and fire it non-blocking so console keys stay responsive.
-if ((LAUNCH || server.autoLaunch) && !CONTAINER_MODE) {
-	void server.whenReady(15_000).then(() => openInBrowser(server.getLocalURL()));
+// browser) and on launcher-driven relaunches (PORTAL_NO_AUTOLAUNCH, set by the
+// launcher on every restart/reauth spawn) so a restart or sign-in/out doesn't
+// pop a duplicate browser tab. We wait for auth to SETTLE (leave the transient
+// 'starting' state) with a hard cap so the browser lands on the app or the
+// sign-in screen instead of a warm-up spinner, and fire it non-blocking so
+// console keys stay responsive.
+if ((LAUNCH || server.autoLaunch) && !CONTAINER_MODE && !process.env.PORTAL_NO_AUTOLAUNCH) {
+	void server.whenReady(15_000).then(() => {
+		console.log('\n  Auto-launching browser (toggle with [L])...');
+		openInBrowser(server.getLocalURL());
+	});
 }
 
 // Console key commands
@@ -233,6 +239,14 @@ if (process.stdin.isTTY) {
 	process.stdin.setRawMode(true);
 	process.stdin.resume();
 	process.stdin.setEncoding('utf8');
+
+	// Restore the console to cooked mode on ANY exit path. Without this, exiting
+	// while stdin is in raw mode leaves the Windows console input mode broken, so
+	// the launcher's trailing `pause` ("Press any key to continue . . .") never
+	// receives the keypress and the window appears hung. Runs synchronously on
+	// every process.exit()/natural exit, covering [x], Ctrl+C, SIGINT/SIGTERM,
+	// [r] restart, and fatal-error exits alike.
+	process.on('exit', () => { try { process.stdin.setRawMode(false); } catch { /* ignore */ } });
 
 	let cliPickerState: { sessions: Array<{ sessionId: string; summary?: string }>; page: number } | null = null;
 

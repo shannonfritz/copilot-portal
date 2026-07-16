@@ -10,6 +10,8 @@ webui/dist/
 data/
 debug/
 work/
+# Portal-scoped npm registry pin, written at runtime by start-portal.cmd
+.npmrc
 
 # Build artifacts
 releases/

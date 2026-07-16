@@ -55,22 +55,65 @@ echo       Dependencies already installed (%PKG_VER%).
 goto :deps_done
 
 :deps_install
-echo       Installing npm packages...
-:: First attempt against the configured registry, quietly - some corporate npm
-:: mirrors (e.g. packagefeedproxy) lag npmjs and 404 the newest @github/copilot,
-:: and we don't want that transient miss to dump an alarming error block. If it
-:: fails we retry against public npmjs with visible progress.
-call npm install --no-fund --no-audit >nul 2>&1
+echo       These packages will be installed (from package.json):
+node -e "var d=require('./package.json').dependencies||{};Object.keys(d).forEach(function(k){console.log('        - '+k+' '+d[k])})" 2>nul
+echo.
+echo       Installing npm packages (this can take a minute)...
+:: We try up to three registries in order, showing a live heartbeat so the window
+:: never looks frozen, and hiding npm's own (sometimes alarming) transient output
+:: unless every registry fails:
+::   1. Whatever this device is configured to use (the happy path).
+::   2. Public npmjs - works for most users; blocked on some managed devices.
+::   3. The Microsoft-approved feed (packagefeedproxy) - the corporate safety
+::      net for devices where public npm is blocked (e.g. the "[TE] NPM URL
+::      Block" / Tech Eviction policy on Microsoft-managed machines).
+:: Corporate npm mirrors can also lag npmjs and 404 the newest @github/copilot,
+:: which the chain likewise rides through. RC=1 means that attempt succeeded.
+set "NPM_FLAGS=--no-fund --no-audit --fetch-retries=1 --fetch-timeout=60000"
+set "WONREG="
+
+call :npm_attempt "" "configured registry"
+if "!RC!"=="1" goto :deps_ok
+echo       Configured registry didn't work - trying public npmjs...
+call :npm_attempt "https://registry.npmjs.org/" "public npmjs"
+if "!RC!"=="1" ( set "WONREG=https://registry.npmjs.org/" & goto :deps_ok )
+echo       Public npm unavailable - trying the Microsoft-approved feed...
+call :npm_attempt "https://packagefeedproxy.microsoft.io/npm/" "Microsoft feed"
+if "!RC!"=="1" ( set "WONREG=https://packagefeedproxy.microsoft.io/npm/" & goto :deps_ok )
+
+:: All three failed - show the real npm error, then plain-English guidance.
+echo.
+echo  ERROR: Couldn't install npm packages from any registry.
+if defined LASTLOG if exist "!LASTLOG!" (
+    echo.
+    echo  --- npm output ---
+    type "!LASTLOG!"
+    del "!LASTLOG!" >nul 2>&1
+)
+echo.
+echo  If this is a corporate/managed device, public npm may be blocked and your
+echo  approved package feed may differ. Point npm at it, then re-run this script:
+echo.
+echo      npm config set registry ^<your-approved-feed^>
+echo.
+echo  On Microsoft-managed devices the approved feed is:
+echo      npm config set registry https://packagefeedproxy.microsoft.io/npm/
+echo.
+goto :done
+
+:deps_ok
 title Copilot Portal
-if %errorlevel% neq 0 (
-    echo       Configured registry is missing a package - falling back to public npmjs...
-    call npm install --no-fund --no-audit --registry=https://registry.npmjs.org/
-    title Copilot Portal
-    if !errorlevel! neq 0 (
-        echo.
-        echo  ERROR: npm install failed. See errors above.
-        goto :done
-    )
+if defined LASTLOG if exist "!LASTLOG!" del "!LASTLOG!" >nul 2>&1
+:: If a FALLBACK registry was needed (the device's configured one didn't work),
+:: pin it in a Portal-scoped local .npmrc so the next launch/update goes straight
+:: to the feed that works. This is written in the install folder only and never
+:: touches the user's GLOBAL npm config, so it can't affect their other projects.
+:: If their configured registry worked (WONREG empty), we leave npm untouched.
+if defined WONREG if not "!WONREG!"=="" (
+    >".npmrc" echo registry=!WONREG!
+    echo       Pinned Portal to use !WONREG!
+    echo       ^(saved to a local .npmrc here - your global npm settings are unchanged^)
+    echo       To use this feed for all your npm tools: npm config set registry !WONREG!
 )
 :: Record the version deps were installed for so future updates are detected.
 if defined PKG_VER (>"node_modules\.portal-deps-version" echo %PKG_VER%)
@@ -127,3 +170,38 @@ title Copilot Portal
 :done
 echo.
 pause
+goto :eof
+
+:: ---------------------------------------------------------------------------
+:: :npm_attempt "<registry-url-or-empty>" "<friendly label>"
+:: Runs `npm install` in the background against the given registry (empty = the
+:: device's configured registry), animating a "working..." heartbeat so the
+:: window never looks frozen. npm's own output is captured to a temp log that is
+:: deleted on success and preserved (in LASTLOG) on failure. On return:
+::   RC       = 1 if the install succeeded, 0 if it failed
+::   LASTLOG  = path to the captured npm output when RC=0 (else empty)
+:: We branch on npm's exit code with &&/|| (not %errorlevel%) to avoid the
+:: parent shell's delayed-expansion eating the child's errorlevel.
+:: ---------------------------------------------------------------------------
+:npm_attempt
+setlocal enabledelayedexpansion
+set "REGARG="
+if not "%~1"=="" set "REGARG=--registry=%~1"
+set "LOG=%TEMP%\portal-npm-%RANDOM%%RANDOM%.log"
+set "OKF=%TEMP%\portal-npm-%RANDOM%%RANDOM%.ok"
+if exist "!OKF!" del "!OKF!" >nul 2>&1
+start "" /b cmd /c "call npm install %NPM_FLAGS% !REGARG! >""!LOG!"" 2>&1 && (>""!OKF!"" echo 1)|| (>""!OKF!"" echo 0)"
+<nul set /p "=      working"
+:na_spin
+if exist "!OKF!" goto :na_done
+<nul set /p "=."
+>nul ping -n 2 -w 1000 127.0.0.1
+goto :na_spin
+:na_done
+echo.
+set /p RC=<"!OKF!"
+del "!OKF!" >nul 2>&1
+set "OUTLOG="
+if not "!RC!"=="1" ( set "OUTLOG=!LOG!" ) else ( del "!LOG!" >nul 2>&1 )
+endlocal & set "RC=%RC%" & set "LASTLOG=%OUTLOG%"
+goto :eof

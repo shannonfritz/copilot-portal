@@ -37,6 +37,14 @@ const RESTART_CODE = 75;
 const REAUTH_CODE = 76;
 const CLI_PORT = 3848;
 
+// True once we've spawned the portal server at least once. Auto-launch of the
+// browser should happen only on the very first start of the process tree, never
+// on a launcher-driven relaunch (exit-75 restart, exit-76 sign-in/out, or a
+// CLI-version restart) — in every relaunch case a browser tab is already open,
+// so re-opening it just pops a duplicate. We signal this to the child via the
+// PORTAL_NO_AUTOLAUNCH env var, which main.ts honors.
+let serverStarted = false;
+
 const standalone = args.includes('--standalone');
 // Remove --standalone from args passed to server (it doesn't know about it)
 const serverArgs = args.filter(a => a !== '--standalone');
@@ -221,9 +229,16 @@ async function start() {
 
 function launch(cliUrl?: string) {
 	const extraArgs = cliUrl ? ['--cli-url', cliUrl] : [];
+	// Suppress browser auto-launch on every spawn after the first (relaunches).
+	const relaunch = serverStarted;
+	serverStarted = true;
+	const childEnv = relaunch
+		? { ...process.env, PORTAL_NO_AUTOLAUNCH: '1' }
+		: process.env;
 	const child = spawn(process.execPath, [serverScript, ...serverArgs, ...extraArgs], {
 		cwd: process.cwd(),
 		stdio: 'inherit',
+		env: childEnv,
 	});
 
 	child.on('exit', (code) => {

@@ -2,6 +2,20 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.2
+
+### 🌐 Managed-device npm handling
+- **Registry-aware updater** — the background update check now queries your **configured** npm registry first and only falls back to public npmjs, so it works on devices where the public registry is restricted
+- **No more phantom security prompts** — the updater no longer forces `registry.npmjs.org`, which on some managed devices had triggered a Windows Security "content is blocked" prompt on every launch with no console explanation
+- **Prerelease guard** — a preview `latest` (e.g. `1.0.7-preview.0`) is only offered when the installed build is itself a prerelease, so managed feeds that surface previews can't push them onto a stable install
+- **Transparency + fast-fail** — the update check now logs which registry it's using, and bounded fetch timeouts (`--fetch-retries=1 --fetch-timeout=15000`) cut a blocked-host hang from ~72s to ~12s
+- **Resilient install** — `start-portal.cmd` walks a configured → public npmjs → Microsoft feed chain, lists the dependencies being installed, shows a live heartbeat, and pins the winning feed in a Portal-scoped local `.npmrc`
+
+### 🖥️ Stability
+- **Clean console exit** — the console TUI now restores cooked input mode on every exit path (`[x]`, Ctrl+C, restart, shutdown), fixing the launcher's "Press any key to continue" prompt that had appeared frozen after closing
+- **No duplicate browser tabs on relaunch** — auto-launch now fires only on the first start; a `[r]` restart or a sign-in/out relaunch no longer pops a new browser tab when one is already open
+- **Auto-launch is now announced** — the console prints `Auto-launching browser (toggle with [L])...` when it opens your browser, so it's clear when Portal reached out and how to turn it off
+
 ## v0.8.1
 
 ### 📦 One-line Windows installer
