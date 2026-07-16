@@ -48,6 +48,28 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "Tag=$TAG  Version=$VERSION  Base=$BASE  Prerelease=$PRERELEASE"
 
+      # 2b. Resolve the human-facing release TITLE. The convention is
+      #     "vX.Y.Z — short summary". We read it straight from the CHANGELOG version
+      #     heading, which may carry that summary (e.g. "## v0.8.3 — Lower CLI floor, ...").
+      #     If the heading is bare ("## v0.8.3") or this is a pre-release, we fall back to
+      #     just the tag. This is what restores the summary titles that the earlier bare
+      #     `name: <tag>` had dropped, without CI having to invent prose.
+      - name: Resolve release title
+        id: title
+        env:
+          BASE: ${{ steps.ver.outputs.base }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
+        run: |
+          HEADING=$(grep -m1 -E "^## ${BASE}([[:space:]]|\$)" CHANGELOG.md | sed 's/^##[[:space:]]*//')
+          if [ "$PRERELEASE" = "true" ] || [ -z "$HEADING" ] || [ "$HEADING" = "$BASE" ]; then
+            TITLE="$TAG"
+          else
+            TITLE="$HEADING"
+          fi
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "Release title: $TITLE"
+
       # 3. Node toolchain. We ship/build on Node 24 (current Active LTS); the
       #    engines floor stays >=22.5.0 so the zip still runs on host Node 22+.
       - name: Set up Node 24
@@ -155,7 +177,7 @@ jobs:
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b  # v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.title.outputs.title }}
           body_path: RELEASE_NOTES.md
           prerelease: ${{ steps.ver.outputs.prerelease }}
           files: ${{ steps.zip.outputs.path }}

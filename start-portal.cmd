@@ -69,7 +69,10 @@ echo       Installing npm packages (this can take a minute)...
 ::      Block" / Tech Eviction policy on Microsoft-managed machines).
 :: Corporate npm mirrors can also lag npmjs and 404 the newest @github/copilot,
 :: which the chain likewise rides through. RC=1 means that attempt succeeded.
-set "NPM_FLAGS=--no-fund --no-audit --fetch-retries=1 --fetch-timeout=60000"
+:: --fetch-retries=0: give each registry ONE shot (no retry + 10s backoff, which was
+:: the main reason a dead/blocked registry took ~2min to give up). The 3-registry chain
+:: below is our resilience layer, so per-attempt retries just slow down the fallback.
+set "NPM_FLAGS=--no-fund --no-audit --fetch-retries=0 --fetch-timeout=60000"
 set "WONREG="
 
 call :npm_attempt "" "configured registry"
@@ -104,16 +107,18 @@ goto :done
 :deps_ok
 title Copilot Portal
 if defined LASTLOG if exist "!LASTLOG!" del "!LASTLOG!" >nul 2>&1
-:: If a FALLBACK registry was needed (the device's configured one didn't work),
-:: pin it in a Portal-scoped local .npmrc so the next launch/update goes straight
-:: to the feed that works. This is written in the install folder only and never
-:: touches the user's GLOBAL npm config, so it can't affect their other projects.
-:: If their configured registry worked (WONREG empty), we leave npm untouched.
-if defined WONREG if not "!WONREG!"=="" (
+:: If the MICROSOFT-APPROVED feed was the one that worked, pin it in a Portal-scoped
+:: local .npmrc so future launches/updates go straight to the feed that's reachable on
+:: this managed device. We deliberately DO NOT pin public npmjs: on managed devices it is
+:: blocked, and a "win" there is almost always just npm's local cache - pinning it would
+:: guarantee future failures and override the device's approved registry. If the configured
+:: registry worked (WONREG empty) or public npmjs won, we leave npm untouched so the
+:: launcher/updater re-resolves the newest allowed version each run. This .npmrc is written
+:: in the install folder only and never touches the user's GLOBAL npm config.
+if /I "!WONREG!"=="https://packagefeedproxy.microsoft.io/npm/" (
     >".npmrc" echo registry=!WONREG!
-    echo       Pinned Portal to use !WONREG!
+    echo       Pinned Portal to the Microsoft-approved feed !WONREG!
     echo       ^(saved to a local .npmrc here - your global npm settings are unchanged^)
-    echo       To use this feed for all your npm tools: npm config set registry !WONREG!
 )
 :: Record the version deps were installed for so future updates are detected.
 if defined PKG_VER (>"node_modules\.portal-deps-version" echo %PKG_VER%)

@@ -2,7 +2,18 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.8.2
+## v0.8.3 — Lower CLI floor for managed-device installs, faster registry fallback, build guardrail
+
+### 🌐 Managed-device install fix
+- **Lowered the CLI compatibility floor** — the `@github/copilot` dependency floor is now a conservative minimum (`^1.0.60`) rather than tracking the newest release, so installs succeed on managed devices whose approved package feed lags public npm by a few days
+- **No more stranded installs** — a fresh install on a restricted device now resolves the newest version the approved feed has cleared, instead of failing on a version the feed doesn't carry yet
+- **Faster fallback** — each registry now gets a single attempt (no retry backoff), so an unreachable feed is skipped in seconds instead of stalling the install for minutes
+- **Smarter registry pin** — `start-portal.cmd` only pins a local `.npmrc` when the Microsoft-approved feed is the one that worked; it never pins the public registry (which is blocked on managed devices)
+
+### 🔧 Build safeguards
+- **Floor guardrail** — packaging now warns at build time if a dependency floor sits above what the approved feed has cleared, catching the drift that caused this before it ships
+
+## v0.8.2 — Registry-aware updater, clean console exit, no duplicate browser tabs
 
 ### 🌐 Managed-device npm handling
 - **Registry-aware updater** — the background update check now queries your **configured** npm registry first and only falls back to public npmjs, so it works on devices where the public registry is restricted
@@ -16,7 +27,7 @@ All notable changes to Copilot Portal are documented here.
 - **No duplicate browser tabs on relaunch** — auto-launch now fires only on the first start; a `[r]` restart or a sign-in/out relaunch no longer pops a new browser tab when one is already open
 - **Auto-launch is now announced** — the console prints `Auto-launching browser (toggle with [L])...` when it opens your browser, so it's clear when Portal reached out and how to turn it off
 
-## v0.8.1
+## v0.8.1 — One-line Windows installer, browser auto-launch, registry-fallback bootstrap
 
 ### 📦 One-line Windows installer
 - **`irm | iex` install** — `powershell -ex bypass "iex (irm https://aka.ms/copilotportal-install)"` opens a small WPF installer that downloads the latest release, ensures Node.js is present, and creates Start Menu / Desktop shortcuts
@@ -37,7 +48,7 @@ All notable changes to Copilot Portal are documented here.
 ### 📝 Docs
 - **README install rewrite** — leads with the one-line Windows installer plus a manual/any-platform path; container (headless/NAS) instructions unchanged
 
-## v0.8.0
+## v0.8.0 — Inline tool-result images, self-update orchestration, reconnect stability
 
 ### 🖼️ Inline media
 - **Tool-result images render inline** — any tool that returns an image (built-in `view`, MCP `view_image`, etc.) now shows it in the conversation, both live and after refresh/resume — no special handling per tool
