@@ -261,6 +261,39 @@ export class SessionHandle {
 	knownCwd: string | undefined = undefined; // cwd known at create/resume time, before SDK metadata catches up
 	private lastIntent = ''; // last report_intent text seen, to log report cadence + detect repeats
 
+	// --- History cache (Stage 1: SHADOW-COMPARE ONLY — not yet serving) ---------------------
+	// The plan: mirror the raw SDK event array in-process so reconnect/resync can rebuild
+	// history WITHOUT re-pulling the entire log over the CLI RPC (measured ~3.6s + multi-GB
+	// GC churn on a 340MB/99k-event session). Stage 1 does NOT change what getHistory returns:
+	// it seeds a mirror from the first real getEvents() pull, appends live events as they
+	// arrive, and on every subsequent getHistory builds history BOTH ways and logs any
+	// divergence. This proves append fidelity (the one real risk: live-vs-history event shape,
+	// e.g. tool `arguments` is an object in history but a JSON string live) before Stage 2
+	// ever trusts the cache. Enabled by PORTAL_HISTORY_CACHE_SHADOW=1 OR a marker file
+	// data/histcache-shadow.on — the file gate lets a launcher-supervised, env-inheriting
+	// server-only restart (exit 75) turn shadow on without re-spawning the whole stack.
+	// Zero cost when off.
+	private static readonly HISTORY_CACHE_SHADOW: boolean =
+		process.env.PORTAL_HISTORY_CACHE_SHADOW === '1' ||
+		(() => { try { return fs.existsSync(path.join(process.cwd(), 'data', 'histcache-shadow.on')); } catch { return false; } })();
+	// Stage 2: SERVE reconnect/resync history straight from the in-memory mirror instead of
+	// re-pulling the whole event log over the CLI RPC. Default ON (the whole point), with an
+	// ops kill-switch: env PORTAL_HISTORY_CACHE=off OR a marker file data/histcache.off returns
+	// getHistory to today's always-pull behavior. Correctness is protected by auto-fallback —
+	// any cache miss / stale generation / thrown build falls through to the authoritative pull,
+	// so the worst case is exactly today's behavior. When SHADOW is also on, every Nth serve
+	// runs a background canary (pull fresh, compare, log drift, invalidate on divergence).
+	private static readonly HISTORY_CACHE_SERVE: boolean =
+		process.env.PORTAL_HISTORY_CACHE !== 'off' &&
+		(() => { try { return !fs.existsSync(path.join(process.cwd(), 'data', 'histcache.off')); } catch { return true; } })();
+	private static readonly HISTORY_CACHE_CANARY_EVERY = 3; // serves between background canary pulls (shadow only)
+	private histCache: Array<{ type: string; data?: unknown }> | null = null; // raw-event mirror
+	private histCacheGen = -1;        // sessionGeneration the mirror was seeded under (reseed on swap)
+	private histCacheSeedCount = 0;   // event count captured at seed (diagnostics)
+	private histCacheAppends = 0;     // live events appended since seed (diagnostics)
+	private histCacheSkipped = 0;     // live events skipped as ephemeral/non-persisted (diagnostics)
+	private histCacheServed = 0;      // times history was served from the mirror (diagnostics + canary cadence)
+
 	// Accumulated session usage stats — broadcast on each assistant.usage event
 	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
 
@@ -406,9 +439,137 @@ export class SessionHandle {
 	}
 
 	async getHistory(limit?: number): Promise<PortalEvent[]> {
+		// ---- Stage 2 fast path: serve straight from the in-memory mirror ----
+		// Valid only when the mirror exists AND was seeded under the current sessionGeneration
+		// (a reconnect/replaceSession bumps the generation, forcing a fresh seed). Any throw
+		// here falls through to the authoritative pull below — worst case = today's behavior.
+		if (SessionHandle.HISTORY_CACHE_SERVE
+			&& this.histCache !== null
+			&& this.histCacheGen === this.sessionGeneration) {
+			try {
+				const built = SessionHandle.buildHistoryEvents(this.histCache, limit, this.isTurnActive);
+				this.histCacheServed++;
+				this.log(`[HistCache] served ${built.length} from mirror — no pull (raw=${this.histCache.length} seed=${this.histCacheSeedCount} +appended=${this.histCacheAppends} -skipped=${this.histCacheSkipped} limit=${limit ?? 'all'})`);
+				// Background canary (shadow only): every Nth serve, pull fresh and compare. Never blocks.
+				if (SessionHandle.HISTORY_CACHE_SHADOW
+					&& this.histCacheServed % SessionHandle.HISTORY_CACHE_CANARY_EVERY === 0) {
+					void this.histCacheRunCanary(limit).catch(() => {});
+				}
+				return built;
+			} catch (e) {
+				this.log(`[HistCache] serve threw — falling back to authoritative pull: ${e}`);
+			}
+		}
+
+		// ---- Authoritative pull (serve disabled, cache miss, stale generation, or serve threw) ----
 		const events = await getSessionEvents(this.session, this.log);
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
-		return SessionHandle.buildHistoryEvents(events, limit, this.isTurnActive);
+		const canonical = SessionHandle.buildHistoryEvents(events, limit, this.isTurnActive);
+		// Stage 1 shadow compare (log-only). Also seeds the mirror on its first call.
+		if (SessionHandle.HISTORY_CACHE_SHADOW) {
+			try { this.histCacheShadowCompare(events, canonical, limit); }
+			catch (e) { this.log(`[HistCache:shadow] compare threw (ignored): ${e}`); }
+		}
+		// Seed/refresh the mirror from this authoritative pull so subsequent calls can serve.
+		// (When shadow is on, histCacheShadowCompare already seeded — this is a no-op then.)
+		if (SessionHandle.HISTORY_CACHE_SERVE
+			&& (this.histCache === null || this.histCacheGen !== this.sessionGeneration)) {
+			this.histCacheSeed(events);
+		}
+		return canonical;
+	}
+
+	/** Background canary (shadow+serve): pull fresh, rebuild both ways, log drift. On a proven
+	 *  divergence, invalidate the mirror so the next getHistory re-pulls and reseeds (self-heals
+	 *  to today's behavior). Runs off the hot path; never affects what the client already got. */
+	private async histCacheRunCanary(limit?: number): Promise<void> {
+		if (this.histCache === null) return;
+		const genAtStart = this.histCacheGen;
+		const cacheBuilt = SessionHandle.buildHistoryEvents(this.histCache, limit, this.isTurnActive);
+		const fresh = await getSessionEvents(this.session, this.log);
+		// A swap between our serve and this pull invalidates the comparison — skip quietly.
+		if (this.histCache === null || this.histCacheGen !== genAtStart) return;
+		const canonical = SessionHandle.buildHistoryEvents(fresh, limit, this.isTurnActive);
+		const diff = SessionHandle.firstHistoryDivergence(canonical, cacheBuilt);
+		const stats = `built[canonical=${canonical.length} cached=${cacheBuilt.length}] raw[fresh=${fresh.length} cache=${this.histCache.length} seed=${this.histCacheSeedCount} +appended=${this.histCacheAppends} -skipped=${this.histCacheSkipped}] limit=${limit ?? 'all'}`;
+		if (diff.divergent) {
+			this.log(`[HistCache:canary] ⚠ DIVERGENCE at built[${diff.index}] — ${stats}`);
+			this.log(`[HistCache:canary]     canonical[${diff.index}]: ${diff.a}`);
+			this.log(`[HistCache:canary]     cached[${diff.index}]:    ${diff.b}`);
+			this.log(`[HistCache:canary]     invalidating mirror — next getHistory will re-pull & reseed`);
+			this.histCache = null; // self-heal: force a fresh authoritative pull next time
+		} else {
+			this.log(`[HistCache:canary] ✓ match — ${stats}`);
+		}
+	}
+
+
+	/**
+	 * Append a live SDK event to the shadow mirror (shadow mode only). Skips ephemeral
+	 * streaming events (deltas, usage, partial results) that getEvents() never persists —
+	 * appending those would guarantee a false divergence. Called from the live event hook.
+	 */
+	private histCacheAppend(event: { type: string; data?: unknown }): void {
+		// Only meaningful once seeded for the CURRENT generation. A session swap bumps
+		// sessionGeneration; getHistory then reseeds, so we don't append across a swap.
+		if (this.histCache === null || this.histCacheGen !== this.sessionGeneration) return;
+		if (SessionHandle.QUIET_EVENT_TYPES.has(event.type)) { this.histCacheSkipped++; return; }
+		this.histCache.push(event);
+		this.histCacheAppends++;
+	}
+
+	/** Seed/replace the raw-event mirror from an authoritative getEvents() pull, stamped to the
+	 *  current sessionGeneration. Shared by both the shadow seed and the serve seed so they can
+	 *  never diverge. Resets the append/skip counters. */
+	private histCacheSeed(events: Array<{ type: string; data?: unknown }>): void {
+		this.histCache = events.slice(); // shallow copy of the array (event objects shared)
+		this.histCacheGen = this.sessionGeneration;
+		this.histCacheSeedCount = events.length;
+		this.histCacheAppends = 0;
+		this.histCacheSkipped = 0;
+		this.log(`[HistCache] seeded mirror: ${events.length} raw events (gen ${this.sessionGeneration})`);
+	}
+
+	/**
+	 * SHADOW compare: seed the mirror from the first authoritative pull, then on each
+	 * subsequent call build history from the appended mirror and diff it against the
+	 * freshly-pulled canonical build. Logs a ✓ match or a ⚠ divergence with the first
+	 * differing entry. Never mutates what the client sees.
+	 */
+	private histCacheShadowCompare(freshEvents: Array<{ type: string; data?: unknown }>, canonical: PortalEvent[], limit?: number): void {
+		const seeded = this.histCache !== null && this.histCacheGen === this.sessionGeneration;
+		if (!seeded) {
+			this.histCacheSeed(freshEvents);
+			this.log(`[HistCache:shadow] comparisons begin on next getHistory`);
+			return;
+		}
+		const rawCache = this.histCache!.length;
+		const rawFresh = freshEvents.length;
+		const cached = SessionHandle.buildHistoryEvents(this.histCache!, limit, this.isTurnActive);
+		const diff = SessionHandle.firstHistoryDivergence(canonical, cached);
+		const stats = `built[canonical=${canonical.length} cached=${cached.length}] raw[fresh=${rawFresh} cache=${rawCache} seed=${this.histCacheSeedCount} +appended=${this.histCacheAppends} -skipped=${this.histCacheSkipped}] limit=${limit ?? 'all'}`;
+		if (diff.divergent) {
+			this.log(`[HistCache:shadow] ⚠ DIVERGENCE at built[${diff.index}] — ${stats}`);
+			this.log(`[HistCache:shadow]     canonical[${diff.index}]: ${diff.a}`);
+			this.log(`[HistCache:shadow]     cached[${diff.index}]:    ${diff.b}`);
+			if (rawFresh !== rawCache) {
+				this.log(`[HistCache:shadow]     note: raw counts differ by ${rawFresh - rawCache} — a small trailing delta is likely an in-flight event (pull vs append timing); a large/persistent gap means the append filter is wrong.`);
+			}
+		} else {
+			this.log(`[HistCache:shadow] ✓ match — ${stats}`);
+		}
+	}
+
+	/** First index where two built-history arrays differ (by JSON), with truncated snippets. */
+	private static firstHistoryDivergence(a: PortalEvent[], b: PortalEvent[]): { divergent: boolean; index: number; a: string; b: string } {
+		const n = Math.min(a.length, b.length);
+		for (let i = 0; i < n; i++) {
+			const sa = JSON.stringify(a[i]);
+			const sb = JSON.stringify(b[i]);
+			if (sa !== sb) return { divergent: true, index: i, a: sa.slice(0, 400), b: sb.slice(0, 400) };
+		}
+		if (a.length !== b.length) return { divergent: true, index: n, a: `<none: canonical len ${a.length}>`, b: `<none: cached len ${b.length}>` };
+		return { divergent: false, index: -1, a: '', b: '' };
 	}
 
 	/**
@@ -1963,6 +2124,10 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.toolsInFlight = 0;
 		this.session.on((event) => {
 			if (this.sessionGeneration !== gen) return;
+			// History cache: mirror persisted live events into the raw-event mirror so the
+			// cache stays warm without re-pulling. No-op when both cache modes are off or the
+			// mirror isn't seeded for this generation.
+			if (SessionHandle.HISTORY_CACHE_SERVE || SessionHandle.HISTORY_CACHE_SHADOW) this.histCacheAppend(event);
 			// Suppress high-frequency / low-signal events from the generic [Event] log.
 			// These still run their handlers (if any) — we only skip the catch-all log line:
 			//  - *_delta / usage / pending_messages.modified: streaming chatter, bracketed by
