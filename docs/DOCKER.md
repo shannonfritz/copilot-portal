@@ -367,6 +367,57 @@ in-container path), and the one type-specific field:
 Click **Install**, then open `http://<nas-ip>:3847` (or click the **Web UI** button)
 and sign in.
 
+## Reverse proxy / custom domain
+
+Want to reach the portal at `https://portal.example.com` instead of `http://<ip>:3847`?
+Put any reverse proxy (HAProxy, nginx, Traefik, Caddy, …) in front — but you **must**
+allowlist the hostname, or the portal will serve the page yet refuse the WebSocket.
+
+**Why:** the portal has a DNS-rebinding defense that only trusts `Host` headers that
+are IP literals or `localhost` by default. A **named** host you didn't allowlist is
+rejected — the HTML loads, but the WebSocket upgrade gets a `403`, so the UI sits on
+"connecting…" with red status dots. The event log shows exactly this (and now names
+the fix):
+
+```
+[WS] Rejected upgrade with disallowed Host header: portal.example.com — to allow it, set PORTAL_ALLOWED_HOSTS=portal.example.com (comma-separated) and restart
+```
+
+**The fix:** set `PORTAL_ALLOWED_HOSTS` to the hostname(s) the browser uses (comma-
+separated for several; you do **not** need to list IPs or `localhost` — those always
+work):
+
+```yaml
+environment:
+  - PORTAL_ALLOWED_HOSTS=portal.example.com
+  # multiple: PORTAL_ALLOWED_HOSTS=portal.example.com,nas.local
+```
+
+Match the exact hostname the browser sends — no wildcards, no port. Case and
+surrounding spaces don't matter.
+
+**Proxy requirements:**
+- **Forward WebSockets** — the portal is WS-heavy. Pass the `Upgrade` / `Connection`
+  headers through. HAProxy in `mode http` and nginx (with the `Upgrade`/`Connection`
+  block) handle this; just don't strip those headers.
+- **Preserve the `Host` header** — don't rewrite it to the backend IP, or the value
+  the portal checks won't match what you allowlisted.
+- **Long-lived connections** — bump idle timeouts so the WebSocket isn't culled
+  (e.g. HAProxy `timeout tunnel`, nginx `proxy_read_timeout`).
+
+Minimal HAProxy backend:
+
+```haproxy
+frontend fe_portal
+    bind :443 ssl crt /etc/haproxy/certs/portal.pem
+    default_backend be_portal
+
+backend be_portal
+    option forwardfor
+    timeout tunnel 1h            # keep the WebSocket alive
+    server portal 10.0.0.50:3847 # Host header passes through unchanged
+```
+
 ## Updates
 
 The container is immutable, so the in-app self-updater is **disabled**

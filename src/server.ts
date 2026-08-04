@@ -105,7 +105,7 @@ export class PortalServer {
 				// unknown domain (legit access is via IP literal / localhost / an
 				// allowlisted name). Defends the same-origin rebinding chain.
 				if (!this.isHostAllowed(req)) {
-					this.log(`[WS] Rejected upgrade with disallowed Host header: ${req.headers['host'] ?? '(none)'}`);
+					this.log(`[WS] Rejected upgrade with disallowed Host header: ${req.headers['host'] ?? '(none)'}${this.hostRejectionHint(req)}`);
 					callback(false, 403, 'Forbidden');
 					return;
 				}
@@ -681,20 +681,40 @@ export class PortalServer {
 	private isHostAllowed(req?: http.IncomingMessage): boolean {
 		const raw = req?.headers['host'];
 		if (!raw) return true;
-		const host = raw.toLowerCase();
-		// Strip the port: handle [::1]:3847, 1.2.3.4:3847, host:3847.
-		let name = host;
-		if (name.startsWith('[')) {
-			name = name.slice(1, name.indexOf(']') > 0 ? name.indexOf(']') : undefined);
-		} else if (name.includes(':') && name.split(':').length === 2) {
-			name = name.split(':')[0];
-		}
+		const name = this.hostName(raw);
 		if (name === 'localhost' || name === '0.0.0.0') return true;
 		// IPv4 literal
 		if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
 		// IPv6 literal (the [..] form was stripped above; bare form still has colons)
 		if (name.includes(':')) return true;
 		return this.allowedHosts.has(name);
+	}
+
+	/** Lowercase a Host header and strip the port: [::1]:3847, 1.2.3.4:3847, host:3847. */
+	private hostName(raw: string): string {
+		let name = raw.toLowerCase();
+		if (name.startsWith('[')) {
+			name = name.slice(1, name.indexOf(']') > 0 ? name.indexOf(']') : undefined);
+		} else if (name.includes(':') && name.split(':').length === 2) {
+			name = name.split(':')[0];
+		}
+		return name;
+	}
+
+	/**
+	 * One-line remediation hint for a rejected Host, so the operator sees the fix
+	 * in the log instead of just the rejection. Only emits a concrete suggestion
+	 * for a real named host (IP/localhost never reach the reject path).
+	 */
+	private hostRejectionHint(req?: http.IncomingMessage): string {
+		const raw = req?.headers['host'];
+		if (!raw) return '';
+		const name = this.hostName(raw);
+		if (!name || name === 'localhost' || name === '0.0.0.0') return '';
+		if (name.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return '';
+		const existing = process.env.PORTAL_ALLOWED_HOSTS?.trim();
+		const suggestion = existing ? `${existing},${name}` : name;
+		return ` — to allow it, set PORTAL_ALLOWED_HOSTS=${suggestion} (comma-separated) and restart`;
 	}
 
 	/** Constant-time comparison of a presented token against the real one.
@@ -803,7 +823,7 @@ export class PortalServer {
 		}
 		if (url.pathname === '/api/portal-token/create' && method === 'POST') {
 			if (!this.isHostAllowed(req)) {
-				this.log(`[Auth] Rejected token claim with disallowed Host header: ${req.headers['host'] ?? '(none)'}`);
+				this.log(`[Auth] Rejected token claim with disallowed Host header: ${req.headers['host'] ?? '(none)'}${this.hostRejectionHint(req)}`);
 				res.writeHead(403); res.end('Forbidden'); return;
 			}
 			if (this.tokenEnvManaged) { this.sendJson(res, 409, { error: 'env_managed' }); return; }
