@@ -33,9 +33,10 @@ Now orient the user — describe what they see across the top of the page:
   - **Sessions** (stacked squares icon) — opens the session picker to switch between sessions, create new ones, or manage existing ones.
   - **Guides & Prompts** (3-fold map icon) — opens the guides and prompts panel.
   - **Rules** (bulleted list icon) — manages always-allow rules that let tools execute without asking for permission each time. Displays a count badge when rules exist. Turns green when auto-approve-all is enabled.
-  - **Connection dot** — a small circle at the far right. Green means connected, yellow means connecting, red means disconnected.
+  - **Theme picker** (circle/palette icon) — switch between built-in themes, create your own, or generate a random palette. See section 8 for more.
+  - **Connection dot** — a small circle at the far right. It reflects two things at once: the **Portal** connection and the **Copilot** (CLI) status. Green means both are healthy; yellow means connecting; red means disconnected or the CLI is unreachable. Hover for the exact state of each.
 
-Below the header is the session drawer bar — it shows the current session name (or "untitled session"). Tap it to expand and see session details like the session ID, start time, current model, and working directory.
+Below the header is the session drawer bar — it shows the current session name (or "untitled session"). Tap it to expand and see session details: the session ID, start time, working directory, and a set of controls covered in the next section.
 
 ---
 
@@ -50,9 +51,13 @@ Explain the two ways to manage sessions:
 - **Delete** — click the trash icon, then confirm inline.
 - **Session ID** — the short code next to each session name. Click it to copy the full ID.
 
-**The session drawer** shows details about the active session (tap the session name bar below the header to expand):
-- Shows the session ID, start time, and current model.
-- The working directory at the bottom shows where Copilot runs commands, including the git branch if applicable.
+**The session drawer** shows details and controls for the active session (tap the session name bar below the header to expand):
+- **Session ID & start time** — at the top; click the ID to copy it.
+- **Model picker** — shows the current model; click to open a dropdown of available models. Each entry can show badges: a cost multiplier (e.g. `1×`), a price category, the context-window size (e.g. `128k`), and `vision` / `thinking` capabilities. A context-usage bar and a running token/credit tally for the session appear here too.
+- **MCP servers** — a list of the Model Context Protocol servers wired into this session, with a count of how many are active. You can add, clone, or remove servers.
+- **Skills** — the skills currently loaded for the session.
+- **Agent selector** — pick which agent handles the session.
+- **Working directory** — where Copilot runs commands, shown at the bottom with the git branch if applicable. It's editable — click to browse and change it.
 
 Invite the user to try creating a new session and switching back — reassure them the tour conversation will still be here when they return.
 
@@ -104,10 +109,12 @@ Invite the user to open the panel and explore. Mention they can also create `.md
 These are keyboard shortcuts that work in the **terminal window** where the server is running — not in the browser:
 - **c** — Opens the Copilot CLI console in a new terminal window. Great for quick tasks without leaving the terminal.
 - **l** — Launches the portal URL in your default browser.
+- **L** (Shift+L) — Toggles *auto-launch*: whether the portal opens in your browser automatically each time the server starts.
 - **q** — Shows the QR code and URL. If a tunnel is running, shows both the local and tunnel URLs with a QR code for remote access.
 - **t** — Starts a DevTunnel for remote access (HTTPS from anywhere, not just your local network). Press again to stop it. First time, it asks about access settings.
 - **T** (Shift+T) — Security reset. Destroys the tunnel, rotates the access token, and disconnects all clients. Use if you think a URL was compromised.
 - **u** — Checks for SDK, CLI, and portal updates.
+- **s** — Toggles *auto-start*: whether the portal launches automatically when you log in to the machine.
 - **r** — Restarts the server gracefully (waits for any active work to finish first). If a tunnel was running, it auto-restarts.
 - **x** — Exits the server.
 
@@ -134,7 +141,7 @@ Mention that the portal works great as a home screen app — no install from the
 Wrap up with a few handy things:
 - **Update banner** — when updates are available for the SDK, CLI, or the portal itself, a banner appears at the top of the page. The portal can download updates and restart itself in place — no manual steps needed.
 - **Session names** — sessions automatically name themselves based on the conversation. You can see the current name in the session drawer bar below the header.
-- **Dark theme** — the portal uses a dark theme designed for comfortable extended use.
+- **Themes** — the portal ships with several built-in themes and defaults to a dark one. Open the theme picker (circle/palette icon in the header) to switch themes, craft your own custom palette, or roll a random one. Your choice is remembered per session and saved back to the server.
 - **Shared with the CLI** — the portal connects to the same Copilot CLI server that powers the terminal console. If you have both open, messages from either side show up in both places.
 
 End the tour warmly — let the user know they can ask about any section again anytime, or start a new session to explore on their own.
