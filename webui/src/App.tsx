@@ -1881,6 +1881,11 @@ export default function App() {
 	const noSessionRef = useRef(!hasSessionInUrl);
 	const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
 	const [updateDismissed, setUpdateDismissed] = useState(false);
+	// True while a user-initiated multi-step apply (Portal → npm → restart) is in
+	// flight. Background pollers must not flip the banner out of "Updating…" or
+	// resurrect the Update button during this window, or the user could click
+	// Update again mid-sequence and cause a race.
+	const updateApplyingRef = useRef(false);
 	const [pwaDismissed, setPwaDismissed] = useState(() => localStorage.getItem('portal_pwa_dismissed') === '1');
 
 	const wsRef = useRef<WebSocket | null>(null);
@@ -2125,6 +2130,9 @@ export default function App() {
 	// Poll for available updates every 5 minutes (server checks npm every 4 hours)
 	useEffect(() => {
 		const poll = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
+			// Don't let a routine poll clobber the "Updating…" state while a
+			// user-initiated multi-step apply is running (see updateApplyingRef).
+			if (updateApplyingRef.current) return;
 			setUpdateStatus(s);
 			// Reset dismissed if no updates (so banner reappears for new updates)
 			if (!s.packages.some(p => p.hasUpdate)) setUpdateDismissed(false);
@@ -2248,16 +2256,20 @@ export default function App() {
 			setConnectionState('connected');
 			// Restore textarea focus after reconnect (prevents focus loss on background return)
 			setTimeout(() => textareaRef.current?.focus(), 100);
-			// Clear stale update status from before restart, then re-check
-			setUpdateStatus(null);
-			setUpdateDismissed(false);
-			// Re-check update status on (re)connect — server may have restarted with new versions
-			// Poll immediately and again after 15s (server may still be running its initial check)
-			const pollUpdates = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
-				setUpdateStatus(s);
-			}).catch(() => {});
-			pollUpdates();
-			setTimeout(pollUpdates, 15000);
+			// Clear stale update status from before restart, then re-check —
+			// but not while a user-initiated apply is mid-flight (its own poll
+			// loop owns the banner state; clearing here would drop "Updating…").
+			if (!updateApplyingRef.current) {
+				setUpdateStatus(null);
+				setUpdateDismissed(false);
+				// Re-check update status on (re)connect — server may have restarted with new versions
+				// Poll immediately and again after 15s (server may still be running its initial check)
+				const pollUpdates = () => apiFetch('/api/updates').then(r => r.json()).then((s: UpdateStatus) => {
+					setUpdateStatus(s);
+				}).catch(() => {});
+				pollUpdates();
+				setTimeout(pollUpdates, 15000);
+			}
 			// Heartbeat will be started after first message arrives (see onmessage).
 			// Starting it on onopen risks timing out during slow session loads
 			// where the server is blocked in resumeSession() for 30+ seconds.
@@ -5581,35 +5593,55 @@ export default function App() {
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 									onClick={async () => {
+										// Hold the "Updating…" state across the entire Portal → npm → restart
+										// sequence so background pollers can't resurrect the Update button
+										// mid-flight (which would let the user kick off a racing second apply).
+										updateApplyingRef.current = true;
 										setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
 										try {
 											if (portalUpdate) {
 												const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
 												const status = await res.json() as UpdateStatus;
-												// Don't show restart yet if npm updates are also pending
+												if (status.error) {
+													// Portal step failed — surface it and stop (don't chain npm).
+													updateApplyingRef.current = false;
+													setUpdateStatus({ ...status, applying: false });
+													return;
+												}
+												// Portal done. If npm updates are also pending, KEEP applying:true
+												// (and hide restart) so the banner stays on "Updating…" through the
+												// next step instead of briefly flashing the button back.
 												if (updatable.length > 0) {
-													setUpdateStatus({ ...status, restartNeeded: false });
+													setUpdateStatus({ ...status, applying: true, restartNeeded: false });
 												} else {
+													updateApplyingRef.current = false;
 													setUpdateStatus(status);
 												}
 											}
 											if (updatable.length > 0) {
 												// Fire and forget — npm install can take minutes
 												apiFetch('/api/updates/apply', { method: 'POST' }).catch(() => {});
-												// Poll for completion
+												// Poll for completion. Guard the startup race: the apply POST
+												// may not have flipped the server into `applying` yet, so don't
+												// treat the very first !applying reading as "done" unless the
+												// updates have actually cleared (or an error surfaced).
+												let sawApplying = false;
 												const poll = setInterval(async () => {
 													try {
 														const res = await apiFetch('/api/updates');
 														const status = await res.json() as UpdateStatus;
-														if (!status.applying) {
-															clearInterval(poll);
-															setUpdateStatus({ ...status, restartNeeded: true });
-														}
+														if (status.applying) { sawApplying = true; return; }
+														const stillPending = status.packages.some(p => p.hasUpdate);
+														if (!sawApplying && stillPending && !status.error) return; // apply not started yet
+														clearInterval(poll);
+														updateApplyingRef.current = false;
+														setUpdateStatus({ ...status, applying: false, restartNeeded: !status.error });
 													} catch { /* server busy */ }
 												}, 3000);
 												return;
 											}
 										} catch (e) {
+											updateApplyingRef.current = false;
 											setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
 										}
 									}}
