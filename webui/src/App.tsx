@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -177,13 +177,13 @@ const apiFetch= (url: string, init?: RequestInit) => {
 };
 
 
-const AssistantMarkdown = ({ content }: { content: string }) => (
+const AssistantMarkdown = memo(({ content }: { content: string }) => (
 	<div className="prose prose-sm max-w-none">
 		<Markdown remarkPlugins={[remarkGfm, remarkBreaks]} components={mdComponents}>
 			{content}
 		</Markdown>
 	</div>
-);
+));
 
 interface ToolSummaryItem {
 	toolName: string;
@@ -456,7 +456,7 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function AssistantMessageBlock({ content, timestamp, bytes }: { content: string; timestamp: number; bytes?: number }) {
+const AssistantMessageBlock = memo(function AssistantMessageBlock({ content, timestamp, bytes }: { content: string; timestamp: number; bytes?: number }) {
 	const htmlRef = useRef<HTMLDivElement>(null);
 	return (
 		<>
@@ -476,7 +476,7 @@ function AssistantMessageBlock({ content, timestamp, bytes }: { content: string;
 			</div>
 		</>
 	);
-}
+});
 
 function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: string; defaultExpanded?: boolean }) {
 	const [expanded, setExpanded] = useState(defaultExpanded);
@@ -509,7 +509,7 @@ function ThoughtBubble({ reasoning, defaultExpanded = false }: { reasoning: stri
 	);
 }
 
-function ToolEventBox({ tc }: { tc: ToolEvent }) {
+const ToolEventBox = memo(function ToolEventBox({ tc }: { tc: ToolEvent }) {
 	const [expanded, setExpanded] = useState(false);
 	const [elapsed, setElapsed] = useState(0);
 
@@ -575,7 +575,7 @@ function ToolEventBox({ tc }: { tc: ToolEvent }) {
 			</div>
 		</div>
 	);
-}
+});
 
 function FolderBrowser({ value, onChange }: { value: string; onChange: (path: string) => void }) {
 	const [browsePath, setBrowsePath] = useState(value || '');
