@@ -1,5 +1,7 @@
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
+import { readTailEvents, countMessageLines } from './tail-events.js';
+import type { TailReadResult } from './tail-events.js';
 import type { CopilotSession } from '@github/copilot-sdk';
 import type {
 	SessionMetadata,
@@ -55,6 +57,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import * as net from 'node:net';
+import * as readline from 'node:readline';
 
 /**
  * True if `id` is a safe session/store identifier — no path separators, no `..`
@@ -294,6 +297,43 @@ export class SessionHandle {
 	private histCacheSkipped = 0;     // live events skipped as ephemeral/non-persisted (diagnostics)
 	private histCacheServed = 0;      // times history was served from the mirror (diagnostics + canary cadence)
 
+	/** Bytes actually read from disk by the most recent getHistory() call, per serve path:
+	 *  tail fast-path = the tail slice size (the win); authoritative full pull = whole file;
+	 *  warm-mirror serve = 0 (nothing read this call). The server attaches this to history_end
+	 *  so the client can show "Loaded N messages (X MB)" reflecting the real read. Cosmetic. */
+	public lastHistoryReadBytes = 0;
+
+	// --- Tail-load (cold-open large-session accelerator) -------------------------------------
+	// Cold-opening a large session forces getHistory → getSessionEvents() to parse the ENTIRE
+	// events.jsonl just to show the last N messages. On huge sessions (~600MB+) the parsed
+	// object graph blows past the CLI subprocess's 8GB V8 heap → GC death-spiral (observed:
+	// 1500s+ "loading" hang). Fix: when a bounded `limit` is requested and the warm mirror
+	// above didn't already serve, read only the TAIL of the on-disk events.jsonl (measured
+	// ~0.3% of a 346MB file for the last 50 messages) instead of the whole log. The tail slice
+	// buildHistoryEvents produces is byte-identical to the full-parse build (proven offline on
+	// 5 sessions × N∈{10,50,200}); the ONLY difference is history_meta.total, patched from a
+	// cheap streaming message count. Any cap-hit / missing file / thrown error falls through to
+	// the authoritative pull below — worst case = exactly today's behavior. Default ON with an
+	// ops kill-switch: env PORTAL_HISTORY_TAIL=off OR marker file data/tailload.off.
+	private static readonly HISTORY_TAIL_LOAD: boolean =
+		process.env.PORTAL_HISTORY_TAIL !== 'off' &&
+		(() => { try { return !fs.existsSync(path.join(process.cwd(), 'data', 'tailload.off')); } catch { return true; } })();
+	// Tail-load SHADOW (log-only live soak): when on, getHistory serves the authoritative full
+	// pull exactly as today, but ALSO tail-reads from disk, builds history the tail way, and logs
+	// ✓ match / ⚠ divergence vs the live getEvents()-based canonical. This proves — on the user's
+	// real machine — that the on-DISK tail is a faithful stand-in for live getEvents() output (a
+	// DIFFERENT seam than the history-cache shadow, which compared live-append vs live-pull; this
+	// catches any live-vs-persisted shape drift, e.g. tool arguments object-vs-string). It forces
+	// the full pull (suppresses the tail fast-path early return), so it only soaks NON-cliff
+	// sessions — the huge-session win is covered by the exhaustive offline proof instead.
+	// Enable: env PORTAL_HISTORY_TAIL_SHADOW=1 OR marker file data/tailload-shadow.on.
+	private static readonly HISTORY_TAIL_SHADOW: boolean =
+		process.env.PORTAL_HISTORY_TAIL_SHADOW === '1' ||
+		(() => { try { return fs.existsSync(path.join(process.cwd(), 'data', 'tailload-shadow.on')); } catch { return false; } })();
+	private histTailServed = 0;        // times history was served from a tail read (diagnostics)
+	private histMsgCount = -1;         // cached user/assistant message-line count of events.jsonl
+	private histMsgCountBytes = -1;    // events.jsonl size (bytes) at which histMsgCount was measured
+
 	// Accumulated session usage stats — broadcast on each assistant.usage event
 	private sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
 
@@ -449,6 +489,7 @@ export class SessionHandle {
 			try {
 				const built = SessionHandle.buildHistoryEvents(this.histCache, limit, this.isTurnActive);
 				this.histCacheServed++;
+				this.lastHistoryReadBytes = 0; // served from memory; nothing read from disk
 				this.log(`[HistCache] served ${built.length} from mirror — no pull (raw=${this.histCache.length} seed=${this.histCacheSeedCount} +appended=${this.histCacheAppends} -skipped=${this.histCacheSkipped} limit=${limit ?? 'all'})`);
 				// Background canary (shadow only): every Nth serve, pull fresh and compare. Never blocks.
 				if (SessionHandle.HISTORY_CACHE_SHADOW
@@ -461,10 +502,51 @@ export class SessionHandle {
 			}
 		}
 
+		// ---- Tail-load fast path: read only the tail of events.jsonl (cold-open accelerator) ----
+		// Reached only when the warm mirror above did NOT serve (mirror cold/stale, or serve
+		// off/threw). For a bounded `limit`, read just the tail of the on-disk log instead of
+		// parsing the whole thing — this is what keeps a huge (~600MB+) session's cold open off
+		// the CLI heap cliff. Correctness is guarded three ways: (1) a byte/line cap-hit or any
+		// throw falls through to the authoritative pull; (2) the tail slice's built history is
+		// proven byte-identical to the full build; (3) history_meta.total is patched to the true
+		// count. NOTE: unlike the authoritative pull, this path deliberately does NOT seed the
+		// in-memory mirror — the tail is only the last N events, not the full array, so seeding
+		// from it would corrupt the mirror's serve/append invariants. Huge sessions therefore
+		// keep tail-reading each reconnect (fast, ~1MB) and never hold the giant mirror in the
+		// portal heap. A `?history=all` request has no `limit`, skips this path, and takes the
+		// full pull (which seeds the mirror) — the explicit "give me everything" opt-in.
+		if (SessionHandle.HISTORY_TAIL_LOAD && !SessionHandle.HISTORY_TAIL_SHADOW && typeof limit === 'number' && limit > 0) {
+			const eventsPath = this.histEventsPath();
+			if (eventsPath) {
+				try {
+					const tail = readTailEvents(eventsPath, limit);
+					const serve = this.tailBuildServe(tail, limit, eventsPath);
+					if (serve) {
+						this.histTailServed++;
+						this.lastHistoryReadBytes = tail.bytesRead;
+						const pct = tail.totalBytes > 0 ? (100 * tail.bytesRead / tail.totalBytes).toFixed(2) : '0';
+						this.log(`[TailLoad] served ${serve.built.length} (${serve.shownMsgs} msgs${serve.capPartial ? ', cap-partial' : ''}) from tail — ${(tail.bytesRead / 1048576).toFixed(2)}MB/${(tail.totalBytes / 1048576).toFixed(2)}MB (${pct}%), tailMsgs=${tail.tailMsgs} bof=${tail.reachedBof} hitCap=${tail.hitCap} limit=${limit}`);
+						return serve.built;
+					}
+					// tailBuildServe returned null: either an empty read, or the pathological
+					// "cap hit with no complete user.message in budget" (a single >32MB message) —
+					// no clean round boundary to start from, so fall through to the full pull.
+					this.log(`[TailLoad] tail unusable (empty or cap hit with no user.message boundary in budget) — falling back to authoritative pull`);
+				} catch (e) {
+					this.log(`[TailLoad] tail read threw — falling back to authoritative pull: ${e}`);
+				}
+			}
+		}
+
 		// ---- Authoritative pull (serve disabled, cache miss, stale generation, or serve threw) ----
 		const events = await getSessionEvents(this.session, this.log);
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
 		const canonical = SessionHandle.buildHistoryEvents(events, limit, this.isTurnActive);
+		// Tail-load shadow (log-only): compare the on-disk tail build against this live canonical.
+		if (SessionHandle.HISTORY_TAIL_SHADOW && typeof limit === 'number' && limit > 0) {
+			try { this.tailShadowCompare(events, canonical, limit); }
+			catch (e) { this.log(`[TailLoad:shadow] compare threw (ignored): ${e}`); }
+		}
 		// Stage 1 shadow compare (log-only). Also seeds the mirror on its first call.
 		if (SessionHandle.HISTORY_CACHE_SHADOW) {
 			try { this.histCacheShadowCompare(events, canonical, limit); }
@@ -476,6 +558,11 @@ export class SessionHandle {
 			&& (this.histCache === null || this.histCacheGen !== this.sessionGeneration)) {
 			this.histCacheSeed(events);
 		}
+		// Authoritative pull read the whole log — report full file size as bytes read.
+		try {
+			const ep = this.histEventsPath();
+			this.lastHistoryReadBytes = ep ? fs.statSync(ep).size : 0;
+		} catch { this.lastHistoryReadBytes = 0; }
 		return canonical;
 	}
 
@@ -528,6 +615,116 @@ export class SessionHandle {
 		this.histCacheAppends = 0;
 		this.histCacheSkipped = 0;
 		this.log(`[HistCache] seeded mirror: ${events.length} raw events (gen ${this.sessionGeneration})`);
+	}
+
+	/** Build the history to serve from a tail read, applying the true-total meta patch. Shared by
+	 *  the production serve path and the shadow validator so they can never diverge.
+	 *
+	 *  Returns null only when the tail is unusable (empty read, or the pathological "cap hit with
+	 *  no complete user.message inside the byte budget" — a single >32MB message); the caller then
+	 *  falls back to the authoritative full pull.
+	 *
+	 *  Two serve shapes:
+	 *   • NON-cap: the tail holds ≥ `limit` messages (or the whole file). buildHistoryEvents
+	 *     re-slices to the last `limit` internally, so this is byte-identical to the full build.
+	 *   • CAP-partial: the last `limit` messages don't fit the 32MB budget (a long session whose
+	 *     RECENT messages are byte-heavy — e.g. many pasted images). We deliberately do NOT fall
+	 *     back to a full pull (that would re-parse the whole event log on the CLI heap and
+	 *     re-introduce the very memory cliff tail-loading exists to prevent). Instead we serve the
+	 *     byte-bounded tail we already have, SNAPPED forward to the oldest complete user.message so
+	 *     buildHistoryEvents starts on a true round boundary (its round leading-edge grouping — and
+	 *     the collapsed tool summary — is start-dependent; starting mid-round would undercount).
+	 *     The initial view shows fewer than `limit` messages; history_meta.total tells the client
+	 *     there are older ones to page in. */
+	private tailBuildServe(tail: TailReadResult, limit: number, eventsPath: string):
+		{ built: PortalEvent[]; shownMsgs: number; capPartial: boolean } | null {
+		const isMsg = (e: { type: string }) => e.type === 'user.message' || e.type === 'assistant.message';
+		let serveEvents = tail.events;
+		let capPartial = false;
+		if (tail.hitCap) {
+			const firstUserIdx = tail.events.findIndex(e => (e as { type: string }).type === 'user.message');
+			if (firstUserIdx < 0) return null; // no clean round boundary in budget → caller full-pulls
+			serveEvents = tail.events.slice(firstUserIdx);
+			capPartial = true;
+		} else if (tail.events.length === 0) {
+			return null;
+		}
+		const built = SessionHandle.buildHistoryEvents(serveEvents, limit, this.isTurnActive);
+		// `shown` = what buildHistoryEvents actually rendered = min(limit, messages in serveEvents).
+		// Non-cap serves ≥ limit messages → shown = limit (identical to the pre-refactor behavior);
+		// a cap-partial serves fewer → shown = the partial count.
+		const totalInServe = serveEvents.reduce((n, e) => n + (isMsg(e as { type: string }) ? 1 : 0), 0);
+		const shownMsgs = totalInServe > limit ? limit : totalInServe;
+		// Patch the true total when older messages exist off-screen: either we didn't reach the
+		// start of the file (non-cap), or we capped short (cap-partial). buildHistoryEvents only
+		// emits history_meta when total !== shown, so we inject/replace only when trueTotal > shown.
+		if (!tail.reachedBof || capPartial) {
+			const trueTotal = this.histCountMessagesCached(eventsPath);
+			if (trueTotal > shownMsgs) {
+				const meta = { type: 'history_meta', total: trueTotal, shown: shownMsgs } as PortalEvent;
+				if (built.length > 0 && built[0].type === 'history_meta') built[0] = meta;
+				else built.unshift(meta);
+			}
+		}
+		return { built, shownMsgs, capPartial };
+	}
+
+	/** Tail-load SHADOW compare (log-only): build history the tail way from disk (via the shared
+	 *  tailBuildServe) and diff it against the live getEvents()-based canonical the client is
+	 *  actually being served. Proves the on-disk tail is a faithful stand-in for live getEvents()
+	 *  output. Never changes what the client sees. For a cap-partial serve it compares against the
+	 *  equivalent canonical window (rebuilt at the partial shown count) so the check stays honest. */
+	private tailShadowCompare(fullEvents: Array<{ type: string; data?: unknown }>, canonical: PortalEvent[], limit: number): void {
+		const eventsPath = this.histEventsPath();
+		if (!eventsPath) { this.log(`[TailLoad:shadow] no events.jsonl path — skip`); return; }
+		const tail = readTailEvents(eventsPath, limit);
+		const serve = this.tailBuildServe(tail, limit, eventsPath);
+		if (!serve) { this.log(`[TailLoad:shadow] tail unusable (empty / cap hit with no user.message boundary) → production would full-pull — skip compare`); return; }
+		// A cap-partial serve intentionally shows fewer than `limit` messages, so comparing it to
+		// the full-`limit` canonical would be a false divergence. Validate against the EQUIVALENT
+		// canonical window rebuilt at the partial shown count — same start (the snapped
+		// user.message == the shownMsgs-th message from the end), so a clean tail must match it.
+		const cmp = serve.capPartial
+			? SessionHandle.buildHistoryEvents(fullEvents, serve.shownMsgs, this.isTurnActive)
+			: canonical;
+		const diff = SessionHandle.firstHistoryDivergence(cmp, serve.built);
+		const pct = tail.totalBytes > 0 ? (100 * tail.bytesRead / tail.totalBytes).toFixed(2) : '0';
+		const shape = serve.capPartial ? `cap-partial(shown=${serve.shownMsgs})` : `full-window`;
+		const stats = `${shape} built[cmp=${cmp.length} tail=${serve.built.length}] tail=${(tail.bytesRead / 1048576).toFixed(2)}MB/${(tail.totalBytes / 1048576).toFixed(2)}MB(${pct}%) tailMsgs=${tail.tailMsgs} bof=${tail.reachedBof} hitCap=${tail.hitCap} limit=${limit}`;
+		if (diff.divergent) {
+			this.log(`[TailLoad:shadow] ⚠ DIVERGENCE at built[${diff.index}] — ${stats}`);
+			this.log(`[TailLoad:shadow]     cmp[${diff.index}]:  ${diff.a}`);
+			this.log(`[TailLoad:shadow]     tail[${diff.index}]: ${diff.b}`);
+		} else {
+			this.log(`[TailLoad:shadow] ✓ match — ${stats}`);
+		}
+	}
+
+	/** Resolve this session's on-disk events.jsonl path, or null if the id is unsafe or the file
+	 *  is absent. Guards the tail-load reader (which touches the filesystem directly). */
+	private histEventsPath(): string | null {
+		if (!isSafeSessionId(this.sessionId)) return null;
+		const p = path.join(os.homedir(), '.copilot', 'session-state', this.sessionId, 'events.jsonl');
+		try { return fs.existsSync(p) ? p : null; } catch { return null; }
+	}
+
+	/** True user/assistant message count of events.jsonl, cached by file size so an idle session
+	 *  is counted at most once across repeated reconnects (recount only when the file has grown).
+	 *  countMessageLines streams the file but classifies by line prefix only (no JSON.parse of
+	 *  bodies) so it's allocation-light — no heap cliff even at ~600MB. Supplies the true
+	 *  history_meta.total for a tail-loaded cold open. (Refinement tracked in tail-meta-total:
+	 *  maintain this incrementally via the live append hook to avoid the growth-triggered rescan.) */
+	private histCountMessagesCached(eventsPath: string): number {
+		try {
+			const size = fs.statSync(eventsPath).size;
+			if (this.histMsgCount >= 0 && size === this.histMsgCountBytes) return this.histMsgCount;
+			const n = countMessageLines(eventsPath);
+			this.histMsgCount = n;
+			this.histMsgCountBytes = size;
+			return n;
+		} catch {
+			return this.histMsgCount >= 0 ? this.histMsgCount : 0;
+		}
 	}
 
 	/**
@@ -2530,24 +2727,34 @@ export class SessionPool {
 			const eventsPath = path.join(os.homedir(), '.copilot', 'session-state', sessionId, 'events.jsonl');
 			if (!fs.existsSync(eventsPath)) return;
 
-			const content = fs.readFileSync(eventsPath, 'utf8');
-			const lines = content.split('\n').filter(l => l.trim());
-
+			// Pass 1 (streaming, memory-safe): scan for tool start/complete events.
+			// We never hold the whole file in memory — only the tiny tool-event
+			// bookkeeping. A cheap substring pre-filter skips JSON.parse on the
+			// ~99% of lines that are messages, not tool events; a real tool event
+			// always contains the literal "tool.execution_", so none are missed.
+			// (Old impl: fs.readFileSync(utf8) → one giant string + split + parse
+			// every line — a multi-GB transient on big sessions and an OOM risk.)
 			const starts = new Map<string, { lineIndex: number; parentId: string; timestamp: string }>();
 			const completions = new Map<string, number[]>();
-
-			for (let i = 0; i < lines.length; i++) {
-				try {
-					const event = JSON.parse(lines[i]) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
-					const toolCallId = event.data?.toolCallId;
-					if (!toolCallId) continue;
-					if (event.type === 'tool.execution_start') {
-						starts.set(toolCallId, { lineIndex: i, parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
-					} else if (event.type === 'tool.execution_complete') {
-						if (!completions.has(toolCallId)) completions.set(toolCallId, []);
-						completions.get(toolCallId)!.push(i);
-					}
-				} catch { /* skip */ }
+			{
+				const rl = readline.createInterface({ input: fs.createReadStream(eventsPath, { encoding: 'utf8' }), crlfDelay: Infinity });
+				let i = -1;
+				for await (const raw of rl) {
+					if (!raw.trim()) continue; // mirror the old .filter(l => l.trim()) — blank lines are dropped
+					i++;
+					if (!raw.includes('tool.execution_')) continue; // pre-filter: skip parse on non-tool lines
+					try {
+						const event = JSON.parse(raw) as { type: string; data?: { toolCallId?: string }; id?: string; timestamp?: string };
+						const toolCallId = event.data?.toolCallId;
+						if (!toolCallId) continue;
+						if (event.type === 'tool.execution_start') {
+							starts.set(toolCallId, { lineIndex: i, parentId: event.id ?? '', timestamp: event.timestamp ?? new Date().toISOString() });
+						} else if (event.type === 'tool.execution_complete') {
+							if (!completions.has(toolCallId)) completions.set(toolCallId, []);
+							completions.get(toolCallId)!.push(i);
+						}
+					} catch { /* skip malformed line */ }
+				}
 			}
 
 			// Orphaned starts, orphaned completions, duplicate completions
@@ -2572,15 +2779,38 @@ export class SessionPool {
 				}));
 			}
 
-			const newLines: string[] = [];
-			for (let i = 0; i < lines.length; i++) {
-				if (removeLines.has(i)) continue;
-				newLines.push(lines[i]);
-				if (insertions.has(i)) newLines.push(insertions.get(i)!);
+			// Pass 2 (streaming write): re-scan and emit to a temp file, dropping the
+			// bad lines and inserting synthetic completions right after their orphaned
+			// start — same result as the old in-memory rebuild, without ever holding
+			// the whole file. Atomic rename swaps it in (safer than the old in-place
+			// writeFileSync: on any error the original is left untouched).
+			const tmpPath = eventsPath + '.repair.tmp';
+			const ws = fs.createWriteStream(tmpPath, { encoding: 'utf8' });
+			let wsError: Error | null = null;
+			ws.on('error', (e) => { wsError = e; });
+			const writeLine = async (s: string): Promise<void> => {
+				if (wsError) throw wsError;
+				if (!ws.write(s + '\n')) await new Promise<void>((res) => ws.once('drain', () => res()));
+			};
+			try {
+				const rl2 = readline.createInterface({ input: fs.createReadStream(eventsPath, { encoding: 'utf8' }), crlfDelay: Infinity });
+				let j = -1;
+				for await (const raw of rl2) {
+					if (!raw.trim()) continue; // same blank-line skip → indices stay aligned with pass 1
+					j++;
+					if (removeLines.has(j)) continue;
+					await writeLine(raw);
+					const ins = insertions.get(j);
+					if (ins !== undefined) await writeLine(ins);
+				}
+				await new Promise<void>((res, rej) => { ws.end(() => (wsError ? rej(wsError) : res())); });
+			} catch (e) {
+				ws.destroy();
+				try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup failure */ }
+				throw e;
 			}
-
-			fs.writeFileSync(eventsPath, newLines.join('\n') + '\n');
-			this.log(`[Pool] Repaired ${orphanedStarts.length + removeLines.size} event(s) (inline)`);
+			fs.renameSync(tmpPath, eventsPath);
+			this.log(`[Pool] Repaired ${orphanedStarts.length + removeLines.size} event(s) (streamed)`);
 		} catch (e) {
 			this.log(`[Pool] Tool repair failed (non-fatal): ${e}`);
 		}
@@ -2588,10 +2818,14 @@ export class SessionPool {
 
 	private async _doConnect(sessionId: string): Promise<SessionHandle> {
 		this.log(`[Pool] Connecting: ${sessionId.slice(0, 8)}...`);
+		// Phase timing (log-only) — isolate where a slow cold open spends its time.
+		const _t0 = Date.now();
 		// Repair any orphaned tool_use events before the SDK loads the session
 		await this.repairOrphanedTools(sessionId);
+		const _tRepair = Date.now();
 		// Fetch the session's original CWD — resumeSession defaults to process.cwd() if not specified
 		const allSessions = await this.client.listSessions();
+		const _tList = Date.now();
 		const meta = allSessions.find(s => s.sessionId === sessionId);
 		const sessionCwd = meta?.context?.workingDirectory;
 		const mcpServers = this.loadMcpServers();
@@ -2607,6 +2841,8 @@ export class SessionPool {
 			onPermissionRequest: (req) => handle.handlePermissionRequest(req),
 			onUserInputRequest: (req) => handle.handleUserInputRequest(req),
 		});
+		const _tResume = Date.now();
+		this.log(`[Pool] connect phases ${sessionId.slice(0, 8)}: repair=${_tRepair - _t0}ms listSessions=${_tList - _tRepair}ms resumeSession=${_tResume - _tList}ms`);
 		handle = new SessionHandle(
 			session,
 			this.log,

@@ -1853,6 +1853,17 @@ export default function App() {
 	const [connectingSecs, setConnectingSecs] = useState(0);
 	const [loadingHistory, setLoadingHistory] = useState<{ sizeMB: string; startTime: number } | null>(null);
 	const [loadingSecs, setLoadingSecs] = useState(0);
+	// Transient "Loaded N messages (X MB)" summary shown in the composer placeholder right
+	// after a fresh session load completes, then auto-clears back to "Ask Copilot…". Reflects
+	// the bytes ACTUALLY read from disk (tail fast-path reads a tiny slice of a huge file), so
+	// it doubles as a visible signal of the tail-load win. Cosmetic only.
+	const [loadedSummary, setLoadedSummary] = useState<{ count: number; mb: string } | null>(null);
+	const loadingSizeMBRef = useRef<string>('?');
+	// Load-time history_meta {total, shown}, captured synchronously so history_end can read the
+	// server's authoritative loaded-message count (event basis) without waiting on state. Cleared
+	// on each new load. Used for the transient "Loaded N" summary so it matches the banner exactly.
+	const historyMetaRef = useRef<{ total: number; shown: number } | null>(null);
+	const loadedSummaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	// Resume-stall escape hatch: when a session in the URL won't open (e.g. the CLI
 	// subprocess OOM-crashed, or a resume hangs), the app shell otherwise sits empty
 	// forever (the "black screen of despair" on mobile-over-tunnel). We detect the
@@ -2326,11 +2337,14 @@ export default function App() {
 				}
 
 				if (event.type === 'history_loading') {
-					setLoadingHistory({ sizeMB: (event as { sizeMB?: string }).sizeMB ?? '?', startTime: Date.now() });
+					const mb = (event as { sizeMB?: string }).sizeMB ?? '?';
+					loadingSizeMBRef.current = mb;
+					setLoadingHistory({ sizeMB: mb, startTime: Date.now() });
 					return;
 				}
 
 				if (event.type === 'history_meta') {
+								historyMetaRef.current = { total: event.total!, shown: event.shown! };
 								setHistoryTruncated({ total: event.total!, shown: event.shown! });
 								return;
 							}
@@ -2340,6 +2354,10 @@ export default function App() {
 					inHistoryRef.current = true;
 					historyBufferRef.current = [];
 					setHistoryTruncated(null);
+					historyMetaRef.current = null;
+					// Clear any lingering "Loaded …" summary from a previous load.
+					if (loadedSummaryTimerRef.current) { clearTimeout(loadedSummaryTimerRef.current); loadedSummaryTimerRef.current = null; }
+					setLoadedSummary(null);
 					setHistoryReady(false);
 					// Clear any in-progress streaming from a previous connection
 					streamingRef.current = '';
@@ -2462,6 +2480,25 @@ export default function App() {
 					setMessages(historyBufferRef.current);
 								// Prevent auto-collapse from firing when user manually opens drawer after history load
 								if (historyBufferRef.current.length > 0) drawerAutoCollapsedRef.current = true;
+					// Show a transient "Loaded N messages (X MB)" summary. N = the server's loaded
+					// message count from history_meta (event basis — matches the truncation banner
+					// exactly); when the session wasn't truncated there's no meta, so the rendered
+					// buffer length IS the full count. MB = bytes actually read from disk (readBytes;
+					// 0 on a warm-mirror serve → fall back to the full session size). Auto-clears.
+					{
+						const count = historyMetaRef.current?.shown ?? historyBufferRef.current.length;
+						if (count > 0) {
+							const rb = (event as { readBytes?: number }).readBytes ?? 0;
+							const fmtMB = (b: number) => {
+								const mb = b / 1048576;
+								return mb >= 10 ? mb.toFixed(0) : mb >= 1 ? mb.toFixed(1) : mb.toFixed(2);
+							};
+							const mb = rb > 0 ? fmtMB(rb) : loadingSizeMBRef.current;
+							setLoadedSummary({ count, mb });
+							if (loadedSummaryTimerRef.current) clearTimeout(loadedSummaryTimerRef.current);
+							loadedSummaryTimerRef.current = setTimeout(() => { setLoadedSummary(null); loadedSummaryTimerRef.current = null; }, 3000);
+						}
+					}
 					// Auto-open drawer when session is empty (new session)
 					if (historyBufferRef.current.length === 0) setDrawerOpen(true);
 					historyBufferRef.current = [];
@@ -5730,7 +5767,7 @@ export default function App() {
 						const linkStyle = { color: 'var(--accent)', textDecoration: 'underline' as const, cursor: 'pointer' as const };
 						return (
 							<div style={{ textAlign: 'center', padding: '8px 12px', marginBottom: '8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-								Showing {shown} of {total} messages. Load more:{' '}
+								{total - shown} earlier message{total - shown === 1 ? '' : 's'} not loaded. Load:{' '}
 								{steps.map((s, i) => (
 									<span key={s.label}>{i > 0 && ' · '}<a href={makeUrl(s.value)} style={linkStyle}>{s.label}</a></span>
 								))}
@@ -6196,7 +6233,7 @@ export default function App() {
 									name="message"
 									className="chat-scroll w-full resize-none bg-transparent pl-4 pr-16 py-3 text-sm outline-none"
 									style={{ color: 'var(--text)', minHeight: 44, maxHeight: 200, overflow: 'auto', transition: 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}
-									placeholder={answerFreeform ? 'Type your answer…' : draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
+									placeholder={answerFreeform ? 'Type your answer…' : draftSession ? 'Ask Copilot… (session will be created)' : loadingHistory ? `Loading… ${loadingSecs}s (${loadingHistory.sizeMB} MB)` : loadedSummary ? `Loaded ${loadedSummary.count} message${loadedSummary.count === 1 ? '' : 's'} (${loadedSummary.mb} MB)` : connectionState === 'connected' ? (activeAgent ? `Ask ${activeAgent} agent…` : 'Ask Copilot…') : `Connecting… ${connectingSecs}s`}
 									disabled={!draftSession && connectionState !== 'connected'}
 									rows={1}
 									value={input}

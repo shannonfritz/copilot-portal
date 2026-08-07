@@ -317,7 +317,9 @@ export class PortalServer {
 			// Replay history + pending requests.
 			// We capture sessionId at this point — it never changes for this connection.
 			const historySessionId = sessionId;
+			const _tHistStart = Date.now();
 			handle.getHistory(historyLimit).then(async (events) => {
+				this.log(`[${clientId}] getHistory ${historySessionId.slice(0,8)}: ${Date.now() - _tHistStart}ms (${events.length} events, readBytes=${handle.lastHistoryReadBytes})`);
 				if (cancelled || ws.readyState !== WebSocket.OPEN) return;
 				ws.send(JSON.stringify({ type: 'history_start', sessionId: historySessionId }));
 				for (const e of events) {
@@ -325,7 +327,7 @@ export class PortalServer {
 					ws.send(JSON.stringify(e));
 				}
 				if (cancelled) return;
-				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive }));
+				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive, readBytes: handle.lastHistoryReadBytes }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
 				const activeTurnEvents = handle.getActiveTurnEvents();
 				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (isTurnActive=' + handle.turnActive + ')');
@@ -380,7 +382,7 @@ export class PortalServer {
 							ws.send(JSON.stringify(ev));
 						}
 						if (cancelled) return;
-						ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: newHandle.portalTurnActive }));
+						ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: newHandle.portalTurnActive, readBytes: newHandle.lastHistoryReadBytes }));
 						const activeTurnEvents = newHandle.getActiveTurnEvents();
 						for (const ev of activeTurnEvents) ws.send(JSON.stringify(ev));
 						for (const ev of newHandle.getPendingApprovalEvents()) ws.send(JSON.stringify(ev));
@@ -524,7 +526,7 @@ export class PortalServer {
 						ws.send(JSON.stringify(e));
 					}
 					if (ws.readyState !== WebSocket.OPEN) return;
-					ws.send(JSON.stringify({ type: 'history_end', sessionId, turnActive: handle.portalTurnActive }));
+					ws.send(JSON.stringify({ type: 'history_end', sessionId, turnActive: handle.portalTurnActive, readBytes: handle.lastHistoryReadBytes }));
 					for (const e of handle.getActiveTurnEvents()) ws.send(JSON.stringify(e));
 					for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
 					for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
