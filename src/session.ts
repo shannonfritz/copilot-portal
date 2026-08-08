@@ -2271,6 +2271,11 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		'pending_messages.modified',
 		'tool.execution_partial_result',
 		'session.background_tasks_changed',
+		// Handler-less, high-frequency: the CLI fires this several times per connect as
+		// each MCP server's tool list settles. The final tool state is already summarized
+		// by session.mcp_servers_loaded, so these carry no triage signal. (No handler runs
+		// for it either — quieting only skips the catch-all [Event] log line.)
+		'mcp.tools.list_changed',
 	]);
 
 	/** Maps SDK event types to handler methods. */
@@ -2872,10 +2877,16 @@ export class SessionPool {
 		handle.sharedMode = this.shared;
 		handle.knownCwd = sessionCwd ?? undefined;
 		this.pool.set(sessionId, handle);
+		this.log(`[Pool] ${sessionId.slice(0, 8)} pool-ready +${Date.now() - _tResume}ms after resume`);
 		// Seed the model so reconnects use the same model as the CLI.
 		// Without this, resumeSession() would default to the CLI's current default model
 		// (not necessarily what the session was configured with).
+		// Timing note: this trivial RPC is ~3ms against a dedicated CLI but has been
+		// observed taking ~14s against the shared :3848 CLI right after a big resume —
+		// a proxy for how long the CLI's RPC channel stays saturated post-resume.
+		const _tModel0 = Date.now();
 		session.rpc.model.getCurrent().then(r => {
+			this.log(`[Pool] ${sessionId.slice(0, 8)} model.getCurrent resolved in ${Date.now() - _tModel0}ms (+${Date.now() - _tResume}ms after resume)`);
 			if (r.modelId) {
 				handle.currentModel = r.modelId;
 				this.log(`[Pool] Session ${sessionId.slice(0, 8)} model: ${r.modelId}`);

@@ -1815,7 +1815,6 @@ export default function App() {
 	);
 	const [activeSessionSummary, setActiveSessionSummary] = useState<string | null>(null);
 	const activeSessionIdRef = useRef<string | null>(new URLSearchParams(window.location.search).get('session'));
-	const mcpAuthPendingRef = useRef<Map<string, string>>(new Map()); // serverName → authorizationUrl
 	const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
 	const [pendingInput, setPendingInput] = useState<InputRequest | null>(null);
 	const answeredInputsRef = useRef<Set<string>>(new Set()); // ask_user requestIds this client answered locally
@@ -3087,31 +3086,15 @@ export default function App() {
 				} else if ((event as any).type === 'mcp_server_status_changed') {
 					try {
 						const d = JSON.parse((event as any).content ?? '{}') as { serverName?: string; status?: string };
-						if (d.serverName && d.status === 'needs-auth') {
-							// Auto-trigger OAuth login for this server
-							(async () => {
-								try {
-									const res = await apiFetch('/api/mcp/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverName: d.serverName, sessionId: activeSessionIdRef.current }) });
-									const data = await res.json();
-									if (data.authorizationUrl) {
-										mcpAuthPendingRef.current.set(d.serverName!, data.authorizationUrl);
-										// Show banner for all pending — Sign in opens only the first
-										const showPendingBanner = () => {
-											const pending = mcpAuthPendingRef.current;
-											if (pending.size === 0) return;
-											const names = [...pending.keys()].join(', ');
-											const firstUrl = [...pending.values()][0];
-											setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
-												setNotification(null);
-												window.open(firstUrl, '_blank');
-											} } });
-										};
-										showPendingBanner();
-									}
-								} catch {}
-							})();
-						}
-						// Update server status in MCP list (or add if new)
+						// NOTE: we intentionally do NOT auto-fire /api/mcp/login on 'needs-auth'.
+						// The CLI emits a transient 'needs-auth' during resume even for servers
+						// that are already authenticated; calling login on it (a) returns no URL
+						// (already authed) and (b) kicked the server back through
+						// not_configured→pending→connected, causing a self-inflicted reconnect
+						// storm right after connect (see MCP flapping diagnosis). Sign-in is now
+						// user-initiated only, via the per-row "Sign in" button in the MCP panel
+						// (self-contained: fetch URL → open browser → poll). The status update
+						// below still flips the row to 'needs-auth' so that button appears.
 						if (d.serverName && d.status) {
 							setMcpServers(prev => {
 								const exists = prev.find(s => s.name === d.serverName);
@@ -3121,22 +3104,6 @@ export default function App() {
 								// New server (e.g. builtin) — add it
 								return [...prev, { name: d.serverName!, type: 'unknown', source: d.serverName === 'github-mcp-server' ? 'builtin' : 'unknown', enabled: d.status === 'connected', status: d.status }];
 							});
-							// Remove from pending auth when server connects, re-show banner for remaining
-							if (d.status === 'connected') {
-								mcpAuthPendingRef.current.delete(d.serverName!);
-								const pending = mcpAuthPendingRef.current;
-								if (pending.size === 0) {
-									setNotification(prev => prev?.type === 'warning' && prev?.message?.includes('sign-in') ? null : prev);
-								} else {
-									// Re-show banner for next server
-									const names = [...pending.keys()].join(', ');
-									const firstUrl = [...pending.values()][0];
-									setNotification({ type: 'warning', message: `${names} need${pending.size === 1 ? 's' : ''} sign-in to connect.`, action: { label: 'Sign in', onClick: () => {
-										setNotification(null);
-										window.open(firstUrl, '_blank');
-									} } });
-								}
-							}
 						}
 					} catch {}
 				} else if ((event as any).type === 'mcp_tool_counts') {
@@ -4209,9 +4176,12 @@ export default function App() {
 
 	return (
 		<div className="flex flex-col" style={{ height: '100%' }}>
-			{/* Resume-stall escape hatch — the session in the URL won't open (CLI crash,
-			    hung resume, or a genuinely huge history still loading). Rather than leave
-			    the shell empty forever (the mobile "black screen"), offer a way out. */}
+			{/* Long-load reassurance — the session in the URL is taking a while to open
+			    (usually a genuinely huge history still rebuilding; occasionally a CLI
+			    crash or hung resume). Reassure the user it's working and will open on
+			    its own, with the live counter as proof of progress. Primary action is
+			    "Keep waiting"; Retry / Back to sessions are fallbacks if it's truly stuck.
+			    Fully non-destructive: the load keeps running underneath. */}
 			{resumeStalled && (
 				<div
 					className="fixed inset-0 z-[70] flex items-center justify-center px-6"
@@ -4222,26 +4192,27 @@ export default function App() {
 						style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
 					>
 						<PortalLogo className="mx-auto mb-4 block size-14" />
-						<h2 className="mb-2 text-base font-semibold">Still trying to open this session…</h2>
+						<h2 className="mb-2 text-base font-semibold">Still loading this session…</h2>
 						<p className="mb-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-							This is taking longer than usual. A very large session can just be slow to
-							load, or the session may have stopped responding.
+							Large sessions take a little while to open — the full history has to be
+							rebuilt before it's ready. It'll open on its own the moment that finishes;
+							you don't need to do anything.
 						</p>
 						<p className="mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
 							{loadingHistory
 								? `Loading history… ${loadingSecs}s (${loadingHistory.sizeMB} MB)`
 								: connectionState === 'connecting'
 									? `Connecting… ${connectingSecs}s`
-									: 'Waiting for the session to respond…'}
+									: 'Almost there — waiting for the session to respond…'}
 						</p>
 						<div className="flex flex-col gap-2">
 							<button
 								type="button"
 								className="w-full rounded-lg px-4 py-2.5 text-sm font-medium"
 								style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
-								onClick={() => { setResumeStalled(false); enterNoSession(); }}
+								onClick={() => setResumeStalled(false)}
 							>
-								Back to sessions
+								Keep waiting
 							</button>
 							<button
 								type="button"
@@ -4250,6 +4221,14 @@ export default function App() {
 								onClick={retryResume}
 							>
 								Retry
+							</button>
+							<button
+								type="button"
+								className="w-full rounded-lg px-4 py-2 text-xs font-medium"
+								style={{ background: 'transparent', color: 'var(--text-muted)' }}
+								onClick={() => { setResumeStalled(false); enterNoSession(); }}
+							>
+								Back to sessions
 							</button>
 						</div>
 					</div>
