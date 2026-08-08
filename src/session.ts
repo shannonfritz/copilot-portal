@@ -429,6 +429,32 @@ export class SessionHandle {
 	get turnActive(): boolean { return this.isTurnActive; }
 
 	/**
+	 * True if the session's on-disk state advanced since the portal last accounted
+	 * for it — i.e. an out-of-band CLI turn (terminal --resume, another shared-mode
+	 * client) wrote new events while no portal client was watching this session.
+	 *
+	 * lastKnownModTime is the high-water mark of everything the portal has already
+	 * incorporated (updated by our own turns, reconnects, and the live poll), so
+	 * comparing the current modtime against it tells us whether an idle reconnect
+	 * needs a full re-resume (changed → pick up the new messages) or can reuse the
+	 * warm handle and skip the expensive replay (unchanged → the common case).
+	 *
+	 * Returns true (evict — the safe default) if the modtime can't be determined.
+	 */
+	async hasChangedSinceIdle(): Promise<boolean> {
+		if (!this.getModTimeFn) return true; // can't tell → be safe, re-resume
+		const modTime = await this.getModTimeFn();
+		if (modTime === null) return true;
+		if (this.lastKnownModTime === null) {
+			// Switched away before the 2s poll ever seeded a baseline. Seed it now
+			// and treat as unchanged — we resumed moments ago and nothing tracked a write.
+			this.lastKnownModTime = modTime;
+			return false;
+		}
+		return modTime > this.lastKnownModTime;
+	}
+
+	/**
 	 * True when a PORTAL-initiated turn is running right now — i.e. exactly when
 	 * getActiveTurnEvents() re-arms the client's thinking dot. The client syncs
 	 * its thinking state to this at history_end so a completion `idle` swallowed
@@ -2640,11 +2666,38 @@ export class SessionPool {
 	async connect(sessionId: string, evictIfIdle = false): Promise<SessionHandle> {
 		if (this.pool.has(sessionId)) {
 			const existing = this.pool.get(sessionId)!;
-			// Evict idle handles if requested (fresh snapshot with CLI messages)
+			// A reconnect to an idle handle normally evicts + re-resumes to pick up any
+			// messages the CLI wrote out-of-band while no portal client was watching.
+			// But that re-resume is the expensive part (full events.jsonl replay in the
+			// CLI — tens of seconds on a large session). getHistory already re-reads disk
+			// on every reconnect, so the DISPLAYED history is fresh either way; the only
+			// thing the re-resume refreshes is the SDK session's in-memory context, which
+			// only matters if the file actually changed. So only evict when it did —
+			// otherwise reuse the warm handle and return in well under a second.
 			if (evictIfIdle && existing.listenerCount === 0 && !existing.turnActive && !existing.isNew) {
-				this.log(`[Pool] Evicting idle: ${sessionId.slice(0, 8)}`);
-				await existing.disconnect();
-				this.pool.delete(sessionId);
+				let changed = true; // default to evict (safe) if we can't tell
+				try {
+					changed = await existing.hasChangedSinceIdle();
+				} catch { /* fall back to evicting on any error */ }
+				if (changed) {
+					this.log(`[Pool] Evicting idle (changed on disk): ${sessionId.slice(0, 8)}`);
+					await existing.disconnect();
+					this.pool.delete(sessionId);
+				} else {
+					// Unchanged since we switched away — reuse the warm handle and skip the
+					// re-resume. Verify the underlying SDK connection is still alive first;
+					// if the CLI reaped this session on its own idle timeout, evict and
+					// re-resume instead of handing back a dead handle.
+					try {
+						await this.client.ping();
+						this.log(`[Pool] Reusing warm idle (unchanged): ${sessionId.slice(0, 8)}`);
+						return existing;
+					} catch {
+						this.log(`[Pool] Warm idle handle stale for ${sessionId.slice(0, 8)} — evicting and reconnecting`);
+						await existing.disconnect().catch(() => {});
+						this.pool.delete(sessionId);
+					}
+				}
 			} else {
 				// Verify the SDK connection is still alive before reusing
 				try {
