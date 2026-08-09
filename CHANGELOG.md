@@ -2,6 +2,28 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.4 — Faster loads for long sessions, instant session switching, input-lag fix
+
+### 🚀 Faster session loading
+- **Tail-load history** — opening a large session now reads only the tail of its `events.jsonl` (a few percent of the file) instead of parsing the entire log, avoiding the memory cliff and long hang that hit multi-hundred-MB sessions
+- **Server-side history cache** — a warm in-memory mirror serves reconnects and browser reloads without re-reading history from disk
+- **Instant session switching** — switching away from a session and back now reuses the still-warm connection instead of paying a full CLI re-resume every time; the expensive replay only runs on the first open or when the session actually changed on disk out-of-band
+- **Streaming orphan-repair** — the startup tool-event repair pass now streams the log instead of loading it whole, cutting peak memory ~7x on big sessions and removing an out-of-memory risk
+
+### 💅 Input & UI polish
+- **No more keystroke lag in long chats** — memoized the message list so typing in the composer no longer re-parses the entire backscroll on every keystroke; long conversations stay snappy
+- **Reassuring long-load prompt** — the slow-load overlay now says the session is still loading and will open on its own, with "Keep waiting" as the primary action, instead of implying it may have stalled
+- **Refreshed tour guide** — the in-app walkthrough matches the current UI
+
+### 🔧 Stability
+- **No MCP sign-in flap** — removed a speculative auto-login that fired on the transient `needs-auth` the CLI emits during resume; on already-authenticated servers it kicked them back through the handshake, causing a reconnect storm after everything had already connected. Sign-in is now user-initiated via the per-server button
+- **Quieter logs** — dropped a handler-less, high-frequency `mcp.tools.list_changed` line from the event log; added once-per-connect timing telemetry to diagnose slow opens
+- **Current CLI/SDK** — ships `@github/copilot` `1.0.76` and `@github/copilot-sdk` `1.0.8`
+
+### 🐛 Bug fixes
+- **Update-banner race** — the update banner no longer flickers or misfires during a multi-step apply
+- **Host-header hint** — a rejected `Host` header now surfaces a remediation hint instead of a bare failure
+
 ## v0.8.3 — Lower CLI floor for managed-device installs, faster registry fallback, build guardrail
 
 ### 🌐 Managed-device install fix
