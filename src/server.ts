@@ -1331,6 +1331,20 @@ export class PortalServer {
 			return;
 		}
 
+		if (url.pathname === '/api/updates/apply-all' && method === 'POST') {
+			if (CONTAINER_MODE) {
+				this.sendJson(res, 200, { ...this.updater.getStatus(), error: 'Updates are managed by the container image — rebuild or pull a new image to update.' });
+				return;
+			}
+			if (this.updater.getStatus().applying) {
+				this.sendJson(res, 409, { error: 'Update already in progress' });
+				return;
+			}
+			const status = await this.updater.applyAll();
+			this.sendJson(res, 200, status);
+			return;
+		}
+
 		if (url.pathname === '/api/updates/apply-portal' && method === 'POST') {
 			if (CONTAINER_MODE) {
 				this.sendJson(res, 200, { ...this.updater.getStatus(), error: 'Updates are managed by the container image — rebuild or pull a new image to update.' });
@@ -2311,18 +2325,11 @@ export class PortalServer {
 		const hasPackages = status.packages.some(p => p.hasUpdate);
 		const hasPortal = !!status.portal?.hasUpdate;
 		if (!hasPackages && !hasPortal) return 'Everything is up to date.';
-		const msgs: string[] = [];
-		if (hasPackages) {
-			const pkgStatus = await this.updater.apply();
-			if (pkgStatus.error) msgs.push(`Package update failed: ${pkgStatus.error}`);
-			else msgs.push('Packages updated.');
-		}
-		if (hasPortal) {
-			const portalStatus = await this.updater.applyPortalUpdate();
-			if (portalStatus.error) msgs.push(`Portal update failed: ${portalStatus.error}`);
-			else msgs.push(`Portal updated to v${status.portal!.latest}.`);
-		}
-		return msgs.join(' ') + ' Press [r] to restart.';
+		// Single server-orchestrated apply (portal zip first, then CLI/SDK in one install
+		// pass) — same path the UI uses, so ordering/restart handling can't diverge.
+		const result = await this.updater.applyAll();
+		if (result.error) return `Update failed: ${result.error}` + (result.restartNeeded ? ' Some changes applied — press [r] to restart.' : '');
+		return 'Updates applied. Press [r] to restart.';
 	}
 
 	/** True while an update is being applied. Used by the console [r] handler to

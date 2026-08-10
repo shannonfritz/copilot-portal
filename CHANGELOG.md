@@ -2,6 +2,16 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.5-rc.1 — Reworked updater (pre-release)
+
+Pre-release to validate the reworked in-app update flow end-to-end before the stable v0.8.5.
+
+### 🔄 Updates
+- **One combined update** — portal and CLI/SDK updates now apply in a single server-orchestrated pass (`applyAll`) with one restart at the end, instead of being sequenced step-by-step in the browser. Ordering, partial-failure handling, and restart gating now live on the server.
+- **Self-completing portal updates** — an in-app portal update now reconciles `node_modules` against the new release and stamps the deps marker, so a restart no longer leaves new code running on old dependencies (and no longer triggers a redundant reinstall on the next cold `start-portal.cmd` launch).
+- **Partial-failure safety** — if the portal step succeeds but a CLI/SDK step then fails, the Restart button still appears alongside the error instead of being suppressed.
+- **Download & UI hardening** — release zips are fully flushed to disk before extraction (fixes a Windows extract race), and the update banner can no longer spin forever if a request is lost.
+
 ## v0.8.4 — Faster loads for long sessions, instant session switching, input-lag fix
 
 ### 🚀 Faster session loading

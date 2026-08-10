@@ -5609,57 +5609,45 @@ export default function App() {
 									className="rounded-md px-2.5 py-1 text-xs font-medium"
 									style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
 									onClick={async () => {
-										// Hold the "Updating…" state across the entire Portal → npm → restart
-										// sequence so background pollers can't resurrect the Update button
-										// mid-flight (which would let the user kick off a racing second apply).
+										// Single server-orchestrated apply: the server sequences portal zip
+										// → CLI/SDK install → reconcile → restart-flag in ONE `applying`
+										// window, so ordering, partial-failure handling, and restart gating
+										// no longer live in (and can't be dropped by) the browser. Hold the
+										// "Updating…" state locally so background pollers can't resurrect the
+										// Update button mid-flight (which would allow a racing second apply).
 										updateApplyingRef.current = true;
 										setUpdateStatus(prev => prev ? { ...prev, applying: true, error: null } : prev);
-										try {
-											if (portalUpdate) {
-												const res = await apiFetch('/api/updates/apply-portal', { method: 'POST' });
-												const status = await res.json() as UpdateStatus;
-												if (status.error) {
-													// Portal step failed — surface it and stop (don't chain npm).
-													updateApplyingRef.current = false;
-													setUpdateStatus({ ...status, applying: false });
-													return;
-												}
-												// Portal done. If npm updates are also pending, KEEP applying:true
-												// (and hide restart) so the banner stays on "Updating…" through the
-												// next step instead of briefly flashing the button back.
-												if (updatable.length > 0) {
-													setUpdateStatus({ ...status, applying: true, restartNeeded: false });
-												} else {
-													updateApplyingRef.current = false;
-													setUpdateStatus(status);
-												}
-											}
-											if (updatable.length > 0) {
-												// Fire and forget — npm install can take minutes
-												apiFetch('/api/updates/apply', { method: 'POST' }).catch(() => {});
-												// Poll for completion. Guard the startup race: the apply POST
-												// may not have flipped the server into `applying` yet, so don't
-												// treat the very first !applying reading as "done" unless the
-												// updates have actually cleared (or an error surfaced).
-												let sawApplying = false;
-												const poll = setInterval(async () => {
-													try {
-														const res = await apiFetch('/api/updates');
-														const status = await res.json() as UpdateStatus;
-														if (status.applying) { sawApplying = true; return; }
-														const stillPending = status.packages.some(p => p.hasUpdate);
-														if (!sawApplying && stillPending && !status.error) return; // apply not started yet
-														clearInterval(poll);
-														updateApplyingRef.current = false;
-														setUpdateStatus({ ...status, applying: false, restartNeeded: !status.error });
-													} catch { /* server busy */ }
-												}, 3000);
+										// Fire-and-forget — apply-all can take minutes (download + npm install
+										// + rebuild) — then poll to completion.
+										apiFetch('/api/updates/apply-all', { method: 'POST' }).catch(() => {});
+										// Guard the startup race: the POST may not have flipped the server into
+										// `applying` yet, so don't treat the first !applying reading as "done"
+										// unless the updates have actually cleared (or an error surfaced).
+										let sawApplying = false;
+										let polls = 0;
+										const poll = setInterval(async () => {
+											// Hard ceiling (~10 min) so a POST that never reached the server (or a
+											// server that died mid-apply) can't leave the banner spinning forever.
+											if (++polls > 200) {
+												clearInterval(poll);
+												updateApplyingRef.current = false;
+												setUpdateStatus(prev => prev ? { ...prev, applying: false, error: 'Update is taking longer than expected — check the server console, then refresh.' } : prev);
 												return;
 											}
-										} catch (e) {
-											updateApplyingRef.current = false;
-											setUpdateStatus(prev => prev ? { ...prev, applying: false, error: String(e) } : prev);
-										}
+											try {
+												const res = await apiFetch('/api/updates');
+												const status = await res.json() as UpdateStatus;
+												if (status.applying) { sawApplying = true; return; }
+												const stillPending = !!status.portal?.hasUpdate || status.packages.some(p => p.hasUpdate);
+												if (!sawApplying && stillPending && !status.error) return; // apply not started yet
+												clearInterval(poll);
+												updateApplyingRef.current = false;
+												// Trust the server's restartNeeded — it stays true even on a
+												// partial failure (e.g. portal OK but CLI failed), so the Restart
+												// button appears alongside the error instead of being suppressed.
+												setUpdateStatus({ ...status, applying: false });
+											} catch { /* server busy */ }
+										}, 3000);
 									}}
 								>
 									Update

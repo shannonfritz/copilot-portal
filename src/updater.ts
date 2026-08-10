@@ -239,6 +239,105 @@ export class UpdateChecker {
 	}
 
 	/** Apply available updates: npm update + rebuild. Returns the new status. */
+	// ---------------------------------------------------------------------------
+	// Shared building blocks — used by apply() (CLI/SDK), applyPortalUpdate()
+	// (portal-only), and applyAll() (combined). Keeping these in one place means
+	// all three paths run the exact same battle-tested install / verify / stamp
+	// logic instead of drifting copies.
+	// ---------------------------------------------------------------------------
+
+	/** CLI/SDK updates resolved to pinned install targets (never the moving @latest tag). */
+	private packageTargets(): { name: string; version: string }[] {
+		return this.packages
+			.filter(p => p.hasUpdate && p.latest && p.latest !== 'unknown')
+			.map(p => ({ name: p.name, version: p.latest }));
+	}
+
+	/** Download the portal release zip and extract it over PROJECT_ROOT. */
+	private async extractPortalZip(): Promise<void> {
+		this.log(`[Update] Downloading portal v${this.portal!.latest}...`);
+		const zipPath = path.join(PROJECT_ROOT, 'portal-update.zip');
+		await downloadFile(this.portal!.downloadUrl!, zipPath, this.log);
+		this.log(`[Update] Extracting update...`);
+		if (process.platform === 'win32') {
+			await runCommand(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${PROJECT_ROOT}' -Force"`, PROJECT_ROOT);
+		} else {
+			await runCommand(`unzip -o "${zipPath}" -d "${PROJECT_ROOT}"`, PROJECT_ROOT);
+		}
+		try { fs.unlinkSync(zipPath); } catch { /* ignore */ }
+	}
+
+	/** Install explicit pinned package targets, then verify on disk and self-heal a
+	 *  desynced tree (logical state at target but physical files left behind, which
+	 *  makes `npm install pkg@X` a silent no-op). Throws if disk still won't match. */
+	private async installPackageTargets(targets: { name: string; version: string }[]): Promise<void> {
+		if (targets.length === 0) return;
+		const specs = targets.map(t => `${t.name}@${t.version}`).join(' ');
+		await runNpmInstall(specs, this.log);
+		this.log(`[Update] npm install complete`);
+		process.title = 'Copilot Portal';
+		const mismatched = targets.filter(t => getInstalledVersion(t.name) !== t.version);
+		if (mismatched.length > 0) {
+			for (const t of mismatched) {
+				this.log(`[Update] ${t.name} on disk is ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version} — forcing clean re-extract`);
+				fs.rmSync(path.join(PROJECT_ROOT, 'node_modules', ...t.name.split('/')), { recursive: true, force: true });
+			}
+			await runNpmInstall('', this.log);
+			this.log(`[Update] Re-extract complete`);
+			process.title = 'Copilot Portal';
+			const stillWrong = mismatched.filter(t => getInstalledVersion(t.name) !== t.version);
+			if (stillWrong.length > 0) {
+				const detail = stillWrong.map(t => `${t.name} (on disk ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version})`).join(', ');
+				throw new Error(`Update did not take effect on disk after re-extract: ${detail}`);
+			}
+			for (const t of mismatched) this.log(`[Update] ${t.name} re-extracted to ${t.version}`);
+		}
+	}
+
+	/** Rebuild server + UI if a build script exists (release packages ship pre-built → skipped). */
+	private async rebuildIfNeeded(): Promise<void> {
+		const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+		if (pkg.scripts?.build) {
+			await runCommand('npm run build', PROJECT_ROOT);
+			this.log(`[Update] Rebuild complete`);
+			process.title = 'Copilot Portal';
+		} else {
+			this.log(`[Update] No build script — skipping rebuild (pre-built release)`);
+		}
+	}
+
+	/** Stamp node_modules/.portal-deps-version = current package.json version so a later
+	 *  cold start-portal.cmd launch sees deps already match and skips a redundant reinstall.
+	 *  Best-effort: a failure here never fails the update (the .cmd stamp check is the backstop). */
+	private stampDepsVersion(): void {
+		try {
+			const newVer = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8')).version;
+			if (newVer) {
+				fs.writeFileSync(path.join(PROJECT_ROOT, 'node_modules', '.portal-deps-version'), String(newVer));
+				this.log(`[Update] Stamped node_modules/.portal-deps-version = ${newVer}`);
+			}
+		} catch (e) {
+			this.log(`[Update] Could not stamp deps-version marker: ${String(e).split('\n')[0]}`);
+		}
+	}
+
+	/** Shared apply-error handler: map a yanked-target npm failure to a calm message,
+	 *  otherwise surface the raw error. Sets this.error + logs. */
+	private handleApplyError(e: unknown): void {
+		const raw = String(e);
+		if (/ETARGET|E404|No matching version|could not be found/i.test(raw)) {
+			// A version we offered was pulled from npm between our pre-flight re-check and
+			// the install (a yanked release). The installed version is untouched; the next
+			// check re-resolves against npm's current `latest`.
+			this.error = 'Update target is no longer available on npm (it may have been unpublished). Your installed version is unchanged — this usually clears on the next check.';
+			this.log(`[Update] Apply skipped: ${this.error}`);
+			this.log(`[Update] (npm detail: ${raw.split('\n').find(l => /npm error/i.test(l))?.trim() ?? raw.split('\n')[0]})`);
+		} else {
+			this.error = raw;
+			this.log(`[Update] Apply failed: ${this.error}`);
+		}
+	}
+
 	async apply(): Promise<UpdateStatus> {
 		if (this.applying) return this.getStatus();
 		this.applying = true;
@@ -257,114 +356,143 @@ export class UpdateChecker {
 			// offered update evaporated.
 			await this.check();
 
-			// Install the EXACT version we resolved as `latest`, pinned — not the
-			// moving `@latest` tag. Pinning installs precisely what the pre-flight
-			// check just resolved as installable, so the check and install can't
-			// disagree (the ETARGET class of failure). An explicit version also
-			// bypasses the package.json semver range. Registry selection mirrors the
-			// check: configured registry first, public npmjs as fallback (see
-			// runNpmInstall) — never forcing the managed-device-blocked public host.
-			const targets = this.packages
-				.filter(p => p.hasUpdate && p.latest && p.latest !== 'unknown')
-				.map(p => ({ name: p.name, version: p.latest }));
+			// Install the EXACT versions we resolved as `latest`, pinned — not the moving
+			// `@latest` tag — so the pre-flight check and the install can't disagree, and
+			// verify + self-heal a desynced tree.
+			const targets = this.packageTargets();
 			if (targets.length > 0) {
-				const specs = targets.map(t => `${t.name}@${t.version}`).join(' ');
-				await runNpmInstall(specs, this.log);
-				this.log(`[Update] npm install complete`);
-				process.title = 'Copilot Portal';
-
-				// Post-install verify + self-heal. npm treats its hidden lockfile
-				// (node_modules/.package-lock.json) as the source of truth for "what's
-				// installed". If the tree is DESYNCED — logical state (package.json +
-				// lockfiles) already at the target version but the physical files left
-				// behind, e.g. a prior `npm install` against a registry that lacked the
-				// target advanced the lockfile while disk stayed put — then
-				// `npm install pkg@X` is a SILENT NO-OP ("up to date", disk unchanged).
-				// The install above would then "succeed" without actually upgrading.
-				// Guard against that: re-read each package's on-disk version; for any
-				// that don't match the target, force a clean re-extract by deleting the
-				// package dir and reinstalling from the (target-pinned) lockfile.
-				const mismatched = targets.filter(t => getInstalledVersion(t.name) !== t.version);
-				if (mismatched.length > 0) {
-					for (const t of mismatched) {
-						this.log(`[Update] ${t.name} on disk is ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version} — forcing clean re-extract`);
-						fs.rmSync(path.join(PROJECT_ROOT, 'node_modules', ...t.name.split('/')), { recursive: true, force: true });
-					}
-					await runNpmInstall('', this.log);
-					this.log(`[Update] Re-extract complete`);
-					process.title = 'Copilot Portal';
-					const stillWrong = mismatched.filter(t => getInstalledVersion(t.name) !== t.version);
-					if (stillWrong.length > 0) {
-						const detail = stillWrong.map(t => `${t.name} (on disk ${getInstalledVersion(t.name) ?? 'missing'}, expected ${t.version})`).join(', ');
-						throw new Error(`Update did not take effect on disk after re-extract: ${detail}`);
-					}
-					for (const t of mismatched) this.log(`[Update] ${t.name} re-extracted to ${t.version}`);
-				}
+				await this.installPackageTargets(targets);
 			} else {
 				this.log(`[Update] Nothing to install — packages already at the latest release.`);
 			}
 
-			// 2. Rebuild the server and UI (skip if no build script — e.g. release packages ship pre-built)
-			const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
-			if (pkg.scripts?.build) {
-				await runCommand('npm run build', PROJECT_ROOT);
-				this.log(`[Update] Rebuild complete`);
-				process.title = 'Copilot Portal';
-			} else {
-				this.log(`[Update] No build script — skipping rebuild (pre-built release)`);
-			}
+			// Rebuild (skip if no build script — release packages ship pre-built).
+			await this.rebuildIfNeeded();
 
-			// 3. Re-check versions so the status reflects post-update state
+			// Keep the deps stamp current so a later cold start-portal.cmd launch doesn't
+			// redundantly reinstall (writes the same portal version in the CLI-only case).
+			this.stampDepsVersion();
+
+			// Re-check versions so the status reflects post-update state
 			await this.check();
 
 			this.log(`[Update] Update applied successfully. Restart required to use new versions.`);
 		} catch (e) {
-			const raw = String(e);
-			if (/ETARGET|E404|No matching version|could not be found/i.test(raw)) {
-				// A version we offered was pulled from npm in the small window between our
-				// pre-flight re-check and the install (a yanked release). The installed
-				// version is untouched; the next check re-resolves against npm's current
-				// `latest`. Surface a calm, human message instead of the npm stack wall.
-				this.error = 'Update target is no longer available on npm (it may have been unpublished). Your installed version is unchanged — this usually clears on the next check.';
-				this.log(`[Update] Apply skipped: ${this.error}`);
-				this.log(`[Update] (npm detail: ${raw.split('\n').find(l => /npm error/i.test(l))?.trim() ?? raw.split('\n')[0]})`);
-			} else {
-				this.error = raw;
-				this.log(`[Update] Apply failed: ${this.error}`);
-			}
+			this.handleApplyError(e);
 		} finally {
 			this.applying = false;
 		}
 		return this.getStatus();
 	}
 
-	/** Download and extract a portal update from GitHub Releases */
+	/** Portal-only self-update: download + extract the release zip, reconcile deps,
+	 *  stamp, and flag restart. Kept as a standalone fallback; the UI uses applyAll(). */
 	async applyPortalUpdate(): Promise<UpdateStatus> {
 		if (this.applying || !this.portal?.hasUpdate || !this.portal.downloadUrl) return this.getStatus();
 		this.applying = true;
 		this.error = null;
 		try {
-			this.log(`[Update] Downloading portal v${this.portal.latest}...`);
-			const zipPath = path.join(PROJECT_ROOT, 'portal-update.zip');
-			await downloadFile(this.portal.downloadUrl, zipPath, this.log);
-			this.log(`[Update] Extracting update...`);
-			// Extract zip — overwrite existing files
-			if (process.platform === 'win32') {
-				await runCommand(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${PROJECT_ROOT}' -Force"`, PROJECT_ROOT);
-			} else {
-				await runCommand(`unzip -o "${zipPath}" -d "${PROJECT_ROOT}"`, PROJECT_ROOT);
+			await this.extractPortalZip();
+
+			// Reconcile node_modules against the freshly-extracted package.json. The
+			// release zip ships app files (dist/, package.json) but NOT node_modules, so
+			// a portal update that bumps a dependency would otherwise leave the NEW code
+			// running against the OLD node_modules until the next start-portal.cmd cold
+			// launch reconciled it — and the in-app Restart bypasses that script entirely.
+			// Best-effort: the extract already succeeded, so a transient failure here must
+			// NOT fail the whole update; we skip the stamp so start-portal.cmd reconciles
+			// on the next launch (today's safety net — never worse than current behavior).
+			try {
+				this.log(`[Update] Reconciling dependencies for v${this.portal.latest}...`);
+				await runNpmInstall('', this.log);
+				process.title = 'Copilot Portal';
+				this.log(`[Update] Dependencies reconciled`);
+				this.stampDepsVersion();
+			} catch (e) {
+				this.log(`[Update] Dependency reconcile deferred to next launch (in-app reconcile failed: ${String(e).split('\n')[0]})`);
 			}
-			// Clean up zip
-			try { fs.unlinkSync(zipPath); } catch { /* ignore */ }
+
 			this.log(`[Update] Portal updated to v${this.portal.latest}. Restart required.`);
 			this.portalRestartNeeded = true;
-			// Mark as needing restart
 			this.portal = { ...this.portal, hasUpdate: false };
 		} catch (e) {
 			this.error = String(e);
 			this.log(`[Update] Portal update failed: ${this.error}`);
 			// Clean up partial download
 			try { fs.unlinkSync(path.join(PROJECT_ROOT, 'portal-update.zip')); } catch { /* ignore */ }
+		} finally {
+			this.applying = false;
+		}
+		return this.getStatus();
+	}
+
+	/** Combined, server-orchestrated apply: portal zip (if any) THEN CLI/SDK targets,
+	 *  in a SINGLE `applying` window with one deps reconcile, one stamp, and one restart
+	 *  signal. This is the path the UI should call — ordering, partial-failure handling,
+	 *  and restart gating live on the server, not stitched together in the browser.
+	 *
+	 *  Ordering matters: the portal zip is extracted FIRST so it lands the new
+	 *  package.json/lockfile, then a single `npm install <pinned CLI/SDK targets>` both
+	 *  bumps CLI/SDK to the chosen versions AND reconciles the rest of the tree from that
+	 *  new lockfile in one pass — no double install, no transient downgrade window. */
+	async applyAll(): Promise<UpdateStatus> {
+		if (this.applying) return this.getStatus();
+		this.applying = true;
+		this.error = null;
+		let portalExtracted = false;
+		let reconciled = true;
+		try {
+			this.log(`[Update] Applying all updates...`);
+
+			// 1. Portal self-update first — extract new app files so the subsequent install
+			//    reconciles against the NEW manifest. Setting portalRestartNeeded here means
+			//    that even if a later CLI/SDK step fails, the Restart button still surfaces
+			//    (the new dist/ on disk must be picked up) instead of being suppressed.
+			if (this.portal?.hasUpdate && this.portal.downloadUrl) {
+				await this.extractPortalZip();
+				portalExtracted = true;
+				this.portalRestartNeeded = true;
+				this.portal = { ...this.portal, hasUpdate: false };
+			}
+
+			// 2. Re-resolve CLI/SDK targets against the (possibly new) lockfile + npm latest.
+			await this.check();
+			const targets = this.packageTargets();
+
+			// 3. ONE install pass covering both.
+			if (targets.length > 0) {
+				// Bumps CLI/SDK to the pinned targets AND reconciles the rest of the tree
+				// from the lockfile in a single operation. A hard failure here is a real
+				// failure (surfaced below); the portal restart flag already ensures the
+				// user can still restart into the new portal code.
+				await this.installPackageTargets(targets);
+			} else if (portalExtracted) {
+				// Portal-only bump: reconcile the tree from the new lockfile. Best-effort —
+				// a transient blip leaves the stamp stale so start-portal.cmd retries next
+				// launch (never worse than today), and doesn't fail the portal update.
+				try {
+					this.log(`[Update] Reconciling dependencies for v${this.portal?.latest ?? ''}...`);
+					await runNpmInstall('', this.log);
+					process.title = 'Copilot Portal';
+					this.log(`[Update] Dependencies reconciled`);
+				} catch (e) {
+					reconciled = false;
+					this.log(`[Update] Dependency reconcile deferred to next launch (in-app reconcile failed: ${String(e).split('\n')[0]})`);
+				}
+			} else {
+				this.log(`[Update] Nothing to apply — already up to date.`);
+			}
+
+			// 4. Rebuild if a build script exists (release packages ship pre-built → skipped).
+			await this.rebuildIfNeeded();
+
+			// 5. Stamp the deps marker (only if we didn't skip a needed reconcile) + refresh status.
+			if (reconciled) this.stampDepsVersion();
+			await this.check();
+
+			this.log(`[Update] All updates applied. Restart required.`);
+		} catch (e) {
+			this.handleApplyError(e);
 		} finally {
 			this.applying = false;
 		}
@@ -623,7 +751,10 @@ function downloadFile(url: string, dest: string, log?: (msg: string) => void): P
 				if (res.statusCode !== 200) { reject(new Error(`Download failed: HTTP ${res.statusCode}`)); res.resume(); return; }
 				const file = fs.createWriteStream(dest);
 				res.pipe(file);
-				file.on('finish', () => { file.close(); resolve(); });
+				// Resolve only after the fd is fully closed (flushed to disk), not merely on
+				// 'finish' — on Windows a subsequent Expand-Archive can otherwise open the zip
+				// before the OS releases/flushes the handle and read a truncated/locked file.
+				file.on('finish', () => { file.close(err => err ? reject(err) : resolve()); });
 				file.on('error', (e) => { fs.unlinkSync(dest); reject(e); });
 			});
 			req.on('error', reject);
