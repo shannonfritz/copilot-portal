@@ -177,6 +177,8 @@ export interface PortalEvent {
 	session?: unknown;
 	images?: string[]; // data: URIs for image attachments (history replay)
 	imageTool?: { toolName: string; display: string; completed: boolean }; // for history_image: the tool that produced it
+	agentId?: string; // sub-agent origin: set when this message/tool was produced by a sub-agent (absent for the main/root agent)
+	agentName?: string; // sub-agent display name (from subagent.started), for labeling the origin in the UI
 	turnActive?: boolean; // on history_end: authoritative "is a portal turn running right now" so the client can sync its thinking state instead of inferring it from a replayed thinking/idle pair
 }
 
@@ -229,6 +231,13 @@ export class SessionHandle {
 	private getModTimeFn: (() => Promise<Date | null>) | null = null;
 	private lastKnownModTime: Date | null = null;
 	private rulesStore: RulesStore | null = null;
+
+	/** agentId of the SDK event currently being dispatched. Sub-agent events carry it;
+	 *  main/root-agent events do not. Read by handlers (via agentTag) to stamp origin. */
+	private currentEventAgentId?: string;
+	/** Maps a sub-agent id (== its spawning task tool-call id) to its display name,
+	 *  captured from subagent.started, so broadcasts can label the origin. */
+	private subagentNames = new Map<string, string>();
 
 	// Active turn state — replayed to newly joining clients
 	private isTurnActive = false;
@@ -485,6 +494,15 @@ export class SessionHandle {
 
 	private broadcast(event: PortalEvent): void {
 		for (const fn of this.listeners) fn(event);
+	}
+
+	/** Origin tag for the SDK event currently being dispatched: identifies which sub-agent
+	 *  (if any) produced it, so the client can visually distinguish sub-agent messages/tools
+	 *  from the main agent. Returns an empty object for main/root-agent events. */
+	private agentTag(): { agentId?: string; agentName?: string } {
+		const id = this.currentEventAgentId;
+		if (!id) return {};
+		return { agentId: id, agentName: this.subagentNames.get(id) };
 	}
 
 	/** Extract tool name + display from a raw SDK tool.execution_start event. */
@@ -823,6 +841,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		// mark all-but-last as intermediate (they were mid-turn "notes to self")
 		// Exception: messages followed by ask_user are user-facing, not intermediate
 		const roundMsgs: string[] = [];
+		const roundAgentIds: (string | undefined)[] = []; // per-message sub-agent origin (parallel to roundMsgs)
 		const roundTimestamps: (number | undefined)[] = [];
 		const roundFollowingTools: (string | null)[] = [];
 		const roundPerMsgTools: Array<Array<{ toolName: string; display: string; completed: boolean; toolCallId?: string }>> = []; // per-message tools
@@ -845,6 +864,15 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			if (!/^image\//.test(mime)) continue; // audio/* seam: extend here + a renderer
 			if (a.data.length > SessionHandle.MAX_TOOL_IMAGE_B64) continue;
 			assetMap.set(a.assetId, `data:${mime};base64,${a.data}`);
+		}
+		// Prescan sub-agent display names (keyed by the spawning task tool-call id, which is
+		// the agentId carried on that sub-agent's events) so replayed sub-agent messages can
+		// be labeled with their origin — mirrors the live subagentNames map.
+		const subagentNames = new Map<string, string>();
+		for (const e of events) {
+			if (e.type !== 'subagent.started') continue;
+			const d = (e as { data?: { toolCallId?: string; agentDisplayName?: string } }).data;
+			if (d?.toolCallId && d.agentDisplayName) subagentNames.set(d.toolCallId, d.agentDisplayName);
 		}
 		// Images produced by tools in the current round, emitted as standalone image
 		// messages at round flush (positioned after the assistant turn that produced them).
@@ -881,10 +909,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				// Attach all tools to the final message in the round (matches live behavior)
 				const toolSummary = isLast && allRoundTools.length > 0 ? [...allRoundTools] : undefined;
 
+				// Sub-agent origin for this message, so the client can label it.
+				const agentId = roundAgentIds[i];
+				const agentName = agentId ? subagentNames.get(agentId) : undefined;
+
 				// Emit the message content or tool-only row
 				if (content || toolSummary) {
 					if (content) result.push({ type: 'delta', content, timestamp: roundTimestamps[i] });
-					result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary });
+					result.push({ type: 'idle', intermediate: intermediate || undefined, toolSummary, agentId, agentName });
 				}
 
 				// Emit any buffered ask_user Q&A
@@ -908,6 +940,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			}
 			roundImages.length = 0;
 			roundMsgs.length = 0;
+			roundAgentIds.length = 0;
 			roundTimestamps.length = 0;
 			roundFollowingTools.length = 0;
 			roundPerMsgTools.length = 0;
@@ -928,10 +961,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					currentMsgTools = [];
 				}
 				flushRound();
+				const promptAgentId = (raw as { agentId?: string }).agentId;
 				result.push({ type: 'history_user', content: (raw.data as { content?: string })?.content ?? '', timestamp: ts,
 					images: ((raw.data as { attachments?: Array<{ type: string; data: string; mimeType?: string }> })?.attachments ?? [])
 						.filter(a => a.type === 'blob' && a.data)
 						.map(a => `data:${a.mimeType ?? 'image/png'};base64,${a.data}`),
+					agentId: promptAgentId,
+					agentName: promptAgentId ? subagentNames.get(promptAgentId) : undefined,
 				});
 			} else if (e.type === 'assistant.message') {
 				// Save accumulated tools for the previous message
@@ -941,6 +977,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				}
 				const d = raw.data as { content?: string; toolRequests?: Array<{ name?: string; toolCallId?: string }> };
 				roundMsgs.push(d.content ?? '');
+				roundAgentIds.push((raw as { agentId?: string }).agentId);
 				roundTimestamps.push(ts);
 				const hasToolRequests = Array.isArray(d.toolRequests) && d.toolRequests.length > 0;
 				const isAskUser = hasToolRequests && d.toolRequests!.some(t => t.name === 'ask_user');
@@ -1590,17 +1627,21 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private onUserMessage(data: unknown): void {
 		const content = (data as { content?: string })?.content ?? '';
 		if (content && !content.startsWith('<skill-context')) {
-			this.activeUserMessage = content;
-			this.activeDeltaBuffer = '';
-			this.activeReasoningBuffer = '';
 			// Pass the commit timestamp so the client can position the bubble at the ACK
 			// point (matches the SDK-recorded ordering seen on reload). The SDK event may
 			// carry its own timestamp; fall back to now (the moment of commit on our side).
 			const sdkTs = (data as { timestamp?: number; createdAt?: number })?.timestamp
 				?? (data as { createdAt?: number })?.createdAt;
 			const commitTs = typeof sdkTs === 'number' ? sdkTs : Date.now();
-			this.activeUserMessageTs = commitTs;
-			this.broadcast({ type: 'sync', role: 'user', content, timestamp: commitTs });
+			// Only the main/root agent's prompt drives the active-turn bookkeeping; a
+			// sub-agent's prompt (agentId set) is its own message, not the main turn's input.
+			if (!this.currentEventAgentId) {
+				this.activeUserMessage = content;
+				this.activeDeltaBuffer = '';
+				this.activeReasoningBuffer = '';
+				this.activeUserMessageTs = commitTs;
+			}
+			this.broadcast({ type: 'sync', role: 'user', content, timestamp: commitTs, ...this.agentTag() });
 		}
 	}
 
@@ -1670,6 +1711,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			type: 'message_end',
 			intermediate: isIntermediate || undefined,
 			toolCallIds: toolCallIds.length > 0 ? toolCallIds : undefined,
+			...this.agentTag(),
 		});
 		this.deltasSent = false;
 		// Clear the reconnect-replay buffers now that this message is committed. message_end
@@ -1691,7 +1733,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const args = (d.arguments ?? {}) as Record<string, unknown>;
 		const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
 		const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
-		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args) });
+		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args), ...this.agentTag() });
 		// ask_user is surfaced as an interactive prompt via onUserInputRequested
 		// (the user_input.requested event) + resolved over RPC — no dead-end banner here.
 	}
@@ -1723,6 +1765,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			toolCallId: d.toolCallId,
 			content: errorMsg ?? (d.success === false ? 'done' : 'success'),
 			images: images.length > 0 ? images : undefined,
+			...this.agentTag(),
 		});
 		// Clear CLI input pending when any tool completes (ask_user resolved)
 		if (this.cliInputPending) {
@@ -1802,6 +1845,9 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 	private onSubagentStarted(data: unknown): void {
 		const d = data as { toolCallId: string; agentDisplayName: string };
+		// Remember the display name keyed by the spawning tool-call id — sub-agent events
+		// carry that same id as their agentId, letting us label their origin in the UI.
+		if (d.toolCallId && d.agentDisplayName) this.subagentNames.set(d.toolCallId, d.agentDisplayName);
 		this.broadcast({ type: 'tool_update', toolCallId: d.toolCallId, displayLabel: d.agentDisplayName });
 	}
 
@@ -2380,7 +2426,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 				this.log(`[Session] [Event] ${event.type}${extra}`);
 			}
 			const handler = this.eventHandlers[event.type];
-			if (handler) handler(event.data, gen);
+			if (handler) {
+				// Stamp the sub-agent origin (if any) for the duration of this handler so its
+				// broadcasts can carry the tag. Cleared after so main-agent events stay untagged.
+				this.currentEventAgentId = (event as { agentId?: string }).agentId || undefined;
+				try { handler(event.data, gen); }
+				finally { this.currentEventAgentId = undefined; }
+			}
 		});
 	}
 

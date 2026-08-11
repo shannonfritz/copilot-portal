@@ -2,6 +2,16 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.5-rc.2 — Sub-agent message tagging (pre-release)
+
+Pre-release continuing v0.8.5 validation — adds sub-agent tagging and rides on the reworked updater from rc.1 (a good chance to exercise the new one-pass update).
+
+### 🤖 Agents
+- **Sub-agent messages are now distinguishable** — when the assistant delegates to a sub-agent (e.g. a review or exploration agent), that sub-agent's prompt, replies, and tool activity are tagged with the originating agent and rendered as their own left-aligned, purple-railed bubbles with an origin badge — instead of the prompt masquerading as something you typed. Applies both live and on reload; the rail/badge color follows the active theme.
+
+### 🔗 SDK
+- **CLI updated to 1.0.78** — bundled `@github/copilot` bumped to 1.0.78 (SDK held at the tested 1.0.8).
+
 ## v0.8.5-rc.1 — Reworked updater (pre-release)
 
 Pre-release to validate the reworked in-app update flow end-to-end before the stable v0.8.5.

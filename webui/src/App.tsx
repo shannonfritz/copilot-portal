@@ -206,6 +206,8 @@ interface Message {
 	questionChoices?: string[];
 	images?: string[]; // data: URIs for attached images
 	imageTool?: ToolSummaryItem; // for image-only bubbles: the tool that produced the image (provenance caption)
+	agentId?: string; // sub-agent origin: set when this message came from a sub-agent (absent for the main agent)
+	agentName?: string; // sub-agent display name, for labeling the origin
 }
 
 function buildToolSummary(events: ToolEvent[]): ToolSummaryItem[] {
@@ -2670,6 +2672,8 @@ export default function App() {
 							timestamp: event.timestamp ?? Date.now(),
 							askUserChoices: event.askUserChoices,
 							images: event.images?.length ? event.images : undefined,
+							agentId: (event as { agentId?: string }).agentId,
+							agentName: (event as { agentName?: string }).agentName,
 						});
 					} else if (event.type === 'delta') {
 						streamingRef.current += event.content ?? '';
@@ -2710,6 +2714,8 @@ export default function App() {
 								intermediate: event.intermediate || undefined,
 								toolSummary: event.toolSummary || undefined,
 								questionChoices: event.questionChoices || undefined,
+								agentId: (event as { agentId?: string }).agentId,
+								agentName: (event as { agentName?: string }).agentName,
 							});
 							streamingRef.current = '';
 							historyTimestampRef.current = undefined;
@@ -2788,7 +2794,7 @@ export default function App() {
 									updated[idx] = { ...existing, queued: undefined, timestamp: ackTs };
 									return updated;
 								}
-								return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: ackTs, toolSummary: event.toolSummary || undefined }];
+								return [...prev, { id: `sync-${Date.now()}-${Math.random()}`, role, content, timestamp: ackTs, toolSummary: event.toolSummary || undefined, agentId: (event as { agentId?: string }).agentId, agentName: (event as { agentName?: string }).agentName }];
 							});
 							// New turn starting — show thinking indicator
 							setToolEvents([]); lastStreamedRef.current = '';
@@ -2823,6 +2829,8 @@ export default function App() {
 							intermediate: event.intermediate || undefined,
 							toolCallIds: toolCallIds || undefined,
 							timestamp: Date.now(),
+							agentId: (event as { agentId?: string }).agentId,
+							agentName: (event as { agentName?: string }).agentName,
 						};
 						if (msg.intermediate || hasTools) {
 							// Intermediate or tool-dispatching: commit immediately
@@ -5775,13 +5783,27 @@ export default function App() {
 							}
 							const msg = item.msg;
 							const isIntermediate = msg.role === 'assistant' && msg.intermediate;
+							const isSubagent = !!msg.agentId;
+							// Sub-agent messages (prompt or work) are rendered left-aligned with an
+							// agent-style body + a purple rail and origin badge, so they're never
+							// mistaken for something the human typed.
+							const alignEnd = msg.role === 'user' && !isSubagent;
+							const renderAsAgent = msg.role === 'assistant' || isSubagent;
 						return (
 						<div key={msg.id}>
-						<div className="flex" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+						<div className="flex" style={{ justifyContent: alignEnd ? 'flex-end' : 'flex-start' }}>
 							<div
-								className={msg.role === 'user' ? 'relative max-w-[85%] px-4 py-3 text-sm' : 'relative w-full px-4 py-3 text-sm'}
+								className={alignEnd ? 'relative max-w-[85%] px-4 py-3 text-sm' : 'relative w-full px-4 py-3 text-sm'}
 								style={
-									msg.role === 'user'
+									isSubagent
+										? {
+												background: 'var(--surface)',
+												border: '1px solid var(--border)',
+												borderLeft: '3px solid var(--purple)',
+												borderRadius: '10px',
+												opacity: msg.intermediate ? 0.8 : undefined,
+											}
+										: msg.role === 'user'
 										? { background: 'var(--primary)', color: 'var(--primary-contrast)', borderRadius: '18px 18px 2px 18px', opacity: msg.queued ? 0.5 : undefined, animation: msg.queued ? 'pulse 2s ease-in-out infinite' : undefined }
 										: {
 												background: isIntermediate ? 'transparent' : 'var(--surface)',
@@ -5797,6 +5819,12 @@ export default function App() {
 											}
 								}
 							>
+								{isSubagent && (
+									<div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: 'var(--purple)', marginBottom: '6px', userSelect: 'none' }}>
+										<svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/><path d="M2 13v2M22 13v2"/></svg>
+										<span>{msg.agentName || 'Sub-agent'}{msg.role === 'user' ? ' · prompt' : ''}</span>
+									</div>
+								)}
 								{msg.role === 'assistant' && msg.toolSummary && msg.toolSummary.length > 0 && (
 									<details style={{ marginBottom: '8px' }}>
 										<summary style={{
@@ -5898,7 +5926,7 @@ export default function App() {
 												</div>
 											</details>
 										)}
-										{msg.role === 'assistant' ? <AssistantMarkdown content={msg.content} /> : <div className="whitespace-pre-wrap break-words">{msg.content}</div>}
+										{renderAsAgent ? <AssistantMarkdown content={msg.content} /> : <div className="whitespace-pre-wrap break-words">{msg.content}</div>}
 										<div className="mt-1 flex items-center justify-between gap-2 text-xs opacity-50">
 											<span>
 												{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
