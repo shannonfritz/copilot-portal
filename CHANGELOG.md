@@ -2,25 +2,21 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.8.5-rc.2 — Sub-agent message tagging (pre-release)
+## v0.8.5 — Reworked one-pass updater, sub-agent message tagging
 
-Pre-release continuing v0.8.5 validation — adds sub-agent tagging and rides on the reworked updater from rc.1 (a good chance to exercise the new one-pass update).
-
-### 🤖 Agents
-- **Sub-agent messages are now distinguishable** — when the assistant delegates to a sub-agent (e.g. a review or exploration agent), that sub-agent's prompt, replies, and tool activity are tagged with the originating agent and rendered as their own left-aligned, purple-railed bubbles with an origin badge — instead of the prompt masquerading as something you typed. Applies both live and on reload; the rail/badge color follows the active theme.
-
-### 🔗 SDK
-- **CLI updated to 1.0.78** — bundled `@github/copilot` bumped to 1.0.78 (SDK held at the tested 1.0.8).
-
-## v0.8.5-rc.1 — Reworked updater (pre-release)
-
-Pre-release to validate the reworked in-app update flow end-to-end before the stable v0.8.5.
+Consolidates the v0.8.5-rc.1 / rc.2 pre-releases into the stable release.
 
 ### 🔄 Updates
 - **One combined update** — portal and CLI/SDK updates now apply in a single server-orchestrated pass (`applyAll`) with one restart at the end, instead of being sequenced step-by-step in the browser. Ordering, partial-failure handling, and restart gating now live on the server.
 - **Self-completing portal updates** — an in-app portal update now reconciles `node_modules` against the new release and stamps the deps marker, so a restart no longer leaves new code running on old dependencies (and no longer triggers a redundant reinstall on the next cold `start-portal.cmd` launch).
 - **Partial-failure safety** — if the portal step succeeds but a CLI/SDK step then fails, the Restart button still appears alongside the error instead of being suppressed.
 - **Download & UI hardening** — release zips are fully flushed to disk before extraction (fixes a Windows extract race), and the update banner can no longer spin forever if a request is lost.
+
+### 🤖 Agents
+- **Sub-agent messages are now distinguishable** — when the assistant delegates to a sub-agent (e.g. a review or exploration agent), that sub-agent's prompt, replies, and tool activity are tagged with the originating agent and rendered as their own left-aligned, purple-railed bubbles with an origin badge — instead of the prompt masquerading as something you typed. Applies both live and on reload; the rail/badge color follows the active theme.
+
+### 🔗 SDK
+- **CLI + SDK updated** — bundled `@github/copilot` bumped to 1.0.80 and `@github/copilot-sdk` to 1.0.11 (the versions this release was validated on).
 
 ## v0.8.4 — Faster loads for long sessions, instant session switching, input-lag fix
 

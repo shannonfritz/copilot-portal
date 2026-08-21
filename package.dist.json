@@ -1,6 +1,6 @@
 {
 	"name": "copilot-portal",
-	"version": "0.8.5-rc.2",
+	"version": "0.8.5",
 	"description": "Mobile-friendly web portal for GitHub Copilot CLI",
 	"author": "Shannon Fritz",
 	"license": "MIT",
@@ -20,8 +20,8 @@
 		"start": "node dist/launcher.js"
 	},
 	"dependencies": {
-		"@github/copilot": "^1.0.78",
-		"@github/copilot-sdk": "^1.0.8",
+		"@github/copilot": "^1.0.80",
+		"@github/copilot-sdk": "^1.0.11",
 		"qrcode": "^1.5.4",
 		"qrcode-terminal": "^0.12.0",
 		"ws": "^8.21.0"
