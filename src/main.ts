@@ -156,6 +156,20 @@ function disableAutoStart(): string {
 
 const server = new PortalServer(PORT, DATA_DIR, { newToken: NEW_TOKEN, cliUrl: CLI_URL });
 
+// Last-resort safety net. The Copilot SDK sends RPCs over a connection that can be
+// disposed out from under us (e.g. a huge session churns its channel, or the user
+// hits Stop as the connection drops), producing a ConnectionError from a floating
+// promise. Without this, Node treats it as an unhandled rejection and kills the
+// whole server, dropping every other session. We log and keep running; individual
+// operations already surface their own errors to the affected client.
+process.on('unhandledRejection', (reason) => {
+	const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+	console.error(`[Server] Unhandled rejection (non-fatal): ${msg}`);
+});
+process.on('uncaughtException', (err) => {
+	console.error(`[Server] Uncaught exception (non-fatal): ${err?.stack ?? err}`);
+});
+
 process.on('SIGINT', async () => {
 	console.log('\nShutting down...');
 	tunnel.shutdown();

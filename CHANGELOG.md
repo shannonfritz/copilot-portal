@@ -2,6 +2,24 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.6 — Newer-CLI compatibility, reconnect fidelity, connection resilience
+
+### 🌐 Connection resilience
+- **Survives the newer CLI's stricter connection handling** — recent Copilot CLI builds close the RPC connection when a single response is huge. The portal no longer streams a giant session's entire event log over that channel on the hot paths (the mid-turn activity probe, per-turn message sync, and the "load ALL history" link), reading from disk instead. This is what was breaking portal loads after a CLI update.
+- **Cold-start connect retry** — the portal now retries connecting to the background Copilot CLI server (up to 5 times over ~60s) instead of giving up at the SDK's fixed 10s timeout. A slow-warming CLI (many MCP servers, last-session resume) no longer permanently strands the portal at startup.
+- **Non-fatal connection errors** — a dropped RPC connection (huge-session channel churn, or hitting Stop as the connection drops) is now caught process-wide instead of taking down every session with an unhandled rejection.
+
+### 🔄 Reconnect fidelity
+- **Mid-turn reconnects show live state** — reconnecting while the agent is working (from your phone, or after the tab idles and reconnects) now immediately shows the "thinking…" indicator and any in-flight tool boxes, instead of a blank wait until the next message posts.
+- **Accurate tool timers** — a running tool's elapsed timer now counts from when the tool actually started, not from when you reconnected, so resuming mid-tool no longer shows the counter restart at 0.
+- **No false turn-completion** — the turn-activity probe now waits for the terminal session-idle signal instead of mistaking a per-tool sub-turn end for the whole turn finishing and tearing down live state.
+
+### 🔐 Sign-in screen
+- **Connection errors no longer masquerade as sign-in** — when the portal can't reach its CLI server it now shows a distinct "Can't reach the Copilot CLI server" screen with the real error and a one-click **Restart Copilot server**, instead of the misleading GitHub sign-in/claim prompt (shown even though you were already signed in with a valid token).
+
+### 🔗 SDK
+- **CLI + SDK updated** — bundled `@github/copilot` bumped to 1.0.83 and `@github/copilot-sdk` to 1.0.13 (the versions this release was validated on).
+
 ## v0.8.5 — Reworked one-pass updater, sub-agent message tagging
 
 Consolidates the v0.8.5-rc.1 / rc.2 pre-releases into the stable release.

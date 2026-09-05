@@ -330,7 +330,7 @@ export class PortalServer {
 				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive, readBytes: handle.lastHistoryReadBytes }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
 				const activeTurnEvents = handle.getActiveTurnEvents();
-				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (isTurnActive=' + handle.turnActive + ')');
+				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (' + handle.turnStateDebug + ')');
 				for (const e of activeTurnEvents) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
 				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
@@ -489,7 +489,7 @@ export class PortalServer {
 					}
 				});
 			} else if (msg.type === 'stop') {
-				handle.abort();
+				handle.abort().catch((e) => this.log(`[${clientId}] abort error: ${e}`));
 			} else if (msg.type === 'set_model' && msg.content) {
 				handle.setModel(msg.content).catch((e) => this.log(`[${clientId}] setModel error: ${e}`));
 			} else if (msg.type === 'approval_response' && msg.requestId != null) {
@@ -1521,6 +1521,9 @@ export class PortalServer {
 					this.log('[Server] CLI server restarted — reconnecting SDK');
 					await this.pool.restart();
 					this.log('[Server] SDK reconnected');
+					// Re-resolve portal info + auth state so a recovery triggered from
+					// the connection-error screen actually clears it (authState → 'ok').
+					await this.resolveReady();
 					this.broadcastAll({ type: 'cli_status', status: 'connected' });
 				} catch (e) {
 					this.log(`[Server] CLI restart failed: ${e}`);
@@ -2641,6 +2644,17 @@ export class PortalServer {
 			return;
 		}
 
+		await this.resolveReady();
+	}
+
+	/**
+	 * Post-connect success path: cache portal info (version/user/models), flip
+	 * auth state to 'ok', and start the updater. Extracted so it can run both from
+	 * the initial connect (initAuth) AND after a CLI-server relaunch (/api/restart-cli)
+	 * — without it, restarting a wedged CLI would reconnect the pool but leave
+	 * authState stuck on 'error', stranding the UI on the connection-error screen.
+	 */
+	private async resolveReady(): Promise<void> {
 		// Authenticated — cache portal info (version, user, models).
 		try {
 			const [status, auth, allModels] = await Promise.all([

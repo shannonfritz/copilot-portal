@@ -1696,6 +1696,9 @@ export default function App() {
 	const [authDevice, setAuthDevice] = useState<{ code: string; verificationUri: string } | null>(null);
 	const [authMessage, setAuthMessage] = useState<string | null>(null);
 	const [authBusy, setAuthBusy] = useState(false);
+	// True while a user-initiated CLI-server restart (from the connection-error
+	// screen) is in flight — drives the button's spinner until auth flips to 'ok'.
+	const [cliRetryBusy, setCliRetryBusy] = useState(false);
 	const authWasNonOk = useRef(false);
 	const [mcpServers, setMcpServers] = useState<Array<{ name: string; type: string; source: string; enabled: boolean; status?: string }>>([]);
 	const [mcpConfirm, setMcpConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -1933,7 +1936,10 @@ export default function App() {
 		apiFetch('/api/info').then(r => r.json()).then(setPortalInfo).catch(() => {});
 		// If starting with no session, pre-load the session list for the picker
 		if (!hasSessionInUrl) {
-			apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
+			apiFetch('/api/sessions')
+				.then(r => r.ok ? r.json() : [])
+				.then(d => setSessions(Array.isArray(d) ? d : []))
+				.catch(() => {});
 		}
 	}, []);
 
@@ -2222,7 +2228,10 @@ export default function App() {
 			mgmtWsRef.current = mgmtWs;
 		}
 		// Always fetch the current session list so the picker has data even when called dynamically
-		apiFetch('/api/sessions').then(r => r.json()).then(setSessions).catch(() => {});
+		apiFetch('/api/sessions')
+			.then(r => r.ok ? r.json() : [])
+			.then(d => setSessions(Array.isArray(d) ? d : []))
+			.catch(() => {});
 	}, []);
 
 	const connect = useCallback(() => {
@@ -2881,7 +2890,7 @@ export default function App() {
 							setThinkingText(`Running ${event.toolName ?? 'tool'}…`);
 						}
 						const intention = event.toolCallId ? intentionMapRef.current.get(event.toolCallId) : undefined;
-						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, intentionSummary: intention, content: event.content, timestamp: Date.now() }]);
+						setToolEvents((prev) => [...prev, { id: `ts-${event.toolCallId ?? Date.now()}`, type: 'tool_start', toolCallId: event.toolCallId, toolName: event.toolName, mcpServerName: event.mcpServerName, displayLabel: event.displayLabel, intentionSummary: intention, content: event.content, timestamp: event.timestamp ?? Date.now() }]);
 					}
 				} else if (event.type === 'tool_complete') {
 					setToolEvents((prev) => prev.map(te => te.toolCallId === event.toolCallId ? { ...te, type: 'tool_complete' as const, content: event.content } : te));
@@ -3400,19 +3409,30 @@ export default function App() {
 		}
 	}, [messages, streamingContent, toolEvents, isThinking, notification, pendingInput, pendingApproval]);
 
-	const openPicker = useCallback(async () => {
+	// Fetch the session list, always resolving to an array so a transient endpoint
+	// failure (e.g. /api/sessions 500-ing while the CLI is saturated right after a
+	// huge-session resume) can never poison `sessions` state with a non-array. A
+	// non-array there would make a later render's `sessions.find(...)` throw and
+	// unmount the whole app (black screen). Returns [] on any error/non-array body.
+	const fetchSessions = useCallback(async (): Promise<SessionInfo[]> => {
 		try {
 			const res = await apiFetch('/api/sessions');
-			const data = await res.json() as SessionInfo[];
-			setSessions(data);
-			// Sync active session summary from fresh data
-			const active = data.find(s => s.sessionId === activeSessionIdRef.current);
-			if (active) setActiveSessionSummary(active.summary ?? null);
-			setShowPicker(true);
+			if (!res.ok) return [];
+			const data = await res.json();
+			return Array.isArray(data) ? data as SessionInfo[] : [];
 		} catch {
-			setError('Could not load sessions');
+			return [];
 		}
 	}, []);
+
+	const openPicker = useCallback(async () => {
+		const data = await fetchSessions();
+		setSessions(data);
+		// Sync active session summary from fresh data
+		const active = data.find(s => s.sessionId === activeSessionIdRef.current);
+		if (active) setActiveSessionSummary(active.summary ?? null);
+		setShowPicker(true);
+	}, [fetchSessions]);
 
 	const switchSession = useCallback((sessionId: string) => {
 		noSessionRef.current = false;
@@ -4022,7 +4042,73 @@ export default function App() {
 
 	// M2 first-run sign-in screen. Shown whenever the CLI has no valid GitHub
 	// credentials (and during the brief restart right after a successful sign-in).
-	if (authState === 'needs-auth' || authState === 'error' || (authState === 'starting' && authWasNonOk.current)) {
+	// CLI connection failure (NOT a sign-in problem). The server only ever sets
+	// authState='error' when it can't reach/handshake the background Copilot CLI
+	// server (e.g. "Timeout connecting to CLI server") — sign-in problems always
+	// come through as 'needs-auth'. Showing the sign-in/claim screen here was
+	// misleading: the user is already authenticated (valid token in the URL), the
+	// portal simply can't talk to its CLI server. Give it a distinct screen with
+	// the real error and a one-click restart of the CLI server.
+	if (authState === 'error') {
+		const Spinner = () => (
+			<svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+				<circle cx="12" cy="12" r="10" stroke="var(--border)" strokeWidth="4" />
+				<path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" />
+			</svg>
+		);
+		const retryCli = async () => {
+			setCliRetryBusy(true);
+			// restartCli kills + relaunches the (likely wedged) CLI server, then the
+			// server re-resolves auth → an 'ok' auth_state event reloads us into the app.
+			await restartCli();
+			// Safety net: if we're still here after a while (restart didn't take), let
+			// the button recover so the user can try again or restart the whole portal.
+			setTimeout(() => setCliRetryBusy(false), 20000);
+		};
+		return (
+			<div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
+				<div className="w-full max-w-md rounded-2xl p-8" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+					<div className="mb-4 flex items-center justify-center">
+						<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--warning, #d29922)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+							<path d="M18 6 6 18" /><path d="m6 6 12 12" />
+							<circle cx="12" cy="12" r="10" />
+						</svg>
+					</div>
+					<h1 className="mb-2 text-xl font-semibold">Can’t reach the Copilot CLI server</h1>
+					<p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+						You’re signed in and the portal is running, but it couldn’t connect to the
+						background Copilot CLI server. This is usually a stuck or still-starting CLI
+						process — not a sign-in problem.
+					</p>
+					{authMessage && (
+						<p className="mt-3 rounded-lg px-3 py-2 font-mono text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--danger, #e5534b)' }}>
+							{authMessage}
+						</p>
+					)}
+					<div className="mt-6 flex flex-col items-center gap-3">
+						<button
+							onClick={retryCli}
+							disabled={cliRetryBusy}
+							className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+							style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+						>
+							{cliRetryBusy ? <Spinner /> : null}
+							{cliRetryBusy ? 'Restarting Copilot server…' : 'Restart Copilot server'}
+						</button>
+						<button
+							onClick={() => restartServer()}
+							className="text-xs underline"
+							style={{ color: 'var(--text-muted)' }}
+						>
+							Or restart the whole portal
+						</button>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	if (authState === 'needs-auth' || (authState === 'starting' && authWasNonOk.current)) {
 		const restarting = authState === 'starting';
 		const Spinner = () => (
 			<svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

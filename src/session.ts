@@ -1,6 +1,6 @@
-import { CopilotClient, approveAll } from '@github/copilot-sdk';
+import { CopilotClient, RuntimeConnection, approveAll } from '@github/copilot-sdk';
 import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
-import { readTailEvents, countMessageLines } from './tail-events.js';
+import { readTailEvents, countMessageLines, readAllEvents } from './tail-events.js';
 import type { TailReadResult } from './tail-events.js';
 import type { CopilotSession } from '@github/copilot-sdk';
 import type {
@@ -25,10 +25,14 @@ function getSessionEvents(session: CopilotSession, log?: (msg: string) => void):
 
 // SDK connection modes:
 //   - Default: new CopilotClient() spawns/owns its own CLI (desktop zip).
-//   - Connected: new CopilotClient({ cliUrl }) attaches to an already-running CLI
-//     server (used in the container, where the CLI runs as a sibling process, and
-//     by the smoke-test harness). Verified working on the pinned SDK (1.0.6).
-//     The `as any` cast is retained because `cliUrl` isn't in the public typings.
+//   - Connected: new CopilotClient({ connection: RuntimeConnection.forUri(cliUrl) })
+//     attaches to an already-running CLI server (used in the container, where the CLI
+//     runs as a sibling process, and by the smoke-test harness).
+//     NOTE: as of SDK 1.0.11 the old untyped `{ cliUrl }` option is silently ignored —
+//     the constructor only reads `options.connection`, so `{ cliUrl }` fell through to
+//     the default stdio transport and tried to resolve a bundled CLI binary
+//     (@github/copilot-<platform>), throwing "Could not resolve a @github/copilot
+//     platform package". forUri() is the supported external-server connection.
 function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClient {
 	// Raise the spawned CLI's V8 heap so resuming a very large session doesn't
 	// OOM-crash it (see cli-env.ts). We do this TWO ways, belt-and-suspenders:
@@ -46,7 +50,7 @@ function createClient(cliUrl?: string, log?: (msg: string) => void): CopilotClie
 		// spawned `copilot --server` with its own raised heap). No CLI is spawned
 		// here, so the heap env is irrelevant on this path.
 		log?.(`[SDK] Creating client with cliUrl: ${cliUrl}`);
-		return new CopilotClient({ cliUrl } as any);
+		return new CopilotClient({ connection: RuntimeConnection.forUri(cliUrl) });
 	}
 	// Standalone: the SDK spawns and OWNS the CLI subprocess. Passing env
 	// explicitly ensures NODE_OPTIONS (with --max-old-space-size) reaches it.
@@ -68,6 +72,27 @@ import * as readline from 'node:readline';
 export function isSafeSessionId(id: string | null | undefined): id is string {
 	return typeof id === 'string' && id.length > 0 && id.length <= 128 && /^[A-Za-z0-9_-]+$/.test(id);
 }
+
+/** Reject a promise if it doesn't settle within `ms`, so a saturated CLI RPC
+ *  channel can't hang a request indefinitely. The underlying operation isn't
+ *  cancelled (JS can't), but the caller stops waiting and can retry/degrade. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+		p.then(
+			(v) => { clearTimeout(timer); resolve(v); },
+			(e) => { clearTimeout(timer); reject(e); },
+		);
+	});
+}
+
+/** True if an SDK error means the RPC channel to the CLI died and the client
+ *  must be recreated (not merely retried on the same dead connection). */
+function isConnectionLostError(msg: string): boolean {
+	return msg.includes('Connection is closed') || msg.includes('not connected')
+		|| msg.includes('Server port not available') || msg.includes('disposed');
+}
+
 
 /**
  * Thrown by SessionPool.start() when the Copilot CLI is reachable/launchable but
@@ -352,6 +377,11 @@ export class SessionHandle {
 	// Per-connection tool tracking — reset on each attachListeners() call
 	private deltasSent = false;
 	private toolsInFlight = 0;
+	/** Live tool_start events for tools still in flight, keyed by toolCallId. Replayed by
+	 *  getActiveTurnEvents() so a client reconnecting mid-turn re-renders the pending tool
+	 *  boxes (not just the thinking dot). Cleared per tool on execution_complete and wholesale
+	 *  on turn teardown. */
+	private inFlightToolEvents = new Map<string, PortalEvent>();
 	/** When true, this session is shared with a CLI TUI — don't respond to non-portal approvals */
 	sharedMode = false;
 
@@ -377,7 +407,15 @@ export class SessionHandle {
 	/** Read session history to estimate tokens since last compaction (for proactive compaction). */
 	private async seedTokenEstimate(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session, this.log);
+			// Read from disk, NOT via getSessionEvents(): that full getEvents() RPC
+			// streams the entire events.jsonl over the CLI connection. On a large
+			// session under CLI 1.0.81 that closes the channel and breaks the next
+			// send. A bounded disk tail is plenty for a token estimate — if the last
+			// compaction is older than the tail, we simply estimate from what's in it
+			// (an underestimate at worst; live usage_info/compaction events reseed the
+			// exact value on the next turn).
+			const msgs = this.readRecentEventsFromDisk(200);
+			if (!msgs.length) return; // no disk file → skip; estimate reseeds on first live turn
 			// Find the last compaction event
 			let lastCompactionIdx = -1;
 			let baseTokens = 0;
@@ -401,11 +439,35 @@ export class SessionHandle {
 		}
 	}
 
+	/** Read recent events WITHOUT touching the SDK/CLI connection — parses only the
+	 *  tail of the on-disk events.jsonl. This is the off-connection alternative to
+	 *  `getSessionEvents()` (which does a full `getEvents()` RPC that streams the
+	 *  ENTIRE file over the CLI connection — on a huge session that saturates and,
+	 *  under CLI 1.0.81, CLOSES the channel, breaking the very next send). Returns
+	 *  [] if the file is unavailable or the tail is unusable, so callers degrade
+	 *  gracefully. `wantMessages` bounds how far back we read. */
+	private readRecentEventsFromDisk(wantMessages: number): Array<{ type: string; data?: unknown }> {
+		const p = this.histEventsPath();
+		if (!p) return [];
+		try {
+			const tail = readTailEvents(p, wantMessages);
+			return tail.events;
+		} catch (e) {
+			this.log(`[Session] disk-tail read failed: ${e}`);
+			return [];
+		}
+	}
+
 	/** Called once on fresh pool connect — checks for pending CLI approvals. */
 	async checkInitialState(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session, this.log);
-			this.detectPendingCliApproval(msgs);
+			// Pending approvals/inputs, if any, live at the very END of the stream, so a
+			// bounded disk tail is sufficient. We deliberately DON'T call getSessionEvents()
+			// here: that full getEvents() RPC streams the whole file over the CLI
+			// connection and, on a large session under CLI 1.0.81, closes the channel
+			// (breaking the next send). Read from disk instead — zero connection cost.
+			const msgs = this.readRecentEventsFromDisk(50);
+			if (msgs.length) this.detectPendingCliApproval(msgs);
 		} catch (e) {
 			this.log('[Session] checkInitialState error: ' + e);
 		}
@@ -469,15 +531,32 @@ export class SessionHandle {
 	 * its thinking state to this at history_end so a completion `idle` swallowed
 	 * by the history-replay window can't strand the spinner. A CLI turn keeps
 	 * this false (its events don't drive the portal thinking dot).
+	 *
+	 * Gates on wasPortalTurn (STICKY — stays true across a portal turn's intermediate
+	 * SDK sub-turns until the terminal session.idle), NOT isPortalTurn (which a subagent/
+	 * tool-round idle transiently clears mid-sequence). Otherwise a reconnect that lands
+	 * between sub-turns sees isTurnActive=true but a cleared isPortalTurn → a headless
+	 * active turn (thinking dot + tools missing until the next live event).
 	 */
-	get portalTurnActive(): boolean { return this.isTurnActive && this.isPortalTurn; }
+	get portalTurnActive(): boolean { return this.isTurnActive && this.wasPortalTurn; }
+
+	/** Diagnostic snapshot of the turn-state flags, logged at reconnect so we can tell WHY a
+	 *  resume did or didn't arm the thinking dot (e.g. isTurnActive true but wasPortalTurn false
+	 *  on a cold-resumed handle → getActiveTurnEvents returns [] → no indicator until a live
+	 *  reasoning/tool event). Cheap, read-only. */
+	get turnStateDebug(): string {
+		return `isTurnActive=${this.isTurnActive} wasPortalTurn=${this.wasPortalTurn} isPortalTurn=${this.isPortalTurn} toolsInFlight=${this.toolsInFlight} inFlightToolBoxes=${this.inFlightToolEvents.size}`;
+	}
 
 	/** Events to send to a newly joining client to catch up on an in-progress PORTAL turn. */
 	getActiveTurnEvents(): PortalEvent[] {
-		if (!this.isTurnActive || !this.isPortalTurn) return [];
+		if (!this.isTurnActive || !this.wasPortalTurn) return [];
 		const events: PortalEvent[] = [];
 		if (this.activeUserMessage) events.push({ type: 'sync', role: 'user', content: this.activeUserMessage, timestamp: this.activeUserMessageTs || undefined });
 		events.push({ type: 'thinking', content: '' });
+		// Re-emit any tools still in flight so a mid-turn reconnect re-renders their boxes
+		// (the thinking dot alone left them missing until the next live event).
+		for (const te of this.inFlightToolEvents.values()) events.push(te);
 		if (this.activeReasoningBuffer) events.push({ type: 'reasoning_delta', content: this.activeReasoningBuffer });
 		if (this.activeDeltaBuffer) events.push({ type: 'delta', content: this.activeDeltaBuffer });
 		if (this.cliApprovalSummary) events.push({ type: 'cli_approval_pending', content: this.cliApprovalSummary });
@@ -582,8 +661,30 @@ export class SessionHandle {
 			}
 		}
 
-		// ---- Authoritative pull (serve disabled, cache miss, stale generation, or serve threw) ----
-		const events = await getSessionEvents(this.session, this.log);
+		// ---- Authoritative pull (serve disabled, cache miss, stale generation, or serve threw,
+		//      or an explicit unbounded ALL request with no `limit`) ----
+		// Read the full event log from DISK, not via getSessionEvents(). The SDK's getEvents()
+		// RPC streams the ENTIRE log back over the CLI connection; on a very large session under
+		// CLI 1.0.81 that response closes the channel (breaking the next send). The on-disk
+		// events.jsonl IS the same authoritative log, so readAllEvents() yields identical events
+		// at zero connection cost. This is what makes the banner's "ALL" link safe on huge
+		// sessions. Fall back to the RPC only when there's no readable disk file (e.g. a brand-new
+		// session whose file doesn't exist yet), where the log is tiny anyway.
+		let events: Array<{ type: string; data?: unknown }> = [];
+		let readFromDisk = false;
+		const _pullPath = this.histEventsPath();
+		if (_pullPath) {
+			try {
+				events = readAllEvents(_pullPath);
+				readFromDisk = true;
+				this.log(`[History] disk pull: ${events.length} events from ${_pullPath}`);
+			} catch (e) {
+				this.log(`[History] disk pull failed (${e}) — falling back to getEvents() RPC`);
+			}
+		}
+		if (!readFromDisk) {
+			events = await getSessionEvents(this.session, this.log);
+		}
 		this.log(`[History] ${events.length} events: ${events.map((e: { type: string }) => e.type).join(', ').slice(0, 200)}`);
 		const canonical = SessionHandle.buildHistoryEvents(events, limit, this.isTurnActive);
 		// Tail-load shadow (log-only): compare the on-disk tail build against this live canonical.
@@ -1076,33 +1177,46 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	private async syncMessages(): Promise<void> {
 		if (this.listeners.size === 0) return;
 		try {
-			const allEvents = await getSessionEvents(this.session, this.log);
-			const interesting = allEvents.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message');
-			if (interesting.length <= this.lastSyncedCount) return;
+			// Read from DISK, NOT getSessionEvents(). This runs on every non-portal turn end,
+			// title change, and stuck-turn probe; a full getEvents() RPC here streams the entire
+			// events.jsonl over the CLI connection and, on a large session under CLI 1.0.81,
+			// closes the channel (breaking the next send). We only need (a) the true message
+			// total, from a cheap streaming line count, and (b) the events surrounding the few
+			// messages that appeared since our cursor, from a bounded disk tail.
+			const p = this.histEventsPath();
+			if (!p) return;
+			const total = countMessageLines(p);
+			if (total <= this.lastSyncedCount) return;
 			// If lastSyncedCount is 0 (never seeded), this is our first look at the message list.
 			// We have no baseline to know which messages are truly "new", and history replay will
 			// deliver them all properly. Just seed the cursor and bail to avoid flooding clients
 			// with the entire session history as individual sync events.
 			if (this.lastSyncedCount === 0) {
-				this.lastSyncedCount = interesting.length;
+				this.lastSyncedCount = total;
 				this.log(`[Sync] Seeded lastSyncedCount=${this.lastSyncedCount} (skipping initial broadcast)`);
 				return;
 			}
 
-			// Walk full event stream to build per-message tool summaries
+			const newCount = total - this.lastSyncedCount;
+			// Read a tail covering the new messages (+1 for the preceding message so a leading
+			// assistant turn's tools, which sit between the prior user message and this one, are
+			// captured). readTailEvents returns whole rounds, so tool events for these messages
+			// are included. A cap-hit returns fewer events — we degrade to fewer sync broadcasts,
+			// never a wrong one, and the cursor still advances so we don't loop.
+			const tailWant = newCount + 1;
+			const tailEvents = this.readRecentEventsFromDisk(tailWant) as Array<{ type: string; data?: unknown }>;
+			const interesting = tailEvents.filter((m) => m.type === 'user.message' || m.type === 'assistant.message');
+
+			// Walk the tail window to build per-message tool summaries, indexed within the window.
 			type ToolInfo = Array<{ toolName: string; display: string; completed: boolean }>;
 			let msgIdx = 0;
 			let turnTools: ToolInfo = [];
 			let lastAssistantIdx = -1;
 			const toolsForMsg = new Map<number, ToolInfo>();
-
-			for (const evt of allEvents) {
+			for (const evt of tailEvents) {
 				const e = evt as { type: string; data?: unknown };
 				if (e.type === 'user.message') {
-					// Finalize tools for previous turn's last assistant
-					if (lastAssistantIdx >= 0 && turnTools.length > 0) {
-						toolsForMsg.set(lastAssistantIdx, [...turnTools]);
-					}
+					if (lastAssistantIdx >= 0 && turnTools.length > 0) toolsForMsg.set(lastAssistantIdx, [...turnTools]);
 					turnTools = [];
 					lastAssistantIdx = -1;
 					msgIdx++;
@@ -1114,15 +1228,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					if (toolName !== 'report_intent') turnTools.push(SessionHandle.parseToolEvent(e.data));
 				}
 			}
-			// Finalize last turn
-			if (lastAssistantIdx >= 0 && turnTools.length > 0) {
-				toolsForMsg.set(lastAssistantIdx, [...turnTools]);
-			}
+			if (lastAssistantIdx >= 0 && turnTools.length > 0) toolsForMsg.set(lastAssistantIdx, [...turnTools]);
 
-			const newMsgs = interesting.slice(this.lastSyncedCount);
-			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${interesting.length})`);
+			// The window's last `newCount` interesting messages are the ones past our cursor.
+			const windowStart = Math.max(0, interesting.length - newCount);
+			const newMsgs = interesting.slice(windowStart);
+			this.log(`[Sync] ${newMsgs.length} new message(s) (total ${total})`);
 			for (let i = 0; i < newMsgs.length; i++) {
-				const globalIdx = this.lastSyncedCount + i;
+				const windowIdx = windowStart + i; // index within `interesting` == the toolsForMsg key basis
 				const msg = newMsgs[i];
 				if (msg.type === 'user.message') {
 					const content = (msg.data as { content?: string })?.content ?? '';
@@ -1133,12 +1246,12 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 					const content = (msg.data as { content?: string })?.content ?? '';
 					// Skip empty assistant messages — SDK noise that causes false idle
 					if (content) {
-						const tools = toolsForMsg.get(globalIdx);
+						const tools = toolsForMsg.get(windowIdx);
 						this.broadcast({ type: 'sync', role: 'assistant', content, toolSummary: tools });
 					}
 				}
 			}
-			this.lastSyncedCount = interesting.length;
+			this.lastSyncedCount = total;
 		} catch (e) {
 			this.log(`[Sync] Error: ${e}`);
 		}
@@ -1147,8 +1260,14 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 	/** Advance lastSyncedCount without broadcasting — used after portal turns to skip re-syncing. */
 	private async advanceSyncCount(): Promise<void> {
 		try {
-			const msgs = await getSessionEvents(this.session, this.log);
-			const count = msgs.filter((m: {type:string}) => m.type === 'user.message' || m.type === 'assistant.message').length;
+			// Count message lines from disk, NOT via getSessionEvents(): this runs after
+			// EVERY portal turn, and a full getEvents() RPC here streams the entire
+			// events.jsonl over the CLI connection — on a huge session that closes the
+			// channel and breaks the NEXT send. countMessageLines() scans the file
+			// directly (off-connection).
+			const p = this.histEventsPath();
+			if (!p) return;
+			const count = countMessageLines(p);
 			if (count > this.lastSyncedCount) {
 				this.log(`[Sync] Portal turn: skipping ${count - this.lastSyncedCount} message(s), advancing cursor to ${count}`);
 				this.lastSyncedCount = count;
@@ -1298,7 +1417,21 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		} catch (e) {
 			this.log(`[Session] queue.clear on abort failed: ${e}`);
 		}
-		await this.session.abort();
+		// The SDK's abort() sends an RPC; if the connection was disposed (common when
+		// aborting a session whose RPC channel just died — e.g. a huge session mid-churn)
+		// it throws ConnectionError. Swallow it: the turn is already gone with the
+		// connection, and letting this reject would surface as an unhandled rejection
+		// and crash the server. Always broadcast turn_end so the UI leaves "thinking".
+		try {
+			await this.session.abort();
+		} catch (e) {
+			this.log(`[Session] abort failed (connection likely disposed): ${e}`);
+		} finally {
+			this.isTurnActive = false;
+			// Tell the UI the turn is over so it leaves the "thinking" state even
+			// when abort() couldn't reach the CLI (no idle event will arrive).
+			this.broadcast({ type: 'idle' });
+		}
 	}
 
 	async setModel(model: string): Promise<void> {
@@ -1572,18 +1705,31 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.turnProbeTimer = setTimeout(async () => {
 			this.turnProbeTimer = null;
 			if (!this.isTurnActive || this.sessionGeneration !== gen) return;
-			this.log('[Session] Probing turn status via getMessages()...');
+			this.log('[Session] Probing turn status via disk tail...');
 			try {
-				const msgs = await getSessionEvents(this.session, this.log);
+				// Read the tail of events.jsonl from DISK — NOT getSessionEvents(). The full
+				// getEvents() RPC streams the entire log over the CLI connection and, on a
+				// large session under CLI 1.0.81, closes the channel mid-turn (poisoning the
+				// in-flight send). A turn-ending event (session.idle / assistant.turn_end) and
+				// any pending CLI approval both live at the END of the stream, so a bounded
+				// disk tail is sufficient and costs zero connection bytes.
+				const msgs = this.readRecentEventsFromDisk(50) as any[];
 				// Look for a turn-ending event after our turn started
 				const turnStartIso = new Date(this.turnStartTime).toISOString();
+				// A portal turn is a SEQUENCE of SDK turns — each tool round emits its own
+				// assistant.turn_end. Only session.idle is TERMINAL (the live handler agrees:
+				// it logs assistant.turn_end as "informational — waiting for session.idle").
+				// Matching assistant.turn_end here caused a false "turn complete" mid-sequence,
+				// tearing down isTurnActive/isPortalTurn while the agent was still working — so a
+				// reconnect during the next tool round saw a headless active turn (no thinking dot).
 				const turnEndedAfterStart = msgs.some(
-					(m) => (m.type === 'session.idle' || m.type === 'assistant.turn_end') && m.timestamp > turnStartIso,
+					(m) => m.type === 'session.idle' && m.timestamp > turnStartIso,
 				);
 				if (turnEndedAfterStart) {
 					this.log('[Session] Probe found turn completion — clearing stuck state');
 					this.isTurnActive = false;
 					this.isPortalTurn = false;
+					this.inFlightToolEvents.clear();
 					this.activeDeltaBuffer = '';
 					this.activeReasoningBuffer = '';
 					this.activeUserMessage = '';
@@ -1733,7 +1879,13 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const args = (d.arguments ?? {}) as Record<string, unknown>;
 		const labelVal = args.command ?? args.path ?? args.query ?? args.script ?? args.url ?? Object.values(args)[0] ?? '';
 		const displayLabel = String(labelVal).replace(/\s+/g, ' ').trim().slice(0, 200);
-		this.broadcast({ type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args), ...this.agentTag() });
+		// Stamp the tool's real start time (ms epoch) so a client that receives this event via
+		// getActiveTurnEvents() REPLAY on reconnect can show the true elapsed ("waiting 180s")
+		// instead of restarting its counter from 0. Live receivers see startedAt ≈ now, so their
+		// behavior is unchanged.
+		const toolEvent: PortalEvent = { type: 'tool_start', toolCallId: d.toolCallId, toolName: d.toolName, mcpServerName: d.mcpServerName, displayLabel, content: JSON.stringify(args), timestamp: Date.now(), ...this.agentTag() };
+		if (d.toolCallId) this.inFlightToolEvents.set(d.toolCallId, toolEvent);
+		this.broadcast(toolEvent);
 		// ask_user is surfaced as an interactive prompt via onUserInputRequested
 		// (the user_input.requested event) + resolved over RPC — no dead-end banner here.
 	}
@@ -1746,6 +1898,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			error?: { message?: string };
 			result?: ToolResultShape;
 		};
+		if (d.toolCallId) this.inFlightToolEvents.delete(d.toolCallId);
 		this.log(`[Session] Tool complete (${this.toolsInFlight} remaining): ${d.toolCallId}`);
 		if (d.success === false && d.error?.message) {
 			this.log(`[Session] ⚠ Tool failed: ${d.error.message}`);
@@ -1896,6 +2049,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		this.log(`[Session] Error: ${d.message ?? JSON.stringify(d)}`);
 		this.isTurnActive = false;
 		this.isPortalTurn = false;
+		this.inFlightToolEvents.clear();
 		this.activeUserMessage = '';
 		this.activeDeltaBuffer = '';
 		this.activeReasoningBuffer = '';
@@ -2051,6 +2205,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 			this.log(`[Session] [Event] session.idle with ${this.toolsInFlight} tools still in flight — resetting counter`);
 			this.toolsInFlight = 0;
 		}
+		this.inFlightToolEvents.clear();
 		this.activeUserMessage = '';
 		this.broadcast({ type: 'idle' });
 		if (this.isPortalTurn || this.wasPortalTurn) {
@@ -2396,6 +2551,7 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 		const gen = this.sessionGeneration;
 		this.deltasSent = false;
 		this.toolsInFlight = 0;
+		this.inFlightToolEvents.clear();
 		this.session.on((event) => {
 			if (this.sessionGeneration !== gen) return;
 			// History cache: mirror persisted live events into the raw-event mirror so the
@@ -2458,6 +2614,10 @@ export class SessionPool {
 	onTitleChanged?: (sessionId: string, summary: string | undefined) => void;
 	private pool = new Map<string, SessionHandle>();
 	private connecting = new Map<string, Promise<SessionHandle>>();
+	/** Last successful listSessions() result — served if a later call fails with
+	 *  a dropped connection, so the picker degrades gracefully without restarting
+	 *  the shared client (which would disrupt live sessions). */
+	private lastSessionList: SessionMetadata[] | null = null;
 	private log: (msg: string) => void;
 	readonly rulesStore: RulesStore;
 	private workspaceRoot: string;
@@ -2480,16 +2640,39 @@ export class SessionPool {
 
 	async start(): Promise<void> {
 		this.log(`[Pool] ${this.shared ? 'Connecting to CLI server...' : 'Starting Copilot client...'}`);
-		try {
-			await this.client.start();
-		} catch (e: unknown) {
-			const msg = e instanceof Error ? e.message : String(e);
-			if (/auth|token|login|credential|unauthorized/i.test(msg)) {
-				// Surface as a typed, non-fatal auth error — the server shows a
-				// sign-in screen instead of letting the process crash-loop.
-				throw new NotAuthenticatedError(msg);
+		// Cold-start race: the launcher waits only for the CLI server's TCP port to
+		// LISTEN, but the CLI keeps initializing (session scan, MCP servers, last-session
+		// resume) for many more seconds — during which it accepts the socket but can't
+		// complete the JSON-RPC handshake. The SDK's connect timeout is a hardcoded 10s
+		// (connectViaTcp), so a single attempt against a still-warming CLI loses the race
+		// and — with no retry — PERMANENTLY strands the portal on the error screen even
+		// though the CLI becomes healthy seconds later (observed 2026-09-04: portal
+		// connected 7s into CLI init, timed out, CLI answered in 6ms moments later).
+		// Fix: retry the connect a few times over a bounded window, recreating the client
+		// each attempt (a timed-out client has already destroyed its socket). Auth failures
+		// are terminal and thrown immediately — never retried.
+		const maxAttempts = 5;
+		for (let attempt = 1; ; attempt++) {
+			try {
+				await this.client.start();
+				break;
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e);
+				if (/auth|token|login|credential|unauthorized/i.test(msg)) {
+					// Surface as a typed, non-fatal auth error — the server shows a
+					// sign-in screen instead of letting the process crash-loop.
+					throw new NotAuthenticatedError(msg);
+				}
+				if (attempt >= maxAttempts) {
+					this.log(`[Pool] Connect failed after ${attempt} attempts: ${msg}`);
+					throw e;
+				}
+				this.log(`[Pool] Connect attempt ${attempt}/${maxAttempts} failed (${msg}) — CLI still warming up, retrying in 2s...`);
+				await new Promise(r => setTimeout(r, 2000));
+				// A timed-out client destroyed its socket; recreate before retrying.
+				try { await this.client.stop(); } catch { /* already down */ }
+				this.client = createClient(this.cliUrl, this.log);
 			}
-			throw e;
 		}
 		const auth = await this.client.getAuthStatus();
 		if (!auth.isAuthenticated) {
@@ -2529,15 +2712,36 @@ export class SessionPool {
 	}
 
 	async listSessions(): Promise<SessionMetadata[]> {
-		const sessions = await this.client.listSessions();
+		// The single shared CLI can RESET its RPC channel under load — e.g. while
+		// resuming a very large session (observed with a 273MB session at CLI
+		// 1.0.81, resume ~10s), listSessions() rejects with "Connection is
+		// closed." We must NOT restart the shared client to recover this: doing so
+		// disposes every live session's connection and cascades into an expensive
+		// re-resume/re-send on the big session (which then wedges). The session
+		// picker is non-critical, so instead we degrade gracefully — serve the last
+		// successful snapshot (or empty) and let the live client recover on its own.
+		let sessions: SessionMetadata[];
+		try {
+			sessions = await withTimeout(this.client.listSessions(), 12000, 'listSessions');
+		} catch (e) {
+			const msg = String(e);
+			if (this.lastSessionList) {
+				this.log(`[Pool] listSessions failed (${msg}) — serving cached list (${this.lastSessionList.length})`);
+				return this.lastSessionList;
+			}
+			this.log(`[Pool] listSessions failed (${msg}) — no cache, serving empty list`);
+			return [];
+		}
 		// Normalize context: SDK beta.12+ renamed cwd → workingDirectory
 		for (const s of sessions) {
 			const ctx = s.context as any;
 			if (ctx && !ctx.cwd && ctx.workingDirectory) ctx.cwd = ctx.workingDirectory;
 		}
-		return sessions.sort((a, b) =>
+		const sorted = sessions.sort((a, b) =>
 			new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime()
 		);
+		this.lastSessionList = sorted; // cache for graceful degradation on later failures
+		return sorted;
 	}
 
 	async getStatus() { return this.client.getStatus(); }
@@ -2781,21 +2985,10 @@ export class SessionPool {
 			return await this._doConnect(sessionId);
 		} catch (e) {
 			const msg = String(e);
-			if (msg.includes('Connection is closed') || msg.includes('not connected') || msg.includes('Server port not available') || msg.includes('disposed')) {
+			if (isConnectionLostError(msg)) {
 				this.log(`[Pool] SDK connection lost — restarting client...`);
 				try {
-					await this.client.stop().catch(() => {});
-					// If in shared mode, wait for the CLI server port before reconnecting
-					if (this.shared) {
-						this.log(`[Pool] Waiting for CLI server on port 3848...`);
-						const ready = await this.waitForPort(3848, 15000);
-						if (!ready) throw new Error('CLI server not available after 15s');
-						this.log(`[Pool] CLI server detected — reconnecting SDK...`);
-					}
-					// Create a fresh client (stop() may leave the old one in a bad state)
-					this.client = createClient(this.cliUrl, this.log);
-					await this.client.start();
-					this.log(`[Pool] SDK client restarted`);
+					await this.restartClient();
 					return await this._doConnect(sessionId);
 				} catch (retryErr) {
 					this.log(`[Pool] Reconnect failed: ${retryErr}`);
@@ -2805,6 +2998,26 @@ export class SessionPool {
 			throw e;
 		}
 	}
+
+	/** Stop the dead SDK client and stand up a fresh one. Used by any RPC that
+	 *  hits "Connection is closed" — the shared CLI can reset the channel under
+	 *  load (e.g. mid-resume of a very large session), and the old client won't
+	 *  recover on its own; it must be recreated. */
+	private async restartClient(): Promise<void> {
+		await this.client.stop().catch(() => {});
+		// If in shared mode, wait for the CLI server port before reconnecting
+		if (this.shared) {
+			this.log(`[Pool] Waiting for CLI server on port 3848...`);
+			const ready = await this.waitForPort(3848, 15000);
+			if (!ready) throw new Error('CLI server not available after 15s');
+			this.log(`[Pool] CLI server detected — reconnecting SDK...`);
+		}
+		// Create a fresh client (stop() may leave the old one in a bad state)
+		this.client = createClient(this.cliUrl, this.log);
+		await this.client.start();
+		this.log(`[Pool] SDK client restarted`);
+	}
+
 
 	/** Wait for a TCP port to accept connections */
 	private waitForPort(port: number, timeoutMs: number): Promise<boolean> {
@@ -3015,8 +3228,16 @@ export class SessionPool {
 				} catch {}
 			}
 		};
-		// Check for pending CLI approvals before the first client receives getActiveTurnEvents()
-		await handle.checkInitialState();
+		// Check for pending CLI approvals. Fire-and-forget: this calls the SDK's full
+		// getEvents() to scan history, which on a large session against the shared CLI
+		// can take minutes (the RPC channel stays saturated right after a big resume).
+		// Blocking pool-ready on it stalls _doConnect so it never resolves — every new
+		// client then "joins in-flight" forever and the UI hangs on "still loading".
+		// The client's own fast tail-based getHistory renders the session immediately;
+		// detectPendingCliApproval() broadcasts on its own if it finds a pending prompt,
+		// so surfacing it a moment late (like the reconnect/turn-probe paths already do)
+		// costs nothing.
+		void handle.checkInitialState();
 		return handle;
 	}
 

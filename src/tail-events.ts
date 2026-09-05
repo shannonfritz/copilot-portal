@@ -198,3 +198,51 @@ export function countMessageLines(filePath: string, isMessageLine: (line: string
 		fs.closeSync(fd);
 	}
 }
+
+/**
+ * Read and parse the ENTIRE `events.jsonl` forward (chronological), off-connection.
+ *
+ * WHY: the authoritative "give me everything" path (getHistory with no limit — the banner's
+ * "ALL" link) historically pulled the whole log via the SDK's getEvents() RPC, streaming it
+ * back over the CLI connection. On a very large session under CLI 1.0.81 that response closes
+ * the channel (breaking the next send). The on-disk events.jsonl IS the same authoritative log
+ * getEvents() returns, so reading it directly from disk yields identical events with zero
+ * connection cost. Unlike readTailEvents this is deliberately UNBOUNDED — an explicit ALL
+ * request means all — so the caller owns the memory/render tradeoff of a huge session.
+ *
+ * Streams the file in chunks so we never hold the raw bytes twice; still O(bytes) and builds
+ * the full parsed array (that array is the point of an ALL request). Corrupt/partial lines are
+ * skipped, matching readTailEvents' finish().
+ */
+export function readAllEvents(filePath: string): Array<{ type: string; data?: unknown }> {
+	const fd = fs.openSync(filePath, 'r');
+	try {
+		const chunkBytes = 1 << 20; // 1 MiB
+		const buf = Buffer.alloc(chunkBytes);
+		let leftover = Buffer.alloc(0);
+		let pos = 0;
+		const size = fs.fstatSync(fd).size;
+		const events: Array<{ type: string; data?: unknown }> = [];
+		const pushLine = (line: string): void => {
+			if (!line.trim()) return;
+			try { events.push(JSON.parse(line)); } catch { /* skip a partial/corrupt line */ }
+		};
+		while (pos < size) {
+			const len = fs.readSync(fd, buf, 0, Math.min(chunkBytes, size - pos), pos);
+			if (len <= 0) break;
+			pos += len;
+			const data = leftover.length ? Buffer.concat([leftover, buf.subarray(0, len)]) : Buffer.from(buf.subarray(0, len));
+			let nl: number;
+			let start = 0;
+			while ((nl = data.indexOf(NEWLINE, start)) >= 0) {
+				pushLine(data.toString('utf8', start, nl));
+				start = nl + 1;
+			}
+			leftover = Buffer.from(data.subarray(start));
+		}
+		if (leftover.length) pushLine(leftover.toString('utf8'));
+		return events;
+	} finally {
+		fs.closeSync(fd);
+	}
+}
