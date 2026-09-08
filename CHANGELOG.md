@@ -2,7 +2,7 @@
 
 All notable changes to Copilot Portal are documented here.
 
-## v0.8.7-rc.1 — CLI watchdog, crash-loop quarantine, tunnel resilience
+## v0.8.7 — CLI watchdog, crash-loop quarantine, tunnel resilience
 
 > Release candidate. Ships the fixes below for validation before a stable v0.8.7.
 
