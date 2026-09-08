@@ -2,6 +2,27 @@
 
 All notable changes to Copilot Portal are documented here.
 
+## v0.8.7-rc.1 — CLI watchdog, crash-loop quarantine, tunnel resilience
+
+> Release candidate. Ships the fixes below for validation before a stable v0.8.7.
+
+### 🖥️ CLI process supervision
+- **CLI watchdog** — the launcher now monitors the background `copilot --server` process and relaunches it if it dies. Previously, if the CLI was killed (e.g. by the OS out-of-memory killer while resuming a very large session), port 3848 stayed closed forever and every client looped on "CLI server not available after 15s" with nothing able to recover it.
+- **Crash-loop quarantine** — a session that kills the CLI three times in a row is no longer auto-resumed. It reports a clear reason instead of repeatedly taking down the CLI for every other connected session.
+- **Container-aware heap sizing** — the CLI's `--max-old-space-size` is now capped at 75% of a detected cgroup memory limit instead of a flat 8GB, so a memory-capped container makes V8 collect rather than get SIGKILLed.
+
+### 🌐 Tunnel resilience
+- **Tunnels stay up** — a failed health-check restart no longer clears the user's "tunnel should be running" intent, which previously disabled auto-restart permanently after a single failure.
+- **Crash recovery** — if `devtunnel host` exits on its own, the health check now restarts it. Previously the loop guarded on a live process handle and became a permanent no-op.
+- **Restart backoff and banners** — restarts use exponential backoff (capped at 60s), and the portal now toasts a banner when a tunnel drops, escalating to a warning after repeated failures or when devtunnel is missing/logged out.
+
+### 🔄 Reconnect fidelity
+- **`ask_user` prompts no longer arrive alone** — returning to a backgrounded tab paused at a question showed the prompt but none of the reasoning or agent messages before it. The history replay is now adopted when a turn is paused at an `ask_user`, instead of being rejected as a lagging read.
+
+### 🔧 Stability
+- **In-app Restart now reconciles dependencies** — the portal's Restart button relaunches through the launcher, bypassing `start-portal.cmd` and its dependency check. The launcher now performs the same version-stamp check and `npm install`, so an update finishes on the restart instead of surfacing a stale-dependency refresh on the next manual launch.
+- **`start-portal.sh` parity** — the shell launcher now uses the same dependency version-stamp drift check as `start-portal.cmd` rather than only checking whether `node_modules` exists.
+
 ## v0.8.6 — Newer-CLI compatibility, reconnect fidelity, connection resilience
 
 ### 🌐 Connection resilience

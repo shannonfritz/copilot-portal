@@ -327,13 +327,15 @@ export class PortalServer {
 					ws.send(JSON.stringify(e));
 				}
 				if (cancelled) return;
-				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive, readBytes: handle.lastHistoryReadBytes }));
+				const pendingApprovalEvents = handle.getPendingApprovalEvents();
+				const pendingInputEvents = handle.getPendingInputEvents();
+				ws.send(JSON.stringify({ type: 'history_end', sessionId: historySessionId, turnActive: handle.portalTurnActive, pendingInput: pendingInputEvents.length > 0, readBytes: handle.lastHistoryReadBytes }));
 				// Catch up new client on any in-progress turn (thinking/streaming)
 				const activeTurnEvents = handle.getActiveTurnEvents();
 				this.log('[' + clientId + '] Active turn events: ' + (activeTurnEvents.map(e => e.type).join(', ') || 'none') + ' (' + handle.turnStateDebug + ')');
 				for (const e of activeTurnEvents) ws.send(JSON.stringify(e));
-				for (const e of handle.getPendingApprovalEvents()) ws.send(JSON.stringify(e));
-				for (const e of handle.getPendingInputEvents()) ws.send(JSON.stringify(e));
+				for (const e of pendingApprovalEvents) ws.send(JSON.stringify(e));
+				for (const e of pendingInputEvents) ws.send(JSON.stringify(e));
 				for (const e of handle.getCliPendingEvents()) ws.send(JSON.stringify(e));
 				// Send current approval rules and approveAll state for this session
 				ws.send(JSON.stringify({ type: 'rules_list', rules: handle.getRulesList() }));

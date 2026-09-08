@@ -13,7 +13,11 @@ export interface TunnelState {
 	running: boolean;
 	url?: string;
 	config?: TunnelConfig;
+	restarting?: boolean;
+	restartFailures?: number;
 }
+
+type TunnelNotify = (level: 'info' | 'warning', message: string, url?: string) => void;
 
 export class TunnelManager {
 	private process: ChildProcess | null = null;
@@ -23,7 +27,15 @@ export class TunnelManager {
 	private port: number;
 
 	private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+	private restartTimer: ReturnType<typeof setTimeout> | null = null;
 	private log: ((msg: string) => void) | null = null;
+	private getToken: (() => string) | null = null;
+	private onRestart: ((url: string) => void) | null = null;
+	private notify: TunnelNotify | null = null;
+	private expectedStops = new WeakSet<ChildProcess>();
+	private restarting = false;
+	private restartFailures = 0;
+	private failureBannerShown = false;
 
 	constructor(dataDir: string, port: number) {
 		this.configPath = join(dataDir, 'tunnel.json');
@@ -92,7 +104,6 @@ export class TunnelManager {
 		}
 
 		this.saveConfig(config);
-		this.setWasRunning(true);
 
 		return new Promise<string>((resolve, reject) => {
 			const proc = spawn('devtunnel', ['host', config.name], {
@@ -102,18 +113,23 @@ export class TunnelManager {
 			this.process = proc;
 
 			let output = '';
+			let settled = false;
 			const timeout = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				this.killProcess(true);
 				reject(new Error('Tunnel failed to start within 15 seconds'));
-				this.stop();
 			}, 15000);
 
 			proc.stdout?.on('data', (data: Buffer) => {
 				output += data.toString();
 				// Look for the connect URL
 				const match = output.match(/Connect via browser:\s+(https:\/\/\S+)/);
-				if (match) {
+				if (match && !settled) {
+					settled = true;
 					clearTimeout(timeout);
 					this.url = match[1];
+					this.setWasRunning(true);
 					resolve(this.url);
 				}
 			});
@@ -124,16 +140,31 @@ export class TunnelManager {
 
 			proc.on('error', (err) => {
 				clearTimeout(timeout);
-				this.process = null;
-				reject(err);
+				if (this.process === proc) {
+					this.process = null;
+					this.url = null;
+				}
+				if (!settled) {
+					settled = true;
+					reject(err);
+				} else if (!this.expectedStops.has(proc)) {
+					this.scheduleRestart(`Tunnel process error: ${err.message}`);
+				}
 			});
 
 			proc.on('exit', (code) => {
 				clearTimeout(timeout);
-				this.process = null;
-				this.url = null;
-				if (code !== 0 && code !== null) {
-					reject(new Error(`devtunnel exited with code ${code}: ${output.trim()}`));
+				if (this.process === proc) {
+					this.process = null;
+					this.url = null;
+				}
+				if (this.expectedStops.has(proc)) return;
+				const reason = `devtunnel exited${code === null ? '' : ` with code ${code}`}${output.trim() ? `: ${output.trim().slice(-500)}` : ''}`;
+				if (!settled) {
+					settled = true;
+					reject(new Error(reason));
+				} else {
+					this.scheduleRestart(reason);
 				}
 			});
 		});
@@ -142,27 +173,33 @@ export class TunnelManager {
 	/** Stop the tunnel (user-initiated — clears wasRunning so it won't auto-restart) */
 	stop(): void {
 		this.stopHealthCheck();
+		this.clearRestartTimer();
 		this.setWasRunning(false);
-		this.killProcess();
+		this.killProcess(false);
 	}
 
 	/** Shutdown the tunnel process (preserves wasRunning for auto-restart on next launch) */
 	shutdown(): void {
 		this.stopHealthCheck();
-		this.killProcess();
+		this.clearRestartTimer();
+		this.killProcess(true);
 	}
 
-	private killProcess(): void {
+	private killProcess(preserveIntent: boolean): void {
 		if (this.process) {
+			const proc = this.process;
 			const pid = this.process.pid;
-			this.process.kill('SIGINT');
+			this.expectedStops.add(proc);
+			proc.kill('SIGINT');
 			// Give it a moment, then force kill
 			setTimeout(() => {
-				try { if (pid) process.kill(pid, 0); process.kill(pid!, 'SIGKILL'); } catch { /* already dead */ }
+				if (!pid) return;
+				try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
 			}, 3000);
 			this.process = null;
 			this.url = null;
 		}
+		if (!preserveIntent) this.restartFailures = 0;
 	}
 
 	/** Persist running flag so tunnel can auto-restart after server restart */
@@ -184,6 +221,8 @@ export class TunnelManager {
 			running: this.process !== null,
 			url: this.url ?? undefined,
 			config: this.config ?? undefined,
+			restarting: this.restarting || this.restartTimer !== null,
+			restartFailures: this.restartFailures,
 		};
 	}
 
@@ -215,29 +254,28 @@ export class TunnelManager {
 	}
 
 	/** Start periodic health checks — restarts tunnel if the relay connection goes stale. */
-	startHealthCheck(getToken: () => string, onRestart: (url: string) => void, logFn: (msg: string) => void): void {
+	startHealthCheck(getToken: () => string, onRestart: (url: string) => void, logFn: (msg: string) => void, notify?: TunnelNotify): void {
 		this.stopHealthCheck();
 		this.log = logFn;
+		this.getToken = getToken;
+		this.onRestart = onRestart;
+		this.notify = notify ?? null;
 		this.healthCheckTimer = setInterval(async () => {
-			if (!this.process || !this.url) return;
+			if (!this.config?.wasRunning) return;
+			if (!this.process || !this.url) {
+				this.scheduleRestart('Tunnel process is not running');
+				return;
+			}
+			let timeout: ReturnType<typeof setTimeout> | null = null;
 			try {
 				const controller = new AbortController();
-				const timeout = setTimeout(() => controller.abort(), 10000);
+				timeout = setTimeout(() => controller.abort(), 10000);
 				const resp = await fetch(`${this.url}/api/info?token=${getToken()}`, { signal: controller.signal });
-				clearTimeout(timeout);
 				if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-			} catch {
-				this.log?.(`[Tunnel] Health check failed — restarting tunnel`);
-				const config = this.config;
-				if (!config) return;
-				this.stop();
-				try {
-					const newUrl = await this.start(config);
-					this.log?.(`[Tunnel] Restarted: ${newUrl}`);
-					onRestart(newUrl);
-				} catch (e) {
-					this.log?.(`[Tunnel] Restart failed: ${e}`);
-				}
+			} catch (e) {
+				this.scheduleRestart(`Health check failed: ${String(e).split('\n')[0]}`);
+			} finally {
+				if (timeout) clearTimeout(timeout);
 			}
 		}, 5 * 60 * 1000); // Every 5 minutes
 	}
@@ -247,5 +285,60 @@ export class TunnelManager {
 			clearInterval(this.healthCheckTimer);
 			this.healthCheckTimer = null;
 		}
+	}
+
+	private clearRestartTimer(): void {
+		if (this.restartTimer) {
+			clearTimeout(this.restartTimer);
+			this.restartTimer = null;
+		}
+	}
+
+	private scheduleRestart(reason: string): void {
+		if (!this.config?.wasRunning || this.restartTimer || this.restarting) return;
+		if (!this.isInstalled()) {
+			this.log?.(`[Tunnel] Cannot restart tunnel: devtunnel is not installed`);
+			this.notify?.('warning', 'Tunnel stopped and cannot restart because devtunnel is not installed.');
+			return;
+		}
+		if (!this.isLoggedIn()) {
+			this.log?.(`[Tunnel] Cannot restart tunnel: devtunnel is not logged in`);
+			this.notify?.('warning', 'Tunnel stopped and cannot restart because devtunnel is not logged in. Run devtunnel user login locally.');
+			return;
+		}
+
+		this.restartFailures++;
+		const delayMs = Math.min(60_000, 1000 * Math.pow(2, Math.min(this.restartFailures - 1, 6)));
+		this.log?.(`[Tunnel] ${reason} — restarting in ${Math.round(delayMs / 1000)}s (attempt ${this.restartFailures})`);
+		if (this.restartFailures === 1) {
+			this.notify?.('info', 'Tunnel disconnected — reconnecting...');
+		} else if (this.restartFailures >= 5 && !this.failureBannerShown) {
+			this.failureBannerShown = true;
+			this.notify?.('warning', `Tunnel is still down after ${this.restartFailures} reconnect attempts. Portal will keep retrying; check devtunnel locally if this continues.`);
+		}
+		this.restartTimer = setTimeout(() => {
+			this.restartTimer = null;
+			void this.restartNow(reason);
+		}, delayMs);
+	}
+
+	private async restartNow(reason: string): Promise<void> {
+		if (!this.config?.wasRunning || this.restarting) return;
+		const config = this.config;
+		this.restarting = true;
+		this.killProcess(true);
+		try {
+			const newUrl = await this.start(config);
+			this.restartFailures = 0;
+			this.failureBannerShown = false;
+			this.log?.(`[Tunnel] Restarted: ${newUrl}`);
+			this.onRestart?.(newUrl);
+			this.notify?.('info', `Tunnel reconnected: ${newUrl}`);
+		} catch (e) {
+			this.restarting = false;
+			this.scheduleRestart(`Restart failed after ${reason}: ${String(e).split('\n')[0]}`);
+			return;
+		}
+		this.restarting = false;
 	}
 }

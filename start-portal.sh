@@ -13,12 +13,24 @@ if ! command -v node &>/dev/null; then
     exit 1
 fi
 
-# Dependencies (only if node_modules is missing)
-if [ ! -d node_modules ]; then
+# Dependencies (first install, or after an extract-over app update)
+PKG_VER="$(node -p "require('./package.json').version" 2>/dev/null || true)"
+DEP_VER=""
+if [ -f node_modules/.portal-deps-version ]; then
+    DEP_VER="$(cat node_modules/.portal-deps-version 2>/dev/null || true)"
+fi
+if [ ! -d node_modules ] || { [ -n "$PKG_VER" ] && [ "$DEP_VER" != "$PKG_VER" ]; }; then
     echo
-    echo "  First-time setup — installing dependencies..."
+    if [ -d node_modules ] && [ -n "$PKG_VER" ]; then
+        echo "  Update detected: dependencies built for \"${DEP_VER:-unknown}\", now \"$PKG_VER\" — refreshing..."
+    else
+        echo "  First-time setup — installing dependencies..."
+    fi
     echo
     npm install --no-fund --no-audit
+    if [ -n "$PKG_VER" ]; then
+        printf '%s' "$PKG_VER" > node_modules/.portal-deps-version
+    fi
     if [ -f patch.mjs ]; then
         echo "  Applying compatibility patch..."
         node patch.mjs

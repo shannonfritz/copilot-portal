@@ -93,6 +93,11 @@ function isConnectionLostError(msg: string): boolean {
 		|| msg.includes('Server port not available') || msg.includes('disposed');
 }
 
+/** Sentinel error text for a session that repeatedly crashed the CLI on resume. */
+export const QUARANTINE_ERROR =
+	'This session repeatedly crashed the Copilot CLI while loading — it is likely too large to resume. '
+	+ 'Start a new session, or reduce the session file, then use "Retry session" to try again.';
+
 
 /**
  * Thrown by SessionPool.start() when the Copilot CLI is reachable/launchable but
@@ -182,6 +187,7 @@ export interface PortalEvent {
 	timestamp?: number; // ms epoch — set on history events if the SDK provides it
 	toolSummary?: Array<{ toolName: string; display: string; completed: boolean }>;
 	askUserChoices?: string[]; // choices that were presented for an ask_user response
+	pendingInput?: boolean; // on history_end: true when the active turn is paused at ask_user
 	total?: number;
 	shown?: number;
 	requestId?: string;
@@ -2610,10 +2616,16 @@ if (total !== shown) result.push({ type: 'history_meta', total, shown });
 
 /** Manages multiple CopilotSession instances under a single CopilotClient (one auth). */
 export class SessionPool {
+	static readonly CRASH_STRIKE_LIMIT = 3;
 	private client: CopilotClient;
 	onTitleChanged?: (sessionId: string, summary: string | undefined) => void;
 	private pool = new Map<string, SessionHandle>();
 	private connecting = new Map<string, Promise<SessionHandle>>();
+	/** Sessions that have repeatedly killed the CLI while resuming. Resuming one
+	 *  of these takes down every other client, so after N strikes we refuse and
+	 *  surface the reason instead of looping forever. */
+	private crashStrikes = new Map<string, number>();
+	private quarantined = new Set<string>();
 	/** Last successful listSessions() result — served if a later call fails with
 	 *  a dropped connection, so the picker degrades gracefully without restarting
 	 *  the shared client (which would disrupt live sessions). */
@@ -2920,6 +2932,7 @@ export class SessionPool {
 
 	/** Returns handle from pool, or connects to the session and caches it. Concurrent calls for the same sessionId share a single in-flight promise. */
 	async connect(sessionId: string, evictIfIdle = false): Promise<SessionHandle> {
+		if (this.quarantined.has(sessionId)) throw new Error(QUARANTINE_ERROR);
 		if (this.pool.has(sessionId)) {
 			const existing = this.pool.get(sessionId)!;
 			// A reconnect to an idle handle normally evicts + re-resumes to pick up any
@@ -2982,14 +2995,25 @@ export class SessionPool {
 	/** Try to connect; if the SDK connection is dead, restart it and retry once. */
 	private async _doConnectWithRetry(sessionId: string): Promise<SessionHandle> {
 		try {
-			return await this._doConnect(sessionId);
+			const h = await this._doConnect(sessionId);
+			this.crashStrikes.delete(sessionId);
+			return h;
 		} catch (e) {
 			const msg = String(e);
 			if (isConnectionLostError(msg)) {
-				this.log(`[Pool] SDK connection lost — restarting client...`);
+				const strikes = (this.crashStrikes.get(sessionId) ?? 0) + 1;
+				this.crashStrikes.set(sessionId, strikes);
+				this.log(`[Pool] SDK connection lost — restarting client... (session ${sessionId.slice(0, 8)} strike ${strikes}/${SessionPool.CRASH_STRIKE_LIMIT})`);
+				if (strikes >= SessionPool.CRASH_STRIKE_LIMIT) {
+					this.quarantined.add(sessionId);
+					this.log(`[Pool] Quarantining ${sessionId.slice(0, 8)} — it has killed the CLI ${strikes} times`);
+					throw new Error(QUARANTINE_ERROR);
+				}
 				try {
 					await this.restartClient();
-					return await this._doConnect(sessionId);
+					const h = await this._doConnect(sessionId);
+					this.crashStrikes.delete(sessionId);
+					return h;
 				} catch (retryErr) {
 					this.log(`[Pool] Reconnect failed: ${retryErr}`);
 					throw retryErr;
@@ -2997,6 +3021,17 @@ export class SessionPool {
 			}
 			throw e;
 		}
+	}
+
+	/** True if this session is refusing to load because it keeps killing the CLI. */
+	isQuarantined(sessionId: string): boolean {
+		return this.quarantined.has(sessionId);
+	}
+
+	/** Clear a quarantine so the user can explicitly try the session again. */
+	clearQuarantine(sessionId: string): void {
+		this.quarantined.delete(sessionId);
+		this.crashStrikes.delete(sessionId);
 	}
 
 	/** Stop the dead SDK client and stand up a fresh one. Used by any RPC that

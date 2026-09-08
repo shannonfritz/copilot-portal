@@ -1912,6 +1912,7 @@ export default function App() {
 	const lastStreamedRef = useRef(''); // dedup: content streamed in the last portal turn
 	const pendingMsgRef = useRef<Message | null>(null); // buffered message_end — unknown if intermediate or final
 	const carriedFinalRef = useRef<Message | null>(null); // pendingMsgRef captured across a mid-turn history_start so a resync can't drop an already-emitted final message
+	const deferredAskHistoryRef = useRef<Message[] | null>(null); // shorter active-turn replay to adopt if an ask_user arrives right after history_end
 	const flushedInputReqRef = useRef<string | null>(null); // requestId whose pre-prompt stream we've already flushed (probes re-broadcast the same input_request)
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const inputContainerRef = useRef<HTMLDivElement>(null);
@@ -2382,6 +2383,7 @@ export default function App() {
 					// history_end can re-attach it when the replay comes back short.
 					carriedFinalRef.current = pendingMsgRef.current;
 					pendingMsgRef.current = null;
+					deferredAskHistoryRef.current = null;
 					isStoppingRef.current = false;
 					// Clear live tool cards from a previous connection. Completed tools are
 					// baked into the replayed history messages; a genuinely still-active turn
@@ -2475,14 +2477,19 @@ export default function App() {
 						const lastBuf = buf[buf.length - 1];
 						const tailNewer = !!lastBuf && (!lastLocal || lastLocal.role !== lastBuf.role || (lastLocal.content ?? '') !== (lastBuf.content ?? ''));
 						// Mid-turn (server reports the portal turn is still active) our LIVE local
-						// tail is authoritative — a shorter history snapshot is a lagging read,
-						// NOT a truncated-but-newer view. Adopting it on tailNewer alone would
-						// wipe a just-emitted message until a full reload. The tailNewer path is
-						// only for the IDLE phone-lock case, where a newer answer completed
-						// elsewhere while we were backgrounded and the capped replay is shorter.
+						// tail is usually authoritative — a shorter history snapshot can be a
+						// lagging read, NOT a truncated-but-newer view. Exception: once the turn is
+						// paused at ask_user, the pre-prompt assistant/tool history is persisted and
+						// stable, so adopting the shorter replay is safe and prevents the phone-lock
+						// case where only the prompt is visible until a full reload/reselect.
 						const activeTurn = event.turnActive === true;
-						if (changed && (buf.length >= localNonQueued.length || (tailNewer && !activeTurn))) {
+						const pendingInputReplay = (event as { pendingInput?: boolean }).pendingInput === true;
+						if (changed && (buf.length >= localNonQueued.length || (tailNewer && (!activeTurn || pendingInputReplay)))) {
 							setMessages(queued.length ? [...buf, ...queued] : buf);
+						} else if (changed && tailNewer && activeTurn) {
+							// If the server did not know about the pending input at history_end but an
+							// input_request is delivered immediately after, adopt this replay there.
+							deferredAskHistoryRef.current = queued.length ? [...buf, ...queued] : [...buf];
 						}
 						historyBufferRef.current = [];
 						return;
@@ -3160,6 +3167,11 @@ export default function App() {
 					}
 					if (event.requestId) answeredInputsRef.current.delete(event.requestId);
 				} else if (event.type === 'input_request' && event.inputRequest) {
+					if (deferredAskHistoryRef.current) {
+						const replay = deferredAskHistoryRef.current;
+						deferredAskHistoryRef.current = null;
+						setMessages(replay);
+					}
 					// Only act on a NEW request (probes re-broadcast the same one)
 					if (flushedInputReqRef.current !== event.inputRequest.requestId) {
 						flushedInputReqRef.current = event.inputRequest.requestId;

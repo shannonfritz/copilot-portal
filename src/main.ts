@@ -436,9 +436,11 @@ if (process.stdin.isTTY) {
 				() => server.getToken(),
 				(newUrl) => stampedLog(`[Tunnel] Restarted → ${newUrl}?token=${server.getToken()}`),
 				stampedLog,
+				(level, message) => server.broadcastAll({ type: level, content: message }),
 			);
 		} catch (e) {
 			console.log(`  Failed to start tunnel: ${e}\n`);
+			server.broadcastAll({ type: 'warning', content: `Failed to start tunnel: ${String(e).split('\n')[0]}` });
 		}
 	};
 

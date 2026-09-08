@@ -13,12 +13,12 @@
  * Restart support:
  *   Exit code 75 triggers a relaunch of the portal server.
  */
-import { spawn, spawnSync, exec } from 'node:child_process';
+import { spawn, spawnSync, exec, execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cliNodeOptions, cliSpawnEnv } from './cli-env.js';
+import { cliNodeOptions, cliSpawnEnv, cliHeapMb, containerMemoryLimitMb } from './cli-env.js';
 
 function log(msg: string): void {
 	const now = new Date();
@@ -36,6 +36,8 @@ const args = process.argv.slice(2);
 const RESTART_CODE = 75;
 const REAUTH_CODE = 76;
 const CLI_PORT = 3848;
+const PROJECT_ROOT = path.join(__dirname, '..');
+const DEPS_STAMP = path.join(PROJECT_ROOT, 'node_modules', '.portal-deps-version');
 
 // True once we've spawned the portal server at least once. Auto-launch of the
 // browser should happen only on the very first start of the process tree, never
@@ -83,6 +85,51 @@ function loadStoredAccessToken(): void {
 			}
 		}
 	} catch { /* ignore */ }
+}
+
+function packageVersion(): string | null {
+	try {
+		const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+		return typeof pkg.version === 'string' ? pkg.version : null;
+	} catch {
+		return null;
+	}
+}
+
+function depsStampVersion(): string | null {
+	try {
+		return fs.readFileSync(DEPS_STAMP, 'utf8').trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+function runNpmInstallForLauncher(): void {
+	log('[Launcher] Refreshing dependencies before server restart...');
+	const flags = '--no-fund --no-audit --fetch-retries=0 --fetch-timeout=60000';
+	try {
+		execSync(`npm install ${flags}`, { cwd: PROJECT_ROOT, stdio: 'inherit', timeout: 10 * 60 * 1000 });
+	} catch (e) {
+		log(`[Launcher] Configured registry install failed; retrying against public npmjs... (${String(e).split('\n')[0]})`);
+		execSync(`npm install ${flags} --registry=https://registry.npmjs.org/`, { cwd: PROJECT_ROOT, stdio: 'inherit', timeout: 10 * 60 * 1000 });
+	}
+	const ver = packageVersion();
+	if (ver) {
+		fs.writeFileSync(DEPS_STAMP, ver);
+		log(`[Launcher] Stamped node_modules/.portal-deps-version = ${ver}`);
+	}
+}
+
+/** In-app restart relaunches through this launcher, bypassing start-portal.cmd/sh.
+ *  Reconcile dependencies here too so a self-update cannot boot new dist/ against
+ *  old node_modules or leave the next manual start to do the real install. */
+function ensureDependenciesCurrent(): void {
+	const ver = packageVersion();
+	if (!ver || !fs.existsSync(path.join(PROJECT_ROOT, 'node_modules'))) return;
+	const stamped = depsStampVersion();
+	if (stamped === ver) return;
+	log(`[Launcher] Dependency stamp mismatch (built for "${stamped ?? 'unknown'}", package is "${ver}")`);
+	runNpmInstallForLauncher();
 }
 
 /** Check if a TCP port is accepting connections */
@@ -143,7 +190,7 @@ function launchCli(port: number): boolean {
 		child.unref();
 	}
 	cliLaunched = true;
-	log(`[Launcher] CLI server started`);
+	log(`[Launcher] CLI server started (heap ${cliHeapMb()}MB${containerMemoryLimitMb() !== null ? `, container limit ${containerMemoryLimitMb()}MB` : ''})`);
 	return true;
 }
 
@@ -162,6 +209,7 @@ function captureCliVersion(): void {
 /** Stop the CLI server process if we launched it */
 function stopCli(): void {
 	if (!cliLaunched) return;
+	stopCliWatchdog();
 	cliLaunched = false;
 	log(`[Launcher] Stopping CLI server...`);
 	try {
@@ -178,9 +226,85 @@ function stopCli(): void {
 	} catch { /* already dead */ }
 }
 
+/**
+ * Watchdog: keep the CLI server alive.
+ *
+ * The CLI is a separate process. If it dies mid-run — most commonly killed by
+ * the kernel/cgroup while resuming a very large session in a memory-capped
+ * container — nothing used to bring it back. The portal stayed up and every
+ * client looped forever on "CLI server not available after 15s", because the
+ * pool only ever *waits* for port 3848; it never relaunches the process behind
+ * it. This closes that gap.
+ */
+const CLI_WATCHDOG_INTERVAL_MS = 10_000;
+const CLI_WATCHDOG_MAX_BACKOFF_MS = 60_000;
+let cliWatchdogTimer: NodeJS.Timeout | null = null;
+let cliWatchdogMisses = 0;
+let cliRelaunchFailures = 0;
+let cliRelaunchBlockedUntil = 0;
+
+function startCliWatchdog(): void {
+	if (cliWatchdogTimer) return;
+	cliWatchdogMisses = 0;
+	cliRelaunchFailures = 0;
+	cliRelaunchBlockedUntil = 0;
+	cliWatchdogTimer = setInterval(() => { void checkCliAlive(); }, CLI_WATCHDOG_INTERVAL_MS);
+	cliWatchdogTimer.unref?.();
+}
+
+function stopCliWatchdog(): void {
+	if (!cliWatchdogTimer) return;
+	clearInterval(cliWatchdogTimer);
+	cliWatchdogTimer = null;
+}
+
+async function checkCliAlive(): Promise<void> {
+	if (!cliLaunched) return;
+	if (await isPortListening(CLI_PORT)) {
+		if (cliWatchdogMisses > 0) log(`[Launcher] CLI server healthy again`);
+		cliWatchdogMisses = 0;
+		cliRelaunchFailures = 0;
+		return;
+	}
+	// Require two consecutive misses so a deliberate CLI restart (e.g. the
+	// portal's /api/restart-cli, which briefly closes the port) isn't treated
+	// as a crash and double-launched.
+	cliWatchdogMisses++;
+	if (cliWatchdogMisses < 2) return;
+	if (Date.now() < cliRelaunchBlockedUntil) return;
+
+	log(`[Launcher] CLI server is gone (port ${CLI_PORT} closed) — relaunching...`);
+	cliLaunched = false;
+	if (!launchCli(CLI_PORT)) {
+		cliRelaunchFailures++;
+		cliRelaunchBlockedUntil = Date.now() + relaunchBackoffMs();
+		log(`[Launcher] CLI relaunch failed (attempt ${cliRelaunchFailures}) — retrying in ${Math.round(relaunchBackoffMs() / 1000)}s`);
+		return;
+	}
+	const ready = await waitForPort(CLI_PORT, 30000);
+	if (ready) {
+		log(`[Launcher] CLI server recovered`);
+		cliWatchdogMisses = 0;
+		cliRelaunchFailures = 0;
+		cliRelaunchBlockedUntil = 0;
+		captureCliVersion();
+	} else {
+		cliRelaunchFailures++;
+		cliRelaunchBlockedUntil = Date.now() + relaunchBackoffMs();
+		log(`[Launcher] CLI server did not come back within 30s (attempt ${cliRelaunchFailures}) — retrying in ${Math.round(relaunchBackoffMs() / 1000)}s`);
+	}
+}
+
+function relaunchBackoffMs(): number {
+	const n = Math.max(1, cliRelaunchFailures);
+	return Math.min(CLI_WATCHDOG_MAX_BACKOFF_MS, 5000 * 2 ** (n - 1));
+}
+
 async function start() {
 	// Set terminal tab title
 	process.stdout.write('\x1b]0;Copilot Portal\x07');
+
+	ensureDependenciesCurrent();
 
 	// Pick up a portal-saved access token before spawning the CLI (which inherits
 	// our env). Runs on boot and on every restart, so it survives exit-76 cycles.
@@ -220,6 +344,7 @@ async function start() {
 	if (cliUrl) {
 		log(`[Launcher] Connecting to CLI server at ${cliUrl}`);
 		captureCliVersion();
+		if (cliLaunched) startCliWatchdog();
 	} else {
 		log(`[Launcher] Standalone mode — spawning own CLI subprocess`);
 	}
