@@ -122,14 +122,27 @@ function runNpmInstallForLauncher(): void {
 
 /** In-app restart relaunches through this launcher, bypassing start-portal.cmd/sh.
  *  Reconcile dependencies here too so a self-update cannot boot new dist/ against
- *  old node_modules or leave the next manual start to do the real install. */
+ *  old node_modules or leave the next manual start to do the real install.
+ *
+ *  Skipped in container mode: the image's node_modules is baked at build time by
+ *  `npm ci`, so it is correct by construction and the app version can never drift
+ *  from it. The runtime image also ships no package-lock.json or patch.mjs (the
+ *  postinstall script), so an `npm install` there fails outright and would take
+ *  the launcher down on boot. */
 function ensureDependenciesCurrent(): void {
+	if (process.env.COPILOT_CONTAINER === '1' || process.env.COPILOT_CONTAINER === 'true') return;
 	const ver = packageVersion();
 	if (!ver || !fs.existsSync(path.join(PROJECT_ROOT, 'node_modules'))) return;
 	const stamped = depsStampVersion();
 	if (stamped === ver) return;
 	log(`[Launcher] Dependency stamp mismatch (built for "${stamped ?? 'unknown'}", package is "${ver}")`);
-	runNpmInstallForLauncher();
+	try {
+		runNpmInstallForLauncher();
+	} catch (e) {
+		// Never let a failed refresh prevent the portal from starting — a stale
+		// node_modules usually still runs, and start-portal.cmd/sh will retry.
+		log(`[Launcher] Dependency refresh failed, continuing with existing node_modules: ${String(e).split('\n')[0]}`);
+	}
 }
 
 /** Check if a TCP port is accepting connections */

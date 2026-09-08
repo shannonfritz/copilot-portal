@@ -22,6 +22,7 @@ All notable changes to Copilot Portal are documented here.
 ### 🔧 Stability
 - **In-app Restart now reconciles dependencies** — the portal's Restart button relaunches through the launcher, bypassing `start-portal.cmd` and its dependency check. The launcher now performs the same version-stamp check and `npm install`, so an update finishes on the restart instead of surfacing a stale-dependency refresh on the next manual launch.
 - **`start-portal.sh` parity** — the shell launcher now uses the same dependency version-stamp drift check as `start-portal.cmd` rather than only checking whether `node_modules` exists.
+- **Container startup fix** *(rc.2)* — the new launcher dependency check is skipped in container mode. The image bakes `node_modules` at build time with `npm ci` and ships no `package-lock.json` or `patch.mjs`, so the check's `npm install` failed on the postinstall hook and crashed the container on boot. A failed refresh elsewhere is now non-fatal too.
 
 ## v0.8.6 — Newer-CLI compatibility, reconnect fidelity, connection resilience
 
